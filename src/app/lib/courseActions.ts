@@ -34,13 +34,6 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
-export function loadCourses(): Course[] {
-  if (!canUseStorage()) return [];
-  // Fire-and-forget DB sync (keeps UI sync)
-  void ensureCoursesSyncedFromDb();
-  return safeParse<Course[]>(window.localStorage.getItem(COURSES_STORAGE_KEY), []);
-}
-
 export function saveCourses(courses: Course[]) {
   if (!canUseStorage()) return;
   try {
@@ -70,11 +63,48 @@ async function getClubId(): Promise<string | null> {
   return clubIdPromise;
 }
 
+/* ================================
+   Pending writes guard (prevents DB sync
+   from overwriting local changes mid-edit)
+================================ */
+let pendingWrites = 0;
+function beginWrite() {
+  pendingWrites += 1;
+}
+function endWrite() {
+  pendingWrites = Math.max(0, pendingWrites - 1);
+}
+function hasPendingWrites() {
+  return pendingWrites > 0;
+}
+
+/* ================================
+   Load (sync UI, background DB sync)
+================================ */
+export function loadCourses(): Course[] {
+  if (!canUseStorage()) return [];
+
+  // Only sync from DB when we do NOT have pending local writes
+  if (!hasPendingWrites()) {
+    void ensureCoursesSyncedFromDb();
+  }
+
+  return safeParse<Course[]>(window.localStorage.getItem(COURSES_STORAGE_KEY), []);
+}
+
+/* ================================
+   DB sync: pull courses/tees and overwrite cache
+   (guarded to avoid clobbering local edits)
+================================ */
 let coursesSyncInFlight: Promise<void> | null = null;
 
 export async function ensureCoursesSyncedFromDb(): Promise<void> {
   if (!canUseStorage()) return;
   if (!isSupabaseConfigured() || !supabase) return;
+
+  // If the user is mid-write, don't overwrite localStorage
+  if (hasPendingWrites()) return;
+
   if (coursesSyncInFlight) return coursesSyncInFlight;
 
   coursesSyncInFlight = (async () => {
@@ -90,6 +120,7 @@ export async function ensureCoursesSyncedFromDb(): Promise<void> {
     if (courseErr || !courses) return;
 
     const courseIds = courses.map((c) => c.id);
+
     const { data: tees, error: teeErr } = await supabase
       .from("tees")
       .select("id,course_id,label,meters,par,slope")
@@ -110,6 +141,9 @@ export async function ensureCoursesSyncedFromDb(): Promise<void> {
       website: c.website ?? undefined,
       tees: (byCourse[c.id] || []).slice().sort((a, b) => a.label.localeCompare(b.label)),
     }));
+
+    // Guard again right before writing
+    if (hasPendingWrites()) return;
 
     saveCourses(merged);
   })().finally(() => {
@@ -141,8 +175,12 @@ export function createCourse(input: { name: string; location: string; website?: 
     tees: [],
   };
 
-  const updated = [...courses, course];
-  saveCourses(updated);
+  beginWrite();
+  try {
+    saveCourses([...courses, course]);
+  } finally {
+    // keep "pending" until DB mirror finishes (endWrite in mirror)
+  }
 
   void mirrorCourseUpsert(course);
   return course;
@@ -162,9 +200,14 @@ export function updateCourse(courseId: string, patch: Partial<Pick<Course, "name
     website: patch.website !== undefined ? patch.website.trim() || undefined : current.website,
   };
 
-  const updated = courses.slice();
-  updated[idx] = next;
-  saveCourses(updated);
+  beginWrite();
+  try {
+    const updated = courses.slice();
+    updated[idx] = next;
+    saveCourses(updated);
+  } finally {
+    // endWrite in mirror
+  }
 
   void mirrorCourseUpsert(next);
   return next;
@@ -172,7 +215,14 @@ export function updateCourse(courseId: string, patch: Partial<Pick<Course, "name
 
 export function deleteCourse(courseId: string) {
   const updated = loadCourses().filter((c) => c.id !== courseId);
-  saveCourses(updated);
+
+  beginWrite();
+  try {
+    saveCourses(updated);
+  } finally {
+    // endWrite in mirror
+  }
+
   void mirrorCourseDelete(courseId);
 }
 
@@ -192,10 +242,15 @@ export function addTee(courseId: string, input: { label: string; meters: number;
     slope: Number(input.slope),
   };
 
-  const updatedCourse: Course = { ...courses[idx], tees: [...courses[idx].tees, tee] };
-  const updated = courses.slice();
-  updated[idx] = updatedCourse;
-  saveCourses(updated);
+  beginWrite();
+  try {
+    const updatedCourse: Course = { ...courses[idx], tees: [...courses[idx].tees, tee] };
+    const updated = courses.slice();
+    updated[idx] = updatedCourse;
+    saveCourses(updated);
+  } finally {
+    // endWrite in mirror
+  }
 
   void mirrorTeeUpsert(courseId, tee);
   return tee;
@@ -222,14 +277,19 @@ export function updateTee(
     slope: patch.slope !== undefined ? Number(patch.slope) : existing.slope,
   };
 
-  const updatedCourse: Course = {
-    ...course,
-    tees: course.tees.map((t) => (t.id === teeId ? nextTee : t)),
-  };
+  beginWrite();
+  try {
+    const updatedCourse: Course = {
+      ...course,
+      tees: course.tees.map((t) => (t.id === teeId ? nextTee : t)),
+    };
 
-  const updated = courses.slice();
-  updated[idx] = updatedCourse;
-  saveCourses(updated);
+    const updated = courses.slice();
+    updated[idx] = updatedCourse;
+    saveCourses(updated);
+  } finally {
+    // endWrite in mirror
+  }
 
   void mirrorTeeUpsert(courseId, nextTee);
   return nextTee;
@@ -240,56 +300,97 @@ export function deleteTee(courseId: string, teeId: string) {
   const idx = courses.findIndex((c) => c.id === courseId);
   if (idx === -1) throw new Error("Course not found");
 
-  const updatedCourse: Course = { ...courses[idx], tees: courses[idx].tees.filter((t) => t.id !== teeId) };
-  const updated = courses.slice();
-  updated[idx] = updatedCourse;
-  saveCourses(updated);
+  beginWrite();
+  try {
+    const updatedCourse: Course = { ...courses[idx], tees: courses[idx].tees.filter((t) => t.id !== teeId) };
+    const updated = courses.slice();
+    updated[idx] = updatedCourse;
+    saveCourses(updated);
+  } finally {
+    // endWrite in mirror
+  }
 
   void mirrorTeeDelete(teeId);
 }
 
 /* ================================
-   DB mirror helpers
+   DB mirror helpers (endWrite when complete)
 ================================ */
 async function mirrorCourseUpsert(course: Course) {
-  if (!isSupabaseConfigured() || !supabase) return;
-  const clubId = await getClubId();
-  if (!clubId) return;
+  if (!isSupabaseConfigured() || !supabase) {
+    endWrite();
+    return;
+  }
 
-  await supabase.from("courses").upsert(
-    {
-      id: course.id,
-      club_id: clubId,
-      name: course.name,
-      location: course.location,
-      website: course.website ?? null,
-    },
-    { onConflict: "id" }
-  );
+  try {
+    const clubId = await getClubId();
+    if (!clubId) return;
+
+    await supabase.from("courses").upsert(
+      {
+        id: course.id,
+        club_id: clubId,
+        name: course.name,
+        location: course.location,
+        website: course.website ?? null,
+      },
+      { onConflict: "id" }
+    );
+  } finally {
+    endWrite();
+    // after write settles, allow a fresh sync
+    void ensureCoursesSyncedFromDb();
+  }
 }
 
 async function mirrorCourseDelete(courseId: string) {
-  if (!isSupabaseConfigured() || !supabase) return;
-  await supabase.from("courses").delete().eq("id", courseId);
+  if (!isSupabaseConfigured() || !supabase) {
+    endWrite();
+    return;
+  }
+
+  try {
+    await supabase.from("courses").delete().eq("id", courseId);
+  } finally {
+    endWrite();
+    void ensureCoursesSyncedFromDb();
+  }
 }
 
 async function mirrorTeeUpsert(courseId: string, tee: Tee) {
-  if (!isSupabaseConfigured() || !supabase) return;
+  if (!isSupabaseConfigured() || !supabase) {
+    endWrite();
+    return;
+  }
 
-  await supabase.from("tees").upsert(
-    {
-      id: tee.id,
-      course_id: courseId,
-      label: tee.label,
-      meters: tee.meters,
-      par: tee.par,
-      slope: tee.slope,
-    },
-    { onConflict: "id" }
-  );
+  try {
+    await supabase.from("tees").upsert(
+      {
+        id: tee.id,
+        course_id: courseId,
+        label: tee.label,
+        meters: tee.meters,
+        par: tee.par,
+        slope: tee.slope,
+      },
+      { onConflict: "id" }
+    );
+  } finally {
+    endWrite();
+    void ensureCoursesSyncedFromDb();
+  }
 }
 
 async function mirrorTeeDelete(teeId: string) {
-  if (!isSupabaseConfigured() || !supabase) return;
-  await supabase.from("tees").delete().eq("id", teeId);
+  if (!isSupabaseConfigured() || !supabase) {
+    endWrite();
+    return;
+  }
+
+  try {
+    await supabase.from("tees").delete().eq("id", teeId);
+  } finally {
+    endWrite();
+    void ensureCoursesSyncedFromDb();
+  }
 }
