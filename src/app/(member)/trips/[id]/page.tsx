@@ -56,8 +56,6 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
     return trip.attendees.find((a) => a.name === CURRENT_USER);
   }, [trip]);
 
-  const locked = trip ? isTripLocked(trip) : false;
-
   const [hcp, setHcp] = useState<string>("");
 
   useEffect(() => {
@@ -72,8 +70,8 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
   if (!tripId) {
     return (
       <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-lg font-semibold text-gray-900">Invalid trip</div>
-        <Link href="/trips" className="mt-3 inline-block text-sm text-gray-700 hover:text-gray-900">
+        <div className="text-lg font-semibold text-brand-black">Invalid trip</div>
+        <Link href="/trips" className="mt-3 inline-block text-sm text-gray-700 hover:text-brand-black">
           ← Back to Trips
         </Link>
       </div>
@@ -83,14 +81,18 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
   if (!trip) {
     return (
       <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-lg font-semibold text-gray-900">Trip not found</div>
+        <div className="text-lg font-semibold text-brand-black">Trip not found</div>
         <div className="mt-2 text-sm text-gray-600">This trip id doesn’t exist.</div>
-        <Link href="/trips" className="mt-3 inline-block text-sm text-gray-700 hover:text-gray-900">
+        <Link href="/trips" className="mt-3 inline-block text-sm text-gray-700 hover:text-brand-black">
           ← Back to Trips
         </Link>
       </div>
     );
   }
+
+  // From here down, trip is guaranteed
+  const tripIdSafe = trip.id;
+  const locked = isTripLocked(trip);
 
   function persist(updated: Trip[]) {
     setTrips(updated);
@@ -98,13 +100,13 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
   }
 
   function handleImIn() {
-    persist(joinTrip(trips, trip.id, CURRENT_USER));
+    persist(joinTrip(trips, tripIdSafe, CURRENT_USER));
   }
 
   function handleImOut() {
     const ok = window.confirm("Are you sure?");
     if (!ok) return;
-    persist(leaveTrip(trips, trip.id, CURRENT_USER));
+    persist(leaveTrip(trips, tripIdSafe, CURRENT_USER));
   }
 
   function saveHandicap() {
@@ -115,7 +117,7 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
 
     if (trimmed !== "" && !Number.isFinite(parsed)) return;
 
-    persist(setMyHandicapForTrip(trips, trip.id, CURRENT_USER, trimmed === "" ? null : parsed));
+    persist(setMyHandicapForTrip(trips, tripIdSafe, CURRENT_USER, trimmed === "" ? null : parsed));
   }
 
   const confirmed = trip.attendees
@@ -129,11 +131,11 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
   return (
     <div className="space-y-4">
       <div>
-        <Link href="/trips" className="text-sm text-gray-700 hover:text-gray-900">
+        <Link href="/trips" className="text-sm text-gray-700 hover:text-brand-black">
           ← Back to Trips
         </Link>
 
-        <div className="mt-2 text-xl font-semibold text-gray-900">{courseText?.title ?? "Trip"}</div>
+        <div className="mt-2 text-xl font-semibold text-brand-black">{courseText?.title ?? "Trip"}</div>
         {courseText?.detail ? <div className="mt-1 text-sm text-gray-600">{courseText.detail}</div> : null}
 
         <div className="mt-2 text-sm text-gray-700">
@@ -151,7 +153,7 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
             onClick={handleImIn}
             disabled={locked}
             className={`flex-1 rounded py-2 text-sm ${
-              locked ? "bg-gray-200 text-gray-500" : "bg-gray-900 text-white hover:bg-black"
+              locked ? "bg-gray-200 text-gray-500" : "bg-brand-red text-white hover:opacity-95"
             }`}
           >
             I’m In
@@ -196,16 +198,14 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
             />
             <button
               onClick={saveHandicap}
-              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black"
+              className="rounded-md bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               Save
             </button>
           </div>
         )}
 
-        <div className="mt-2 text-xs text-gray-500">
-          Stored on your attendee record for this trip (localStorage).
-        </div>
+        <div className="mt-2 text-xs text-gray-500">Stored on your attendee record for this trip (localStorage).</div>
       </section>
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">
@@ -278,9 +278,7 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
             </div>
           ))}
 
-          {waitlist.length ? (
-            <div className="pt-2 text-sm font-medium text-gray-600">Waitlist</div>
-          ) : null}
+          {waitlist.length ? <div className="pt-2 text-sm font-medium text-gray-600">Waitlist</div> : null}
 
           {waitlist.map((a, idx) => (
             <div key={a.name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
@@ -302,7 +300,7 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm text-gray-700">Published</div>
             <Link
-              href={`/results/${trip.id}`}
+              href={`/results/${tripIdSafe}`}
               className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               View results →
