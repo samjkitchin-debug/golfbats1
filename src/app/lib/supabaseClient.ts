@@ -6,7 +6,13 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 export const supabase =
   url && anonKey
     ? createClient(url, anonKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        auth: {
+          // Important for Google OAuth returning ?code=... (server-readable)
+          flowType: "pkce",
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
       })
     : null;
 
@@ -17,4 +23,3 @@ export function isSupabaseConfigured() {
 export function getClubSlug() {
   return process.env.NEXT_PUBLIC_CLUB_SLUG || "golfbats";
 }
-
