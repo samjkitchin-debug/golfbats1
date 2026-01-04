@@ -17,15 +17,14 @@ export default async function LoginPage() {
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-white px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8">
+      <div className="w-full max-w-md">
         {/* Logo */}
-        <div className="mb-6 flex justify-center">
+        <div className="mb-8 flex justify-center">
           <Image
             src="/logo.png"
             alt="GolfBats logo"
-            width={80}
-            height={80}
-            className="rounded-xl"
+            width={96}
+            height={96}
             priority
           />
         </div>
@@ -36,11 +35,7 @@ export default async function LoginPage() {
         </h1>
 
         {/* Sign-in */}
-        <div className="flex flex-col items-center">
-          <div className="w-full">
-            <LoginClient />
-          </div>
-        </div>
+        <LoginClient />
       </div>
     </div>
   );
