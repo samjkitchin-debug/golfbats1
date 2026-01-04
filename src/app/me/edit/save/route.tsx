@@ -36,30 +36,22 @@ export async function POST(req: NextRequest) {
   const nationality = cleanText(form.get("nationality"), 60);
   const declared_handicap = parseHandicap(form.get("declared_handicap"));
 
-  const { error } = await supabase
-    .from("members")
-    .update({
-      display_name,
-      nationality,
-      declared_handicap,
-      last_seen: new Date().toISOString(),
-    })
-    .eq("id", user.id);
+  const payload = {
+    id: user.id,
+    email: user.email ?? "",
+    display_name,
+    nationality,
+    declared_handicap,
+    last_seen: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("members").upsert(payload, { onConflict: "id" });
 
   if (error) {
-    await supabase
-      .from("members")
-      .upsert(
-        {
-          id: user.id,
-          email: user.email ?? "",
-          display_name,
-          nationality,
-          declared_handicap,
-          last_seen: new Date().toISOString(),
-        },
-        { onConflict: "id" }
-      );
+    // Fail loud so you notice in logs rather than silently "saving"
+    return NextResponse.redirect(
+      new URL(`/me/edit?error=${encodeURIComponent(error.message)}`, req.url)
+    );
   }
 
   return NextResponse.redirect(new URL("/me", req.url));
