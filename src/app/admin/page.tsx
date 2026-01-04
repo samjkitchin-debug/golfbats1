@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { loadCourses, type Course } from "../lib/courseActions";
 import {
   createTrip,
+  deleteTrip,
   loadTrips,
   saveTrips,
   sortTripsByDateAsc,
@@ -80,6 +81,14 @@ export default function AdminPage() {
     router.push(`/admin/trips/${newestId}`);
   }
 
+  function handleDeleteTrip(tripId: number) {
+    const ok = window.confirm("Delete this trip? This cannot be undone.");
+    if (!ok) return;
+    const nextTrips = deleteTrip(trips, tripId);
+    setTrips(nextTrips);
+    saveTrips(nextTrips);
+  }
+
   return (
     <main>
       <div className="flex flex-col gap-6">
@@ -126,6 +135,14 @@ export default function AdminPage() {
                       <div className="text-right text-xs text-gray-500">
                         {t.attendees.filter((a) => a.status === "confirmed").length} confirmed
                       </div>
+                      {t.status === "open" && (
+                        <button
+                          className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+                          onClick={() => handleDeleteTrip(t.id)}
+                        >
+                          Delete
+                        </button>
+                      )}
                       <button
                         className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm"
                         onClick={() => router.push(`/admin/trips/${t.id}`)}

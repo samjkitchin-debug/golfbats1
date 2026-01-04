@@ -245,6 +245,12 @@ export function updateTrip(trips: Trip[], tripId: number, patch: Partial<Trip>):
   return out;
 }
 
+export function deleteTrip(trips: Trip[], tripId: number): Trip[] {
+  const out = trips.filter((t) => normalizeTrip(t).id !== tripId);
+  saveTrips(out);
+  return out;
+}
+
 export function setTripCourse(trips: Trip[], tripId: number, courseId: string | null, teeId: string | null) {
   return updateTrip(trips, tripId, { courseId, teeId });
 }
