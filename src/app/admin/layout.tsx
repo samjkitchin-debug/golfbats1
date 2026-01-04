@@ -1,26 +1,37 @@
-"use client";
-
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { redirect } from "next/navigation";
 import SignOutButton from "../components/SignOutButton";
+import { createSupabaseServerClient } from "../lib/supabaseServer";
 
-function AdminNavLink({ href, label }: { href: string; label: string }) {
-  const pathname = usePathname();
-  const active = pathname === href || pathname?.startsWith(href);
-
-  return (
-    <Link
-      href={href}
-      className={`rounded-md px-3 py-2 text-sm ${
-        active ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-      }`}
-    >
-      {label}
-    </Link>
-  );
+function parseAdminEmails(raw: string | undefined) {
+  return (raw ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
 }
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Must be signed in
+  if (!user) {
+    redirect("/login?next=/admin");
+  }
+
+  // Must be in ADMIN_EMAILS
+  const adminEmails = parseAdminEmails(process.env.ADMIN_EMAILS);
+  const email = (user.email ?? "").toLowerCase();
+  const isAdmin = !!email && adminEmails.includes(email);
+
+  if (!isAdmin) {
+    // Signed in, but not authorised for admin
+    redirect("/login?error=not_admin");
+  }
+
   return (
     <div className="min-h-dvh bg-gray-50">
       <header className="sticky top-0 z-20 border-b bg-white">
@@ -38,8 +49,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-4 pb-3">
-          <AdminNavLink href="/admin" label="Trips" />
-          <AdminNavLink href="/admin/courses" label="Courses" />
+          <Link
+            href="/admin"
+            className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            Trips
+          </Link>
+          <Link
+            href="/admin/courses"
+            className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            Courses
+          </Link>
         </div>
 
         <div className="h-0.5 w-full bg-brand-red" />

@@ -1,11 +1,28 @@
-"use client";
-
 import Link from "next/link";
 import Image from "next/image";
 import BottomNav from "../components/BottomNav";
 import SignOutButton from "../components/SignOutButton";
+import { createSupabaseServerClient } from "../lib/supabaseServer";
 
-export default function MemberLayout({ children }: { children: React.ReactNode }) {
+function parseAdminEmails(raw: string | undefined) {
+  return (raw ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export default async function MemberLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const isSignedIn = !!user;
+  const adminEmails = parseAdminEmails(process.env.ADMIN_EMAILS);
+  const email = (user?.email ?? "").toLowerCase();
+  const isAdmin = !!email && adminEmails.includes(email);
+
   return (
     <div className="min-h-dvh bg-gray-50">
       {/* Header */}
@@ -28,7 +45,16 @@ export default function MemberLayout({ children }: { children: React.ReactNode }
             </div>
           </Link>
 
-          <SignOutButton />
+          {isSignedIn ? (
+            <SignOutButton />
+          ) : (
+            <Link
+              href="/login"
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
 
         {/* brand accent */}
@@ -42,9 +68,14 @@ export default function MemberLayout({ children }: { children: React.ReactNode }
       <footer className="mx-auto w-full max-w-md px-4 pb-24">
         <div className="mt-8 flex items-center justify-between border-t pt-4 text-xs text-gray-500">
           <span>© {new Date().getFullYear()} GolfBats</span>
-          <Link href="/admin" className="hover:text-brand-black">
-            Admin
-          </Link>
+
+          {isAdmin ? (
+            <Link href="/admin" className="hover:text-brand-black">
+              Admin
+            </Link>
+          ) : (
+            <span />
+          )}
         </div>
       </footer>
 
