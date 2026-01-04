@@ -179,12 +179,18 @@ export default function AdminTripPage() {
 
   function onPublish() {
     const leaderboard = parseLeaderboard(leaderboardText);
-    // Publish results and archive in one operation
+    // Update/publish results
     const withResults = publishTripResult(trips, tripIdSafe, {
       leaderboard,
       notes: resultNotes || undefined,
     });
-    commit(updateTrip(withResults, tripIdSafe, { status: "archived" }));
+    // Archive the trip if not already archived (only on first publish)
+    if (tripSafe.status !== "archived") {
+      commit(updateTrip(withResults, tripIdSafe, { status: "archived" }));
+    } else {
+      // Just update results if already archived
+      commit(withResults);
+    }
   }
 
   function onClearResult() {
@@ -521,7 +527,7 @@ export default function AdminTripPage() {
               className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white"
               onClick={onPublish}
             >
-              Publish results
+              {hasResults ? "Update Results" : "Publish"}
             </button>
             <button
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
