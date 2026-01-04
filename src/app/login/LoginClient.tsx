@@ -4,9 +4,17 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "../lib/supabaseBrowser";
 
+function getSiteUrl() {
+  const env = process.env.NEXT_PUBLIC_SITE_URL;
+  if (env && env.startsWith("http")) return env.replace(/\/$/, "");
+  // Fallback (should only happen if env var is missing)
+  return window.location.origin.replace(/\/$/, "");
+}
+
 export default function LoginClient() {
   const params = useSearchParams();
   const error = useMemo(() => params.get("error"), [params]);
+  const msg = useMemo(() => params.get("msg"), [params]);
 
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState<null | "magic" | "google" | "signout">(null);
@@ -21,7 +29,8 @@ export default function LoginClient() {
 
     try {
       const supabase = createSupabaseBrowserClient();
-      const emailRedirectTo = `${window.location.origin}/auth/confirm?next=/`;
+      const base = getSiteUrl();
+      const emailRedirectTo = `${base}/auth/confirm?next=/`;
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -44,7 +53,8 @@ export default function LoginClient() {
 
     try {
       const supabase = createSupabaseBrowserClient();
-      const redirectTo = `${window.location.origin}/auth/callback?next=/`;
+      const base = getSiteUrl();
+      const redirectTo = `${base}/auth/callback?next=/`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -90,6 +100,7 @@ export default function LoginClient() {
       {error ? (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           Sign-in error: <span className="font-medium">{error}</span>
+          {msg ? <div className="mt-1 break-words text-xs text-red-700">{msg}</div> : null}
         </div>
       ) : null}
 
