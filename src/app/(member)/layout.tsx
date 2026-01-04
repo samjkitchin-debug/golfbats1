@@ -32,17 +32,14 @@ export default async function MemberLayout({ children }: { children: React.React
             <Image
               src="/logo.png"
               alt="GolfBats logo"
-              width={36}
-              height={36}
-              className="h-9 w-9 rounded-md"
+              width={44}
+              height={44}
+              className="h-11 w-11 rounded-md"
               priority
             />
-            <div className="flex flex-col leading-tight">
-              <span className="text-lg font-semibold tracking-tight text-gray-900">
-                GolfBats
-              </span>
-              <span className="text-xs tracking-wide text-gray-500">club board</span>
-            </div>
+            <span className="text-lg font-semibold tracking-tight text-gray-900">
+              GolfBats
+            </span>
           </Link>
 
           {isSignedIn ? (
@@ -63,21 +60,6 @@ export default async function MemberLayout({ children }: { children: React.React
 
       {/* Content */}
       <main className="mx-auto w-full max-w-md px-4 py-5">{children}</main>
-
-      {/* Footer */}
-      <footer className="mx-auto w-full max-w-md px-4 pb-24">
-        <div className="mt-8 flex items-center justify-between border-t pt-4 text-xs text-gray-500">
-          <span>© {new Date().getFullYear()} GolfBats</span>
-
-          {isAdmin ? (
-            <Link href="/admin" className="hover:text-brand-black">
-              Admin
-            </Link>
-          ) : (
-            <span />
-          )}
-        </div>
-      </footer>
 
       {/* Bottom navigation */}
       <BottomNav />
