@@ -4,32 +4,41 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "../lib/supabaseBrowser";
 
-function siteOrigin() {
+function currentOrigin() {
+  // IMPORTANT:
+  // During domain migrations, OAuth PKCE verifier is stored for the origin that initiated the flow.
+  // If redirectTo uses a different origin, callback exchange fails with "PKCE code verifier not found".
+  //
+  // Therefore: in the browser, always use window.location.origin.
+  if (typeof window !== "undefined") return window.location.origin.replace(/\/$/, "");
+
+  // Fallback (should not be used in this client component, but safe)
   const env = process.env.NEXT_PUBLIC_SITE_URL;
   if (env && env.startsWith("http")) return env.replace(/\/$/, "");
-  if (typeof window === "undefined") return "";
-  return window.location.origin.replace(/\/$/, "");
+  return "";
 }
 
 function isValidEmail(v: string) {
   const s = v.trim();
-  // Simple, pragmatic validation for UI only
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
 export default function LoginClient() {
   const params = useSearchParams();
+  const error = params.get("error");
+  const msg = params.get("msg");
 
-  const error = useMemo(() => params.get("error"), [params]);
-  const msg = useMemo(() => params.get("msg"), [params]);
-
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState<null | "magic" | "google">(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  // Create ONE browser client for this component lifecycle.
-  // Helps avoid edge cases where multiple clients compete to manage PKCE/session state.
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  useEffect(() => {
+    if (error) {
+      const detail = msg ? `: ${decodeURIComponent(msg)}` : "";
+      setMessage(`Sign-in error: ${error}${detail}`);
+    }
+  }, [error, msg]);
 
   // If we land here with an error from callback/confirm, show it,
   // but also clear any previous success messages.
@@ -49,9 +58,10 @@ export default function LoginClient() {
     setBusy("magic");
 
     try {
-      const base = siteOrigin();
+      const base = currentOrigin();
       if (!base) throw new Error("Site origin unavailable.");
 
+      // Keep the redirect on the SAME origin that initiated the auth request.
       const emailRedirectTo = `${base}/auth/confirm?next=/`;
 
       const { error } = await supabase.auth.signInWithOtp({
@@ -76,17 +86,17 @@ export default function LoginClient() {
     setBusy("google");
 
     try {
-      const base = siteOrigin();
+      const base = currentOrigin();
       if (!base) throw new Error("Site origin unavailable.");
 
       // OAuth should always use the callback route (code exchange happens server-side).
+      // Keep redirectTo on the SAME origin to avoid PKCE verifier mismatch.
       const redirectTo = `${base}/auth/callback?next=/`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo,
-          // Optional: keep it explicit; avoids ambiguity if you ever add more scopes.
           // scopes: "email profile",
         },
       });
@@ -106,15 +116,8 @@ export default function LoginClient() {
         Sign in to GolfBats to RSVP, view trips, and access admin tools (if authorized).
       </p>
 
-      {error ? (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Sign-in error: <span className="font-medium">{error}</span>
-          {msg ? <div className="mt-1 break-words text-xs text-red-700">{msg}</div> : null}
-        </div>
-      ) : null}
-
       {message ? (
-        <div className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
+        <div className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-800">
           {message}
         </div>
       ) : null}
@@ -136,14 +139,14 @@ export default function LoginClient() {
         <button
           className="w-full rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           onClick={signInMagicLink}
-          disabled={!isValidEmail(email) || busy !== null}
+          disabled={busy !== null}
         >
           {busy === "magic" ? "Sending…" : "Send magic link"}
         </button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 py-2">
           <div className="h-px flex-1 bg-neutral-200" />
-          <span className="text-xs text-neutral-500">or</span>
+          <div className="text-xs text-neutral-500">or</div>
           <div className="h-px flex-1 bg-neutral-200" />
         </div>
 
