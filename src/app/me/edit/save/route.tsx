@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createSupabaseServerClient } from "../../lib/supabaseServer";
+import { createSupabaseServerClient } from "../../../lib/supabaseServer";
 
 function cleanText(v: FormDataEntryValue | null, maxLen: number) {
   const s = typeof v === "string" ? v.trim() : "";
@@ -12,12 +12,10 @@ function parseHandicap(v: FormDataEntryValue | null) {
   const s = v.trim();
   if (!s) return null;
 
-  // Allow 0 to 54 with 1 decimal place (typical handicap ranges; adjust later if needed)
   const n = Number(s);
   if (!Number.isFinite(n)) return null;
   if (n < 0 || n > 54) return null;
 
-  // Store to 1dp
   return Math.round(n * 10) / 10;
 }
 
@@ -29,8 +27,7 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    const url = new URL("/login?next=/me/edit", req.url);
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL("/login?next=/me/edit", req.url));
   }
 
   const form = await req.formData();
@@ -39,7 +36,6 @@ export async function POST(req: NextRequest) {
   const nationality = cleanText(form.get("nationality"), 60);
   const declared_handicap = parseHandicap(form.get("declared_handicap"));
 
-  // Update members row (it should already exist from your auth trigger)
   const { error } = await supabase
     .from("members")
     .update({
@@ -50,7 +46,6 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", user.id);
 
-  // If update fails because row doesn't exist for some reason, upsert as a fallback.
   if (error) {
     await supabase
       .from("members")

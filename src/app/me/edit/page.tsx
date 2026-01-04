@@ -34,7 +34,7 @@ export default async function MeEditPage() {
       </div>
 
       <form
-        action="/me/edit"
+        action="/me/edit/save"
         method="post"
         className="rounded-2xl border border-black/10 bg-white p-5"
       >
