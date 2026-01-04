@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { loadCourses, type Course } from "../../../lib/courseActions";
 import { getTripCourseText } from "../../../lib/tripDisplay";
@@ -11,7 +12,8 @@ function toTripId(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export default function ResultDetailPage({ params }: { params: { id: string } }) {
+export default function ResultDetailPage() {
+  const params = useParams<{ id: string }>();
   const tripId = useMemo(() => toTripId(params?.id), [params?.id]);
 
   const [trips, setTrips] = useState<Trip[]>(() => loadTrips());

@@ -27,11 +27,11 @@ export default function TripsListPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   const { upcoming, past } = useMemo(() => {
-    const visible = trips.filter((t) => t.status !== "archived");
+    const visible = trips.filter((t) => t.status !== "archived" || t.result); // Include archived if they have results
     const sorted = sortTripsByDateAsc(visible);
 
-    const upcomingTrips = sorted.filter((t) => t.date >= today);
-    const pastTrips = sorted.filter((t) => t.date < today).reverse();
+    const upcomingTrips = sorted.filter((t) => t.date >= today && !t.result);
+    const pastTrips = sorted.filter((t) => t.date < today || t.status === "archived" || t.result).reverse();
 
     return { upcoming: upcomingTrips, past: pastTrips };
   }, [trips, today]);
@@ -58,21 +58,19 @@ export default function TripsListPage() {
               const { title, detail } = getTripCourseText(t, courses);
               return (
                 <li key={t.id} className="py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <Link
-                        href={`/trips/${t.id}`}
-                        className="font-semibold text-gray-900 hover:underline"
-                      >
-                        {title}
-                      </Link>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-gray-900">{t.name || title}</div>
+                      {t.name && (
+                        <div className="mt-0.5 text-sm text-gray-600">{title}</div>
+                      )}
                       {detail ? (
-                        <div className="mt-0.5 text-xs text-gray-600">{detail}</div>
+                        <div className="mt-0.5 text-xs text-gray-500">{detail}</div>
                       ) : null}
                       <div className="mt-1 text-sm text-gray-700">
                         {t.date} · {t.format}
                         {t.ferry ? ` · Ferry ${t.ferry}` : ""}
-                        {t.status !== "open" ? ` · ${t.status}` : ""}
+                        {t.status === "open" ? " · Open for sign up" : t.status === "closed" ? " · Closed" : ""}
                       </div>
                       {t.logistics?.meetingPoint || t.logistics?.meetTime ? (
                         <div className="mt-1 text-xs text-gray-600">
@@ -81,11 +79,17 @@ export default function TripsListPage() {
                           {t.logistics.meetTime && <span>🕐 {t.logistics.meetTime}</span>}
                         </div>
                       ) : null}
+                      <div className="mt-1 text-xs text-gray-500">
+                        {confirmedCount(t)} confirmed
+                      </div>
                     </div>
 
-                    <div className="shrink-0 text-right text-xs text-gray-500">
-                      {confirmedCount(t)} confirmed
-                    </div>
+                    <Link
+                      href={`/trips/${t.id}`}
+                      className="shrink-0 rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Details
+                    </Link>
                   </div>
                 </li>
               );
@@ -108,15 +112,13 @@ export default function TripsListPage() {
               return (
                 <li key={t.id} className="py-3 space-y-1">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <Link
-                        href={`/trips/${t.id}`}
-                        className="font-semibold text-gray-900 hover:underline"
-                      >
-                        {title}
-                      </Link>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-gray-900">{t.name || title}</div>
+                      {t.name && (
+                        <div className="mt-0.5 text-sm text-gray-600">{title}</div>
+                      )}
                       {detail ? (
-                        <div className="mt-0.5 text-xs text-gray-600">{detail}</div>
+                        <div className="mt-0.5 text-xs text-gray-500">{detail}</div>
                       ) : null}
                       <div className="mt-1 text-sm text-gray-700">
                         {t.date} · {t.format}
@@ -145,6 +147,12 @@ export default function TripsListPage() {
                           {i < top3.length - 1 ? ", " : ""}
                         </span>
                       ))}
+                    </div>
+                  ) : null}
+
+                  {t.result?.notes ? (
+                    <div className="text-sm text-gray-600 mt-1">
+                      {t.result.notes}
                     </div>
                   ) : null}
                 </li>

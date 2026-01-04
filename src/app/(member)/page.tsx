@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { loadTrips, saveTrips, joinTrip, leaveTrip, type Trip } from "../lib/tripActions";
+import { createBrowserClient } from "@supabase/ssr";
+import { loadTrips, saveTrips, joinTrip, leaveTrip, setMyHandicapForTrip, type Trip } from "../lib/tripActions";
 import { loadCourses, type Course } from "../lib/courseActions";
 import { getTripCourseText } from "../lib/tripDisplay";
 
@@ -11,6 +12,13 @@ export default function HomePage() {
 
   const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
   const [courses, setCourses] = useState<Course[]>(() => loadCourses());
+
+  const supabase = useMemo(() => {
+    return createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+  }, []);
 
   useEffect(() => {
     function syncAll() {
@@ -30,7 +38,7 @@ export default function HomePage() {
 
   const nextTrip = useMemo(() => {
     const upcoming = [...trips]
-      .filter((t) => t.status !== "archived" && t.date >= today)
+      .filter((t) => t.status !== "archived" && t.date >= today && !t.result)
       .sort((a, b) => a.date.localeCompare(b.date));
     return upcoming[0] ?? null;
   }, [trips, today]);
@@ -54,11 +62,59 @@ export default function HomePage() {
   const courseText = getTripCourseText(nextTrip, courses);
   const myEntry = nextTrip.attendees.find((a) => a.name === CURRENT_USER);
 
-  function handleImIn() {
+  async function handleImIn() {
+    // Prompt for handicap
+    const handicapInput = window.prompt("Please enter your current handicap (or leave blank to skip):");
+    if (handicapInput === null) return; // User cancelled
+
+    let handicapValue: number | null = null;
+    if (handicapInput.trim() !== "") {
+      const parsed = Number(handicapInput.trim());
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 54) {
+        alert("Handicap must be a number between 0 and 54.");
+        return;
+      }
+      handicapValue = parsed;
+    }
+
+    // Update member profile in database
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        // Get current member data to preserve other fields
+        const { data: memberData } = await supabase
+          .from("members")
+          .select("full_name,display_name,nationality")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        // Update member profile with new handicap
+        await supabase
+          .from("members")
+          .update({
+            declared_handicap: handicapValue,
+            last_seen: new Date().toISOString(),
+            // Preserve existing fields
+            full_name: memberData?.full_name ?? null,
+            display_name: memberData?.display_name ?? null,
+            nationality: memberData?.nationality ?? null,
+          })
+          .eq("id", user.id);
+      }
+    } catch (error) {
+      console.error("Failed to update member handicap:", error);
+      // Continue anyway - we'll still add them to the trip
+    }
+
+    // Add to trip and save handicap for this trip
     setTrips((prev) => {
       const updated = joinTrip(prev, nextTrip.id, CURRENT_USER);
-      saveTrips(updated);
-      return updated;
+      const withHandicap = setMyHandicapForTrip(updated, nextTrip.id, CURRENT_USER, handicapValue);
+      saveTrips(withHandicap);
+      return withHandicap;
     });
   }
 
@@ -94,15 +150,19 @@ export default function HomePage() {
           <div>
             <div className="text-sm text-gray-500">Next trip</div>
             <div className="mt-1 text-lg font-semibold text-gray-900">
-              {courseText.title}
+              {nextTrip.name || courseText.title}
             </div>
+            {nextTrip.name && (
+              <div className="mt-0.5 text-sm text-gray-600">{courseText.title}</div>
+            )}
             {courseText.detail ? (
-              <div className="mt-1 text-sm text-gray-600">{courseText.detail}</div>
+              <div className="mt-0.5 text-xs text-gray-500">{courseText.detail}</div>
             ) : null}
 
             <div className="mt-2 text-sm text-gray-700">
               {nextTrip.date} · {nextTrip.format}
               {nextTrip.ferry ? ` · Ferry ${nextTrip.ferry}` : ""}
+              {nextTrip.status === "open" ? " · Open for sign up" : nextTrip.status === "closed" ? " · Closed" : ""}
             </div>
 
             {nextTrip.logistics?.meetingPoint || nextTrip.logistics?.meetTime ? (

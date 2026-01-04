@@ -72,6 +72,17 @@ export async function refreshCoursesFromDb(): Promise<Course[]> {
   return courses;
 }
 
+async function getClubId(supabase: ReturnType<typeof getSupabase>): Promise<string | null> {
+  const clubSlug = getClubSlug();
+  const { data, error } = await supabase.from("clubs").select("id").eq("slug", clubSlug).single();
+  if (error || !data) {
+    // If clubs table doesn't exist or club not found, return null
+    // This means the database might use 'club' (string) instead of 'club_id' (uuid)
+    return null;
+  }
+  return data.id;
+}
+
 export async function createCourse(input: {
   name: string;
   location: string;
@@ -81,26 +92,41 @@ export async function createCourse(input: {
   if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
 
   const supabase = getSupabase();
-  const club = getClubSlug();
+  const clubSlug = getClubSlug();
+  const courseId = crypto.randomUUID();
 
+  // Try to get club_id first
+  const clubId = await getClubId(supabase);
+
+  // Insert course into courses table (no tees field - tees go in separate table)
+  // Use club_id if available (per schema), otherwise use club (string) for backward compatibility
+  const insertData: any = {
+    id: courseId,
+    name: input.name.trim(),
+    location: input.location.trim() || null,
+    website: cleanNullableString(input.website),
+  };
+
+  if (clubId) {
+    insertData.club_id = clubId;
+  } else {
+    insertData.club = clubSlug;
+  }
+
+  const { error: courseError } = await supabase.from("courses").insert(insertData);
+
+  if (courseError) {
+    throw new Error(`Failed to create course: ${courseError.message || JSON.stringify(courseError)}`);
+  }
+
+  // Create course object for localStorage (with empty tees array for now)
   const course: Course = {
-    id: crypto.randomUUID(),
+    id: courseId,
     name: input.name.trim(),
     location: input.location.trim(),
     website: cleanNullableString(input.website),
-    tees: input.tees ?? [],
+    tees: [],
   };
-
-  const { error } = await supabase.from("courses").insert({
-    club,
-    id: course.id,
-    name: course.name,
-    location: course.location,
-    website: course.website,
-    tees: course.tees,
-  });
-
-  if (error) throw error;
 
   const courses = loadCourses();
   saveCourses([...courses, course]);
@@ -174,8 +200,23 @@ export async function addTee(courseId: string, teeInput: Omit<Tee, "id">) {
   const idx = courses.findIndex((c) => c.id === courseId);
   if (idx === -1) throw new Error("Course not found");
 
+  const supabase = getSupabase();
+  const teeId = crypto.randomUUID();
+
+  // Insert tee into tees table
+  const { error: teeError } = await supabase.from("tees").insert({
+    id: teeId,
+    course_id: courseId,
+    label: teeInput.label.trim(),
+    meters: Number(teeInput.meters),
+    par: Number(teeInput.par),
+    slope: Number(teeInput.slope),
+  });
+
+  if (teeError) throw teeError;
+
   const tee: Tee = {
-    id: crypto.randomUUID(),
+    id: teeId,
     label: teeInput.label.trim(),
     meters: Number(teeInput.meters),
     par: Number(teeInput.par),
@@ -183,17 +224,6 @@ export async function addTee(courseId: string, teeInput: Omit<Tee, "id">) {
   };
 
   const updatedCourse: Course = { ...courses[idx], tees: [...courses[idx].tees, tee] };
-
-  const supabase = getSupabase();
-  const club = getClubSlug();
-
-  const { error } = await supabase
-    .from("courses")
-    .update({ tees: updatedCourse.tees })
-    .eq("club", club)
-    .eq("id", courseId);
-
-  if (error) throw error;
 
   const next = [...courses];
   next[idx] = updatedCourse;

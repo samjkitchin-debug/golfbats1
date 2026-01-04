@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../../lib/courseActions";
 import {
   isTripLocked,
@@ -19,13 +21,21 @@ function toTripId(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export default function TripDetailPage({ params }: { params: { id: string } }) {
+export default function TripDetailPage() {
   const CURRENT_USER = "Sam";
-
+  const params = useParams<{ id: string }>();
+  
   const tripId = useMemo(() => toTripId(params?.id), [params?.id]);
 
   const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
   const [courses, setCourses] = useState<Course[]>(() => loadCourses());
+
+  const supabase = useMemo(() => {
+    return createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+  }, []);
 
   useEffect(() => {
     function syncAll() {
@@ -99,8 +109,57 @@ export default function TripDetailPage({ params }: { params: { id: string } }) {
     saveTrips(updated);
   }
 
-  function handleImIn() {
-    persist(joinTrip(trips, tripIdSafe, CURRENT_USER));
+  async function handleImIn() {
+    // Prompt for handicap
+    const handicapInput = window.prompt("Please enter your current handicap (or leave blank to skip):");
+    if (handicapInput === null) return; // User cancelled
+
+    let handicapValue: number | null = null;
+    if (handicapInput.trim() !== "") {
+      const parsed = Number(handicapInput.trim());
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 54) {
+        alert("Handicap must be a number between 0 and 54.");
+        return;
+      }
+      handicapValue = parsed;
+    }
+
+    // Update member profile in database
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        // Get current member data to preserve other fields
+        const { data: memberData } = await supabase
+          .from("members")
+          .select("full_name,display_name,nationality")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        // Update member profile with new handicap
+        await supabase
+          .from("members")
+          .update({
+            declared_handicap: handicapValue,
+            last_seen: new Date().toISOString(),
+            // Preserve existing fields
+            full_name: memberData?.full_name ?? null,
+            display_name: memberData?.display_name ?? null,
+            nationality: memberData?.nationality ?? null,
+          })
+          .eq("id", user.id);
+      }
+    } catch (error) {
+      console.error("Failed to update member handicap:", error);
+      // Continue anyway - we'll still add them to the trip
+    }
+
+    // Add to trip and save handicap for this trip
+    const updated = joinTrip(trips, tripIdSafe, CURRENT_USER);
+    const withHandicap = setMyHandicapForTrip(updated, tripIdSafe, CURRENT_USER, handicapValue);
+    persist(withHandicap);
   }
 
   function handleImOut() {

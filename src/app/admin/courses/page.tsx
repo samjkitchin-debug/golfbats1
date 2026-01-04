@@ -33,20 +33,26 @@ export default function AdminCoursesPage() {
     setCourses(loadCourses());
   }
 
-  function handleAddCourse() {
+  async function handleAddCourse() {
     const name = newName.trim();
     if (!name) return;
 
-    createCourse({
-      name,
-      location: newLocation.trim(),
-      website: newWebsite.trim() || undefined,
-    });
+    try {
+      await createCourse({
+        name,
+        location: newLocation.trim(),
+        website: newWebsite.trim() || undefined,
+      });
 
-    setNewName("");
-    setNewLocation("");
-    setNewWebsite("");
-    refresh();
+      setNewName("");
+      setNewLocation("");
+      setNewWebsite("");
+      refresh();
+    } catch (error) {
+      console.error("Failed to create course:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert(`Failed to create course: ${errorMessage}`);
+    }
   }
 
   function handleDeleteCourse(courseId: string) {

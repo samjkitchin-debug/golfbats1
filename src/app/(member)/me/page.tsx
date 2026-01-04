@@ -161,24 +161,6 @@ export default function MePage() {
             implemented.
           </p>
         </div>
-
-        {isAdmin ? (
-          <div className="rounded-2xl border border-black p-4">
-            <div className="text-sm font-semibold">Admin</div>
-            <p className="mt-2 text-sm">
-              Admin tools are only visible to club admins.
-            </p>
-
-            <div className="mt-3">
-              <Link
-                href="/admin"
-                className="inline-flex rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
-              >
-                Go to Admin
-              </Link>
-            </div>
-          </div>
-        ) : null}
       </div>
     </div>
   );

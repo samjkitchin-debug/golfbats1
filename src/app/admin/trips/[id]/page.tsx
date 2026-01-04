@@ -7,6 +7,7 @@ import { loadCourses, type Course, type Tee } from "../../../lib/courseActions";
 import {
   clearTripResult,
   exportTripCsv,
+  exportTravelAgentCsv,
   isTripLocked,
   loadTrips,
   publishTripResult,
@@ -19,6 +20,7 @@ import {
   type TripStatus,
 } from "../../../lib/tripActions";
 import { getTripCourseText } from "../../../lib/tripDisplay";
+import { createSupabaseBrowserClient } from "../../../lib/supabaseBrowser";
 
 function toDatetimeLocalValue(isoUtc?: string) {
   if (!isoUtc) return "";
@@ -160,6 +162,21 @@ export default function AdminTripPage() {
     commit(updateTrip(trips, tripIdSafe, { status: "closed" }));
   }
 
+  function onReopenTrip() {
+    // Reopen trip to allow more attendees (go back to Phase 1)
+    commit(updateTrip(trips, tripIdSafe, { status: "open" }));
+  }
+
+  function onEnableResults() {
+    // Manually enable results posting (Phase 3)
+    // We'll use a workaround: set the trip date to today to enable Phase 3
+    // This allows posting results even if the actual trip date hasn't passed
+    const today = new Date().toISOString().split("T")[0];
+    if (tripSafe.date > today) {
+      commit(updateTrip(trips, tripIdSafe, { date: today }));
+    }
+  }
+
   function onPublish() {
     const leaderboard = parseLeaderboard(leaderboardText);
     // Publish results and archive in one operation
@@ -176,6 +193,37 @@ export default function AdminTripPage() {
 
   function onExportCsv() {
     exportTripCsv(tripSafe);
+  }
+
+  async function onExportTravelAgentCsv() {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      
+      // Fetch all members from database
+      const { data: members, error } = await supabase
+        .from("members")
+        .select("id,email,full_name,display_name,nationality");
+      
+      if (error) {
+        alert(`Failed to fetch members: ${error.message}`);
+        return;
+      }
+
+      // Map to the format expected by exportTravelAgentCsv
+      const membersForExport = (members || []).map((m) => ({
+        id: m.id,
+        email: m.email,
+        full_name: m.full_name,
+        display_name: m.display_name,
+        nationality: m.nationality,
+        passport_number: null, // TODO: Add passport_number column to members table
+        passport_expiry: null, // TODO: Add passport_expiry column to members table
+      }));
+
+      await exportTravelAgentCsv(tripSafe, async () => membersForExport);
+    } catch (error) {
+      alert(`Failed to export: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   return (
@@ -222,6 +270,17 @@ export default function AdminTripPage() {
           <h2 className="mb-3 text-lg font-semibold text-gray-900">Phase 1: Trip Details</h2>
 
           <div className="grid gap-3 md:grid-cols-2">
+          <label className="block md:col-span-2">
+            <div className="text-sm font-medium text-gray-800">Trip Name</div>
+            <input
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              type="text"
+              value={tripSafe.name ?? ""}
+              onChange={(e) => patchTrip({ name: e.target.value || undefined })}
+              placeholder="e.g. Batam Weekend Getaway"
+            />
+          </label>
+
           <label className="block">
             <div className="text-sm font-medium text-gray-800">Date</div>
             <input
@@ -396,6 +455,36 @@ export default function AdminTripPage() {
             />
           </label>
         </div>
+
+        {/* Travel Agent Export Button - Show when trip is locked */}
+        {locked && (
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              onClick={onExportTravelAgentCsv}
+            >
+              Export for Travel Agent (CSV)
+            </button>
+          </div>
+        )}
+
+        {/* Phase 2 Actions */}
+        {phase2 && (
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={onReopenTrip}
+            >
+              Reopen Trip
+            </button>
+            <button
+              className="rounded-lg bg-brand-red px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              onClick={onEnableResults}
+            >
+              Trip Completed - Post Results
+            </button>
+          </div>
+        )}
         </section>
       )}
 

@@ -39,6 +39,9 @@ export type TripResult = {
 export type Trip = {
   id: number;
 
+  /** Trip name - displayed prominently on tiles */
+  name?: string;
+
   date: string; // YYYY-MM-DD
   format: string;
 
@@ -111,6 +114,7 @@ function normalizeTrip(input: any): Trip {
 
   return {
     id: Number(t.id),
+    name: t.name ?? undefined,
     date: String(t.date ?? ""),
     format: String(t.format ?? ""),
 
@@ -187,6 +191,7 @@ export function createTrip(trips: Trip[], partial: Partial<Trip> = {}): Trip[] {
 
   const nextTrip: Trip = normalizeTrip({
     id,
+    name: partial.name,
     date: partial.date ?? new Date().toISOString().slice(0, 10),
     format: partial.format ?? "Stableford",
 
@@ -407,6 +412,93 @@ export function exportTripCsv(trip: Trip) {
   const a = document.createElement("a");
   a.href = url;
   a.download = `golfbats-trip-${t.id}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
+}
+
+/* ================================
+   Travel Agent CSV export (Admin)
+   Exports trip details with member names, nationalities, and passport info
+================================ */
+
+type MemberForExport = {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  display_name: string | null;
+  nationality: string | null;
+  passport_number?: string | null;
+  passport_expiry?: string | null;
+};
+
+export async function exportTravelAgentCsv(
+  trip: Trip,
+  getMembers: () => Promise<MemberForExport[]>
+) {
+  if (typeof window === "undefined") return;
+
+  const t = normalizeTrip(trip);
+
+  // Fetch all members from database
+  const members = await getMembers();
+
+  // Get confirmed attendees only
+  const confirmedAttendees = t.attendees.filter((a) => a.status === "confirmed");
+
+  // Match attendees to members by name (display_name or full_name)
+  const attendeeRows: string[][] = [];
+  attendeeRows.push(["Name", "Nationality", "Passport Number", "Passport Expiry"]);
+
+  for (const attendee of confirmedAttendees) {
+    // Try to find matching member by display_name or full_name
+    const member = members.find(
+      (m) =>
+        (m.display_name && m.display_name.toLowerCase() === attendee.name.toLowerCase()) ||
+        (m.full_name && m.full_name.toLowerCase() === attendee.name.toLowerCase())
+    );
+
+    attendeeRows.push([
+      attendee.name,
+      member?.nationality ?? "",
+      member?.passport_number ?? "",
+      member?.passport_expiry ?? "",
+    ]);
+  }
+
+  // Build CSV with trip details and attendees
+  const rows: string[][] = [];
+  rows.push(["Trip Date", t.date]);
+  rows.push(["Format", t.format]);
+  rows.push(["Course", t.course ?? ""]);
+  rows.push(["Ferry", t.ferry ?? ""]);
+  rows.push(["Meeting Point", t.logistics?.meetingPoint ?? ""]);
+  rows.push(["Meet Time", t.logistics?.meetTime ?? ""]);
+  rows.push(["Ferry Details", t.logistics?.ferryDetails ?? ""]);
+  rows.push(["Notes", t.logistics?.notes ?? ""]);
+  rows.push([]);
+  rows.push(...attendeeRows);
+
+  const csv = rows
+    .map((r) =>
+      r
+        .map((cell) => {
+          const v = String(cell ?? "");
+          if (/[",\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+          return v;
+        })
+        .join(",")
+    )
+    .join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `travel-agent-trip-${t.id}-${t.date}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
