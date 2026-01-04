@@ -13,6 +13,7 @@ export type Course = {
   id: string;
   name: string;
   location: string;
+  website?: string | null;
   tees: Tee[];
 };
 
@@ -20,6 +21,12 @@ const LS_KEY = "golfbats:courses:v1";
 
 function getSupabase() {
   return createSupabaseBrowserClient();
+}
+
+function cleanNullableString(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s ? s : null;
 }
 
 export function loadCourses(): Course[] {
@@ -48,14 +55,15 @@ export async function refreshCoursesFromDb(): Promise<Course[]> {
   const supabase = getSupabase();
   const club = getClubSlug();
 
+  // website is expected as a column on courses. If your table doesn't have it yet,
+  // either add it in Supabase or remove it from this select.
   const { data, error } = await supabase
     .from("courses")
-    .select("id,name,location,tees")
+    .select("id,name,location,website,tees")
     .eq("club", club)
     .order("name", { ascending: true });
 
   if (error) {
-    // Keep UI working even if DB fetch fails
     return loadCourses();
   }
 
@@ -64,7 +72,12 @@ export async function refreshCoursesFromDb(): Promise<Course[]> {
   return courses;
 }
 
-export async function createCourse(input: Omit<Course, "id" | "tees"> & { tees?: Tee[] }) {
+export async function createCourse(input: {
+  name: string;
+  location: string;
+  website?: string | null;
+  tees?: Tee[];
+}) {
   if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
 
   const supabase = getSupabase();
@@ -74,6 +87,7 @@ export async function createCourse(input: Omit<Course, "id" | "tees"> & { tees?:
     id: crypto.randomUUID(),
     name: input.name.trim(),
     location: input.location.trim(),
+    website: cleanNullableString(input.website),
     tees: input.tees ?? [],
   };
 
@@ -82,6 +96,7 @@ export async function createCourse(input: Omit<Course, "id" | "tees"> & { tees?:
     id: course.id,
     name: course.name,
     location: course.location,
+    website: course.website,
     tees: course.tees,
   });
 
@@ -95,27 +110,32 @@ export async function createCourse(input: Omit<Course, "id" | "tees"> & { tees?:
 export async function updateCourse(courseId: string, patch: Partial<Omit<Course, "id">>) {
   if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
 
-  const supabase = getSupabase();
-  const club = getClubSlug();
-
   const courses = loadCourses();
   const idx = courses.findIndex((c) => c.id === courseId);
   if (idx === -1) throw new Error("Course not found");
 
   const current = courses[idx];
+
   const updated: Course = {
     ...current,
     ...patch,
+    id: current.id,
     name: (patch.name ?? current.name).trim(),
     location: (patch.location ?? current.location).trim(),
+    website:
+      patch.website !== undefined ? cleanNullableString(patch.website) : cleanNullableString(current.website),
     tees: patch.tees ?? current.tees,
   };
+
+  const supabase = getSupabase();
+  const club = getClubSlug();
 
   const { error } = await supabase
     .from("courses")
     .update({
       name: updated.name,
       location: updated.location,
+      website: updated.website,
       tees: updated.tees,
     })
     .eq("club", club)

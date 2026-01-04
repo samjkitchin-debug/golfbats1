@@ -1,5 +1,16 @@
-import { getClubSlug, isSupabaseConfigured } from "./supabaseClient";
-import { createSupabaseBrowserClient } from "./supabaseBrowser";
+/**
+ * Trip Actions (local-first UI cache)
+ *
+ * This file MUST export the functions imported by:
+ * - /admin/page.tsx
+ * - /admin/trips/[id]/page.tsx
+ * - /(member)/trips/[id]/page.tsx
+ *
+ * Keep it boring and stable:
+ * - localStorage is the UI source of truth
+ * - reducers return nextTrips
+ * - types match pages (cutoffAt is string | undefined; courseId/teeId are string | null)
+ */
 
 export type AttendanceStatus = "confirmed" | "waitlist" | "out";
 
@@ -20,29 +31,37 @@ export type TripLogistics = {
 };
 
 export type TripResult = {
-  postedAtUtc: string;
   leaderboard: { name: string; points: number }[];
   notes?: string;
+  publishedAt?: string; // ISO UTC
 };
 
 export type Trip = {
   id: number;
 
+  date: string; // YYYY-MM-DD
+  format: string;
+
+  /** legacy fallback display string used by tripDisplay.ts */
+  course?: string;
+
+  /** optional display text used in member UI */
+  ferry?: string;
+
+  capacity: number;
+  status: TripStatus;
+
+  /** IMPORTANT: admin UI helper expects string | undefined (not null) */
+  cutoffAt?: string;
+
+  /** IMPORTANT: admin UI expects nullable (string | null), not undefined */
   courseId: string | null;
   teeId: string | null;
 
-  course?: string;
-
-  date: string; // YYYY-MM-DD
-  format: string;
-  ferry?: string;
-  capacity: number;
-
-  status: TripStatus;
-
-  cutoffAtUtc?: string | null;
   logistics?: TripLogistics;
+
   attendees: Attendee[];
+
   result?: TripResult;
 
   createdAtUtc?: string;
@@ -51,229 +70,340 @@ export type Trip = {
 
 const LS_KEY = "golfbats:trips:v1";
 
-function getSupabase() {
-  return createSupabaseBrowserClient();
+/* ================================
+   Utilities
+================================ */
+
+function canUseStorage() {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-export function loadTrips(): Trip[] {
-  if (typeof window === "undefined") return [];
+function nowIsoUtc() {
+  return new Date().toISOString();
+}
+
+function safeJsonParse<T>(raw: string | null, fallback: T): T {
+  if (!raw) return fallback;
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as Trip[]) : [];
+    return JSON.parse(raw) as T;
   } catch {
-    return [];
+    return fallback;
   }
 }
 
+function normalizeName(name: string) {
+  return (name || "").trim();
+}
+
+function isAttendanceStatus(v: any): v is AttendanceStatus {
+  return v === "confirmed" || v === "waitlist" || v === "out";
+}
+
+function normalizeCutoffAt(v: unknown): string | undefined {
+  // force null -> undefined to satisfy toDatetimeLocalValue(isoUtc?: string)
+  if (v == null) return undefined;
+  const s = String(v).trim();
+  return s ? s : undefined;
+}
+
+function normalizeTrip(input: any): Trip {
+  const t = input as Trip;
+
+  return {
+    id: Number(t.id),
+    date: String(t.date ?? ""),
+    format: String(t.format ?? ""),
+
+    course: t.course ?? undefined,
+    ferry: t.ferry ?? undefined,
+
+    capacity: Number.isFinite(Number(t.capacity)) ? Number(t.capacity) : 0,
+    status: (t.status ?? "open") as TripStatus,
+
+    cutoffAt: normalizeCutoffAt((t as any).cutoffAt),
+
+    courseId: (t as any).courseId ?? null,
+    teeId: (t as any).teeId ?? null,
+
+    logistics: (t as any).logistics ?? {},
+
+    attendees: Array.isArray((t as any).attendees)
+      ? (t as any).attendees.map((a: any): Attendee => ({
+          name: String(a?.name ?? ""),
+          status: isAttendanceStatus(a?.status) ? a.status : "out",
+          joinedAt: Number(a?.joinedAt ?? Date.now()),
+          handicapForTrip: a?.handicapForTrip ?? null,
+        }))
+      : [],
+
+    result: (t as any).result ?? undefined,
+
+    createdAtUtc: (t as any).createdAtUtc ?? undefined,
+    updatedAtUtc: (t as any).updatedAtUtc ?? undefined,
+  };
+}
+
+/* ================================
+   Storage
+================================ */
+
+export function loadTrips(): Trip[] {
+  if (!canUseStorage()) return [];
+  const raw = window.localStorage.getItem(LS_KEY);
+  const parsed = safeJsonParse<any[]>(raw, []);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map(normalizeTrip);
+}
+
 export function saveTrips(trips: Trip[]) {
-  if (typeof window === "undefined") return;
+  if (!canUseStorage()) return;
   window.localStorage.setItem(LS_KEY, JSON.stringify(trips));
 }
+
+/* ================================
+   Helpers
+================================ */
 
 export function sortTripsByDateAsc(trips: Trip[]) {
   return [...trips].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function refreshTripsFromDb(): Promise<Trip[]> {
-  if (!isSupabaseConfigured()) return loadTrips();
-
-  const supabase = getSupabase();
-  const club = getClubSlug();
-
-  const { data, error } = await supabase
-    .from("trips")
-    .select(
-      "id,courseId,teeId,course,date,format,ferry,capacity,status,cutoffAtUtc,logistics,attendees,result,createdAtUtc,updatedAtUtc"
-    )
-    .eq("club", club)
-    .order("date", { ascending: true });
-
-  if (error) return loadTrips();
-
-  const trips = (data ?? []) as Trip[];
-  saveTrips(trips);
-  return trips;
+export function isTripLocked(trip: Trip) {
+  if (trip.status !== "open") return true;
+  if (trip.cutoffAt) {
+    const cutoff = new Date(trip.cutoffAt).getTime();
+    if (!Number.isNaN(cutoff) && Date.now() > cutoff) return true;
+  }
+  return false;
 }
 
-export function getTripById(tripId: number): Trip | undefined {
-  return loadTrips().find((t) => t.id === tripId);
-}
+/* ================================
+   CRUD reducers
+================================ */
 
-export async function createTrip(input: Omit<Trip, "id" | "attendees" | "status"> & Partial<Pick<Trip, "status">>) {
-  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
+export function createTrip(trips: Trip[], partial: Partial<Trip> = {}): Trip[] {
+  const maxId = trips.reduce((m, t) => Math.max(m, Number(t.id) || 0), 0);
+  const id = maxId + 1;
 
-  const supabase = getSupabase();
-  const club = getClubSlug();
+  const nextTrip: Trip = normalizeTrip({
+    id,
+    date: partial.date ?? new Date().toISOString().slice(0, 10),
+    format: partial.format ?? "Stableford",
 
-  // Your IDs are numeric; simplest is to let DB generate if it’s serial/identity.
-  // But your current type says id: number and your code elsewhere seems to set it.
-  // We’ll keep your existing pattern: create locally, then insert with that id if present.
-  // If your DB uses identity, set id to undefined and let DB return it.
-  const trips = loadTrips();
+    course: partial.course,
+    ferry: partial.ferry ?? "",
 
-  const nextId = trips.reduce((m, t) => Math.max(m, t.id), 0) + 1;
+    capacity: Number.isFinite(Number(partial.capacity)) ? Number(partial.capacity) : 16,
+    status: partial.status ?? "open",
 
-  const next: Trip = {
-    id: nextId,
-    courseId: input.courseId ?? null,
-    teeId: input.teeId ?? null,
-    course: input.course,
-    date: input.date,
-    format: input.format,
-    ferry: input.ferry,
-    capacity: input.capacity,
-    status: input.status ?? "open",
-    cutoffAtUtc: input.cutoffAtUtc ?? null,
-    logistics: input.logistics,
-    attendees: [],
-    result: input.result,
-  };
+    cutoffAt: partial.cutoffAt, // keep undefined by default
 
-  const { error } = await supabase.from("trips").insert({
-    club,
-    ...next,
+    courseId: partial.courseId ?? null,
+    teeId: partial.teeId ?? null,
+
+    logistics: partial.logistics ?? {},
+    attendees: partial.attendees ?? [],
+
+    result: partial.result,
+
+    createdAtUtc: partial.createdAtUtc ?? nowIsoUtc(),
+    updatedAtUtc: nowIsoUtc(),
   });
 
-  if (error) throw error;
-
-  const updated = sortTripsByDateAsc([...trips, next]);
-  saveTrips(updated);
-  return next;
+  const out = [nextTrip, ...trips.map(normalizeTrip)];
+  saveTrips(out);
+  return out;
 }
 
-export async function updateTrip(tripId: number, patch: Partial<Trip>) {
-  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
+export function updateTrip(trips: Trip[], tripId: number, patch: Partial<Trip>): Trip[] {
+  const out = trips.map((t) => {
+    const base = normalizeTrip(t);
+    if (base.id !== tripId) return base;
 
-  const trips = loadTrips();
-  const idx = trips.findIndex((t) => t.id === tripId);
-  if (idx === -1) throw new Error("Trip not found");
+    // preserve nullability rules:
+    const next: Trip = normalizeTrip({
+      ...base,
+      ...patch,
+      id: base.id,
 
-  const current = trips[idx];
-  const next: Trip = {
-    ...current,
-    ...patch,
-    id: current.id,
-  };
+      // courseId/teeId must remain string | null (not undefined)
+      courseId: patch.courseId === undefined ? base.courseId : patch.courseId,
+      teeId: patch.teeId === undefined ? base.teeId : patch.teeId,
 
-  const supabase = getSupabase();
-  const club = getClubSlug();
+      // cutoffAt must be string | undefined (not null)
+      cutoffAt: patch.cutoffAt === (null as any) ? undefined : patch.cutoffAt,
 
-  const { error } = await supabase
-    .from("trips")
-    .update(next)
-    .eq("club", club)
-    .eq("id", tripId);
+      logistics: patch.logistics ? { ...(base.logistics ?? {}), ...patch.logistics } : base.logistics,
 
-  if (error) throw error;
+      updatedAtUtc: nowIsoUtc(),
+    });
 
-  const updated = [...trips];
-  updated[idx] = next;
-  saveTrips(sortTripsByDateAsc(updated));
-
-  return next;
-}
-
-export async function deleteTrip(tripId: number) {
-  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
-
-  const supabase = getSupabase();
-  const club = getClubSlug();
-
-  const { error } = await supabase.from("trips").delete().eq("club", club).eq("id", tripId);
-  if (error) throw error;
-
-  const trips = loadTrips().filter((t) => t.id !== tripId);
-  saveTrips(trips);
-}
-
-export async function setTripStatus(tripId: number, status: TripStatus) {
-  return updateTrip(tripId, { status });
-}
-
-export async function setTripCutoff(tripId: number, cutoffAtUtc: string | null) {
-  return updateTrip(tripId, { cutoffAtUtc });
-}
-
-export async function setTripLogistics(tripId: number, logistics: TripLogistics | undefined) {
-  return updateTrip(tripId, { logistics });
-}
-
-export async function publishTripResult(tripId: number, payload: TripResult) {
-  return updateTrip(tripId, { result: payload });
-}
-
-export async function unpublishTripResult(tripId: number) {
-  return updateTrip(tripId, { result: undefined });
-}
-
-async function mirrorAttendeeUpsert(tripId: number, attendee: Attendee) {
-  // Helper keeps DB in sync with local-first state
-  if (!isSupabaseConfigured()) return;
-
-  const supabase = getSupabase();
-  const club = getClubSlug();
-
-  // Update just attendees array for the trip
-  const trips = loadTrips();
-  const t = trips.find((x) => x.id === tripId);
-  if (!t) return;
-
-  const { error } = await supabase
-    .from("trips")
-    .update({ attendees: t.attendees })
-    .eq("club", club)
-    .eq("id", tripId);
-
-  if (error) {
-    // Non-fatal; UI is local-first
-  }
-}
-
-export async function setAttendance(tripId: number, user: string, status: AttendanceStatus) {
-  const trips = loadTrips();
-
-  const updated = trips.map((t) => {
-    if (t.id !== tripId) return t;
-
-    const attendees = t.attendees.some((a) => a.name === user)
-      ? t.attendees.map((a) => (a.name === user ? { ...a, status, joinedAt: Date.now() } : a))
-      : [...t.attendees, { name: user, status, joinedAt: Date.now() }];
-
-    const next = { ...t, attendees };
     return next;
   });
 
-  saveTrips(updated);
-
-  // Mirror to DB
-  const t = updated.find((x) => x.id === tripId);
-  const a = t?.attendees.find((x) => x.name === user);
-  if (a) void mirrorAttendeeUpsert(tripId, a);
-
-  return updated;
+  saveTrips(out);
+  return out;
 }
 
-export async function setHandicapForTrip(tripId: number, user: string, handicap: number | null) {
-  const trips = loadTrips();
+export function setTripCourse(trips: Trip[], tripId: number, courseId: string | null, teeId: string | null) {
+  return updateTrip(trips, tripId, { courseId, teeId });
+}
 
-  const updated = trips.map((t) => {
-    if (t.id !== tripId) return t;
+export function setTripLogistics(trips: Trip[], tripId: number, logistics: TripLogistics) {
+  return updateTrip(trips, tripId, { logistics });
+}
 
-    const attendees = t.attendees.map((a) =>
-      a.name === user ? { ...a, handicapForTrip: handicap } : a
+/* ================================
+   Results (Admin)
+================================ */
+
+export function publishTripResult(
+  trips: Trip[],
+  tripId: number,
+  payload: TripResult | { leaderboard: { name: string; points: number }[]; notes?: string }
+) {
+  const result: TripResult = {
+    leaderboard: (payload as any).leaderboard ?? [],
+    notes: (payload as any).notes,
+    publishedAt: nowIsoUtc(),
+  };
+  return updateTrip(trips, tripId, { result });
+}
+
+export function clearTripResult(trips: Trip[], tripId: number) {
+  return updateTrip(trips, tripId, { result: undefined });
+}
+
+/* ================================
+   RSVP + handicap snapshot (Member)
+================================ */
+
+export function joinTrip(trips: Trip[], tripId: number, memberName: string): Trip[] {
+  const name = normalizeName(memberName);
+  if (!name) return trips.map(normalizeTrip);
+
+  const out = trips.map((t) => {
+    const base = normalizeTrip(t);
+    if (base.id !== tripId) return base;
+
+    const existing = base.attendees.find((a) => a.name === name);
+    const attendees: Attendee[] = existing
+      ? base.attendees.map((a) => (a.name === name ? { ...a, status: "confirmed" } : a))
+      : [...base.attendees, { name, status: "confirmed", joinedAt: Date.now() }];
+
+    return normalizeTrip({ ...base, attendees, updatedAtUtc: nowIsoUtc() });
+  });
+
+  saveTrips(out);
+  return out;
+}
+
+export function leaveTrip(trips: Trip[], tripId: number, memberName: string): Trip[] {
+  const name = normalizeName(memberName);
+  if (!name) return trips.map(normalizeTrip);
+
+  const out = trips.map((t) => {
+    const base = normalizeTrip(t);
+    if (base.id !== tripId) return base;
+
+    const attendees: Attendee[] = base.attendees.map((a) => (a.name === name ? { ...a, status: "out" } : a));
+    return normalizeTrip({ ...base, attendees, updatedAtUtc: nowIsoUtc() });
+  });
+
+  saveTrips(out);
+  return out;
+}
+
+export function setMyHandicapForTrip(
+  trips: Trip[],
+  tripId: number,
+  memberName: string,
+  handicap: number | null
+): Trip[] {
+  const name = normalizeName(memberName);
+  if (!name) return trips.map(normalizeTrip);
+
+  const out = trips.map((t) => {
+    const base = normalizeTrip(t);
+    if (base.id !== tripId) return base;
+
+    const attendees: Attendee[] = base.attendees.map((a) =>
+      a.name === name ? { ...a, handicapForTrip: handicap } : a
     );
 
-    const next = { ...t, attendees };
-    return next;
+    return normalizeTrip({ ...base, attendees, updatedAtUtc: nowIsoUtc() });
   });
 
-  saveTrips(updated);
+  saveTrips(out);
+  return out;
+}
 
-  const t = updated.find((x) => x.id === tripId);
-  const a = t?.attendees.find((x) => x.name === user);
-  if (a) void mirrorAttendeeUpsert(tripId, a);
+/* ================================
+   CSV export (Admin)
+================================ */
 
-  return updated;
+export function exportTripCsv(trip: Trip) {
+  if (typeof window === "undefined") return;
+
+  const t = normalizeTrip(trip);
+
+  const rows: string[][] = [];
+  rows.push(["Trip ID", String(t.id)]);
+  rows.push(["Date", t.date]);
+  rows.push(["Format", t.format]);
+  rows.push(["Course (legacy)", t.course ?? ""]);
+  rows.push(["Course ID", t.courseId ?? ""]);
+  rows.push(["Tee ID", t.teeId ?? ""]);
+  rows.push(["Ferry", t.ferry ?? ""]);
+  rows.push(["Capacity", String(t.capacity)]);
+  rows.push(["Status", t.status]);
+  rows.push(["Cutoff (UTC)", t.cutoffAt ?? ""]);
+  rows.push([]);
+
+  rows.push(["Meeting point", t.logistics?.meetingPoint ?? ""]);
+  rows.push(["Meet time", t.logistics?.meetTime ?? ""]);
+  rows.push(["Ferry details", t.logistics?.ferryDetails ?? ""]);
+  rows.push(["Notes", t.logistics?.notes ?? ""]);
+  rows.push([]);
+
+  rows.push(["Attendee", "Status", "Joined At (ms)", "Handicap Snapshot"]);
+  for (const a of t.attendees) {
+    rows.push([a.name, a.status, String(a.joinedAt ?? ""), a.handicapForTrip == null ? "" : String(a.handicapForTrip)]);
+  }
+
+  rows.push([]);
+  rows.push(["Result Published At", t.result?.publishedAt ?? ""]);
+  rows.push(["Result Notes", t.result?.notes ?? ""]);
+
+  const leaderboard = t.result?.leaderboard ?? [];
+  if (leaderboard.length) {
+    rows.push([]);
+    rows.push(["Leaderboard"]);
+    rows.push(["Name", "Points"]);
+    for (const r of leaderboard) rows.push([r.name, String(r.points)]);
+  }
+
+  const csv = rows
+    .map((r) =>
+      r
+        .map((cell) => {
+          const v = String(cell ?? "");
+          if (/[",\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+          return v;
+        })
+        .join(",")
+    )
+    .join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `golfbats-trip-${t.id}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
 }
