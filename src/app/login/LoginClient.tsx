@@ -1,40 +1,64 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "../lib/supabaseBrowser";
 
-function getSiteUrl() {
+function siteOrigin() {
   const env = process.env.NEXT_PUBLIC_SITE_URL;
   if (env && env.startsWith("http")) return env.replace(/\/$/, "");
-  // Fallback (should only happen if env var is missing)
+  if (typeof window === "undefined") return "";
   return window.location.origin.replace(/\/$/, "");
+}
+
+function isValidEmail(v: string) {
+  const s = v.trim();
+  // Simple, pragmatic validation for UI only
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
 export default function LoginClient() {
   const params = useSearchParams();
+
   const error = useMemo(() => params.get("error"), [params]);
   const msg = useMemo(() => params.get("msg"), [params]);
 
   const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState<null | "magic" | "google" | "signout">(null);
+  const [busy, setBusy] = useState<null | "magic" | "google">(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const configured =
-    !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Create ONE browser client for this component lifecycle.
+  // Helps avoid edge cases where multiple clients compete to manage PKCE/session state.
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+
+  // If we land here with an error from callback/confirm, show it,
+  // but also clear any previous success messages.
+  useEffect(() => {
+    if (error) setMessage(null);
+  }, [error]);
 
   async function signInMagicLink() {
     setMessage(null);
+
+    const cleaned = email.trim();
+    if (!isValidEmail(cleaned)) {
+      setMessage("Please enter a valid email address.");
+      return;
+    }
+
     setBusy("magic");
 
     try {
-      const supabase = createSupabaseBrowserClient();
-      const base = getSiteUrl();
+      const base = siteOrigin();
+      if (!base) throw new Error("Site origin unavailable.");
+
       const emailRedirectTo = `${base}/auth/confirm?next=/`;
 
       const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo },
+        email: cleaned,
+        options: {
+          emailRedirectTo,
+        },
       });
 
       if (error) throw error;
@@ -52,34 +76,25 @@ export default function LoginClient() {
     setBusy("google");
 
     try {
-      const supabase = createSupabaseBrowserClient();
-      const base = getSiteUrl();
+      const base = siteOrigin();
+      if (!base) throw new Error("Site origin unavailable.");
+
+      // OAuth should always use the callback route (code exchange happens server-side).
       const redirectTo = `${base}/auth/callback?next=/`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo },
+        options: {
+          redirectTo,
+          // Optional: keep it explicit; avoids ambiguity if you ever add more scopes.
+          // scopes: "email profile",
+        },
       });
 
       if (error) throw error;
-      // OAuth redirects away.
+      // Redirect happens automatically.
     } catch (e: any) {
       setMessage(e?.message || "Failed to start Google sign-in.");
-      setBusy(null);
-    }
-  }
-
-  async function signOut() {
-    setMessage(null);
-    setBusy("signout");
-
-    try {
-      const supabase = createSupabaseBrowserClient();
-      await supabase.auth.signOut();
-      setMessage("Signed out.");
-    } catch (e: any) {
-      setMessage(e?.message || "Failed to sign out.");
-    } finally {
       setBusy(null);
     }
   }
@@ -90,12 +105,6 @@ export default function LoginClient() {
       <p className="mt-2 text-sm text-neutral-600">
         Sign in to GolfBats to RSVP, view trips, and access admin tools (if authorized).
       </p>
-
-      {!configured ? (
-        <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
-          Supabase is not configured. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.
-        </div>
-      ) : null}
 
       {error ? (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -120,13 +129,14 @@ export default function LoginClient() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@domain.com"
             autoComplete="email"
+            inputMode="email"
           />
         </label>
 
         <button
           className="w-full rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           onClick={signInMagicLink}
-          disabled={!configured || !email || busy !== null}
+          disabled={!isValidEmail(email) || busy !== null}
         >
           {busy === "magic" ? "Sending…" : "Send magic link"}
         </button>
@@ -140,17 +150,9 @@ export default function LoginClient() {
         <button
           className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
           onClick={signInGoogle}
-          disabled={!configured || busy !== null}
+          disabled={busy !== null}
         >
           {busy === "google" ? "Opening Google…" : "Continue with Google"}
-        </button>
-
-        <button
-          className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-700 disabled:opacity-50"
-          onClick={signOut}
-          disabled={!configured || busy !== null}
-        >
-          {busy === "signout" ? "Signing out…" : "Sign out"}
         </button>
 
         <p className="pt-2 text-xs text-neutral-500">Admin access is restricted to approved emails.</p>

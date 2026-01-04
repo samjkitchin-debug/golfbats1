@@ -1,4 +1,5 @@
-import { getClubSlug, isSupabaseConfigured, supabase } from "./supabaseClient";
+import { getClubSlug, isSupabaseConfigured } from "./supabaseClient";
+import { createSupabaseBrowserClient } from "./supabaseBrowser";
 
 export type Tee = {
   id: string;
@@ -12,385 +13,248 @@ export type Course = {
   id: string;
   name: string;
   location: string;
-  website?: string;
   tees: Tee[];
 };
 
-const COURSES_STORAGE_KEY = "golfbats.courses.v1";
+const LS_KEY = "golfbats:courses:v1";
 
-/* ================================
-   Storage helpers (SSR-safe)
-================================ */
-function canUseStorage() {
-  return typeof window !== "undefined" && !!window.localStorage;
+function getSupabase() {
+  return createSupabaseBrowserClient();
 }
 
-function safeParse<T>(raw: string | null, fallback: T): T {
-  if (!raw) return fallback;
+export function loadCourses(): Course[] {
+  if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(raw) as T;
+    const raw = window.localStorage.getItem(LS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as Course[]) : [];
   } catch {
-    return fallback;
+    return [];
   }
 }
 
 export function saveCourses(courses: Course[]) {
-  if (!canUseStorage()) return;
-  try {
-    window.localStorage.setItem(COURSES_STORAGE_KEY, JSON.stringify(courses));
-  } catch {}
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(LS_KEY, JSON.stringify(courses));
 }
 
-/* ================================
-   Supabase bridge
-================================ */
-let clubIdCache: string | null = null;
-let clubIdPromise: Promise<string | null> | null = null;
+/**
+ * DB -> localStorage sync (optional helper used by pages)
+ */
+export async function refreshCoursesFromDb(): Promise<Course[]> {
+  if (!isSupabaseConfigured()) return loadCourses();
 
-async function getClubId(): Promise<string | null> {
-  if (!isSupabaseConfigured() || !supabase) return null;
-  if (clubIdCache) return clubIdCache;
-  if (clubIdPromise) return clubIdPromise;
+  const supabase = getSupabase();
+  const club = getClubSlug();
 
-  clubIdPromise = (async () => {
-    const slug = getClubSlug();
-    const { data, error } = await supabase.from("clubs").select("id").eq("slug", slug).maybeSingle();
-    if (error || !data?.id) return null;
-    clubIdCache = data.id;
-    return clubIdCache;
-  })();
+  const { data, error } = await supabase
+    .from("courses")
+    .select("id,name,location,tees")
+    .eq("club", club)
+    .order("name", { ascending: true });
 
-  return clubIdPromise;
-}
-
-/* ================================
-   Pending writes guard (prevents DB sync
-   from overwriting local changes mid-edit)
-================================ */
-let pendingWrites = 0;
-function beginWrite() {
-  pendingWrites += 1;
-}
-function endWrite() {
-  pendingWrites = Math.max(0, pendingWrites - 1);
-}
-function hasPendingWrites() {
-  return pendingWrites > 0;
-}
-
-/* ================================
-   Load (sync UI, background DB sync)
-================================ */
-export function loadCourses(): Course[] {
-  if (!canUseStorage()) return [];
-
-  // Only sync from DB when we do NOT have pending local writes
-  if (!hasPendingWrites()) {
-    void ensureCoursesSyncedFromDb();
+  if (error) {
+    // Keep UI working even if DB fetch fails
+    return loadCourses();
   }
 
-  return safeParse<Course[]>(window.localStorage.getItem(COURSES_STORAGE_KEY), []);
+  const courses = (data ?? []) as Course[];
+  saveCourses(courses);
+  return courses;
 }
 
-/* ================================
-   DB sync: pull courses/tees and overwrite cache
-   (guarded to avoid clobbering local edits)
-================================ */
-let coursesSyncInFlight: Promise<void> | null = null;
+export async function createCourse(input: Omit<Course, "id" | "tees"> & { tees?: Tee[] }) {
+  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
 
-export async function ensureCoursesSyncedFromDb(): Promise<void> {
-  if (!canUseStorage()) return;
-  if (!isSupabaseConfigured() || !supabase) return;
-
-  // If the user is mid-write, don't overwrite localStorage
-  if (hasPendingWrites()) return;
-
-  if (coursesSyncInFlight) return coursesSyncInFlight;
-
-  coursesSyncInFlight = (async () => {
-    const clubId = await getClubId();
-    if (!clubId) return;
-
-    const { data: courses, error: courseErr } = await supabase
-      .from("courses")
-      .select("id,name,location,website")
-      .eq("club_id", clubId)
-      .order("name", { ascending: true });
-
-    if (courseErr || !courses) return;
-
-    const courseIds = courses.map((c) => c.id);
-
-    const { data: tees, error: teeErr } = await supabase
-      .from("tees")
-      .select("id,course_id,label,meters,par,slope")
-      .in("course_id", courseIds.length ? courseIds : ["00000000-0000-0000-0000-000000000000"]);
-
-    if (teeErr) return;
-
-    const byCourse: Record<string, Tee[]> = {};
-    for (const t of tees ?? []) {
-      const tee: Tee = { id: t.id, label: t.label, meters: t.meters, par: t.par, slope: t.slope };
-      (byCourse[t.course_id] ||= []).push(tee);
-    }
-
-    const merged: Course[] = courses.map((c) => ({
-      id: c.id,
-      name: c.name,
-      location: c.location ?? "",
-      website: c.website ?? undefined,
-      tees: (byCourse[c.id] || []).slice().sort((a, b) => a.label.localeCompare(b.label)),
-    }));
-
-    // Guard again right before writing
-    if (hasPendingWrites()) return;
-
-    saveCourses(merged);
-  })().finally(() => {
-    coursesSyncInFlight = null;
-  });
-
-  return coursesSyncInFlight;
-}
-
-/* ================================
-   Queries
-================================ */
-export function getCourseById(courseId: string | null | undefined): Course | undefined {
-  if (!courseId) return undefined;
-  return loadCourses().find((c) => c.id === courseId);
-}
-
-/* ================================
-   Mutations: Courses (local-first, DB mirror)
-================================ */
-export function createCourse(input: { name: string; location: string; website?: string }): Course {
-  const courses = loadCourses();
+  const supabase = getSupabase();
+  const club = getClubSlug();
 
   const course: Course = {
     id: crypto.randomUUID(),
     name: input.name.trim(),
     location: input.location.trim(),
-    website: input.website?.trim() || undefined,
-    tees: [],
+    tees: input.tees ?? [],
   };
 
-  beginWrite();
-  try {
-    saveCourses([...courses, course]);
-  } finally {
-    // keep "pending" until DB mirror finishes (endWrite in mirror)
-  }
+  const { error } = await supabase.from("courses").insert({
+    club,
+    id: course.id,
+    name: course.name,
+    location: course.location,
+    tees: course.tees,
+  });
 
-  void mirrorCourseUpsert(course);
+  if (error) throw error;
+
+  const courses = loadCourses();
+  saveCourses([...courses, course]);
   return course;
 }
 
-export function updateCourse(courseId: string, patch: Partial<Pick<Course, "name" | "location" | "website">>): Course {
+export async function updateCourse(courseId: string, patch: Partial<Omit<Course, "id">>) {
+  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
+
+  const supabase = getSupabase();
+  const club = getClubSlug();
+
   const courses = loadCourses();
   const idx = courses.findIndex((c) => c.id === courseId);
   if (idx === -1) throw new Error("Course not found");
 
   const current = courses[idx];
-
-  const next: Course = {
+  const updated: Course = {
     ...current,
-    name: patch.name !== undefined ? patch.name.trim() : current.name,
-    location: patch.location !== undefined ? patch.location.trim() : current.location,
-    website: patch.website !== undefined ? patch.website.trim() || undefined : current.website,
+    ...patch,
+    name: (patch.name ?? current.name).trim(),
+    location: (patch.location ?? current.location).trim(),
+    tees: patch.tees ?? current.tees,
   };
 
-  beginWrite();
-  try {
-    const updated = courses.slice();
-    updated[idx] = next;
-    saveCourses(updated);
-  } finally {
-    // endWrite in mirror
-  }
+  const { error } = await supabase
+    .from("courses")
+    .update({
+      name: updated.name,
+      location: updated.location,
+      tees: updated.tees,
+    })
+    .eq("club", club)
+    .eq("id", courseId);
 
-  void mirrorCourseUpsert(next);
-  return next;
+  if (error) throw error;
+
+  const next = [...courses];
+  next[idx] = updated;
+  saveCourses(next);
+  return updated;
 }
 
-export function deleteCourse(courseId: string) {
-  const updated = loadCourses().filter((c) => c.id !== courseId);
+export async function deleteCourse(courseId: string) {
+  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
 
-  beginWrite();
-  try {
-    saveCourses(updated);
-  } finally {
-    // endWrite in mirror
-  }
+  const supabase = getSupabase();
+  const club = getClubSlug();
 
-  void mirrorCourseDelete(courseId);
+  const { error } = await supabase
+    .from("courses")
+    .delete()
+    .eq("club", club)
+    .eq("id", courseId);
+
+  if (error) throw error;
+
+  const courses = loadCourses().filter((c) => c.id !== courseId);
+  saveCourses(courses);
 }
 
-/* ================================
-   Mutations: Tees (local-first, DB mirror)
-================================ */
-export function addTee(courseId: string, input: { label: string; meters: number; par: number; slope: number }): Tee {
+export async function addTee(courseId: string, teeInput: Omit<Tee, "id">) {
+  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
+
   const courses = loadCourses();
   const idx = courses.findIndex((c) => c.id === courseId);
   if (idx === -1) throw new Error("Course not found");
 
   const tee: Tee = {
     id: crypto.randomUUID(),
-    label: input.label.trim(),
-    meters: Number(input.meters),
-    par: Number(input.par),
-    slope: Number(input.slope),
+    label: teeInput.label.trim(),
+    meters: Number(teeInput.meters),
+    par: Number(teeInput.par),
+    slope: Number(teeInput.slope),
   };
 
-  beginWrite();
-  try {
-    const updatedCourse: Course = { ...courses[idx], tees: [...courses[idx].tees, tee] };
-    const updated = courses.slice();
-    updated[idx] = updatedCourse;
-    saveCourses(updated);
-  } finally {
-    // endWrite in mirror
-  }
+  const updatedCourse: Course = { ...courses[idx], tees: [...courses[idx].tees, tee] };
 
-  void mirrorTeeUpsert(courseId, tee);
+  const supabase = getSupabase();
+  const club = getClubSlug();
+
+  const { error } = await supabase
+    .from("courses")
+    .update({ tees: updatedCourse.tees })
+    .eq("club", club)
+    .eq("id", courseId);
+
+  if (error) throw error;
+
+  const next = [...courses];
+  next[idx] = updatedCourse;
+  saveCourses(next);
+
   return tee;
 }
 
-export function updateTee(
-  courseId: string,
-  teeId: string,
-  patch: Partial<Pick<Tee, "label" | "meters" | "par" | "slope">>
-): Tee {
+export async function updateTee(courseId: string, teeId: string, patch: Partial<Omit<Tee, "id">>) {
+  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
+
   const courses = loadCourses();
   const idx = courses.findIndex((c) => c.id === courseId);
   if (idx === -1) throw new Error("Course not found");
 
   const course = courses[idx];
-  const existing = course.tees.find((t) => t.id === teeId);
-  if (!existing) throw new Error("Tee not found");
+  const teeIdx = course.tees.findIndex((t) => t.id === teeId);
+  if (teeIdx === -1) throw new Error("Tee not found");
 
-  const nextTee: Tee = {
+  const existing = course.tees[teeIdx];
+  const updatedTee: Tee = {
     ...existing,
-    label: patch.label !== undefined ? patch.label.trim() : existing.label,
-    meters: patch.meters !== undefined ? Number(patch.meters) : existing.meters,
-    par: patch.par !== undefined ? Number(patch.par) : existing.par,
-    slope: patch.slope !== undefined ? Number(patch.slope) : existing.slope,
+    ...patch,
+    label: (patch.label ?? existing.label).trim(),
+    meters: patch.meters ?? existing.meters,
+    par: patch.par ?? existing.par,
+    slope: patch.slope ?? existing.slope,
   };
 
-  beginWrite();
-  try {
-    const updatedCourse: Course = {
-      ...course,
-      tees: course.tees.map((t) => (t.id === teeId ? nextTee : t)),
-    };
+  const nextTees = [...course.tees];
+  nextTees[teeIdx] = updatedTee;
 
-    const updated = courses.slice();
-    updated[idx] = updatedCourse;
-    saveCourses(updated);
-  } finally {
-    // endWrite in mirror
-  }
+  const updatedCourse: Course = {
+    ...course,
+    tees: nextTees,
+  };
 
-  void mirrorTeeUpsert(courseId, nextTee);
-  return nextTee;
+  const supabase = getSupabase();
+  const club = getClubSlug();
+
+  const { error } = await supabase
+    .from("courses")
+    .update({ tees: updatedCourse.tees })
+    .eq("club", club)
+    .eq("id", courseId);
+
+  if (error) throw error;
+
+  const nextCourses = [...courses];
+  nextCourses[idx] = updatedCourse;
+  saveCourses(nextCourses);
+
+  return updatedTee;
 }
 
-export function deleteTee(courseId: string, teeId: string) {
+export async function deleteTee(courseId: string, teeId: string) {
+  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
+
   const courses = loadCourses();
   const idx = courses.findIndex((c) => c.id === courseId);
   if (idx === -1) throw new Error("Course not found");
 
-  beginWrite();
-  try {
-    const updatedCourse: Course = { ...courses[idx], tees: courses[idx].tees.filter((t) => t.id !== teeId) };
-    const updated = courses.slice();
-    updated[idx] = updatedCourse;
-    saveCourses(updated);
-  } finally {
-    // endWrite in mirror
-  }
+  const course = courses[idx];
 
-  void mirrorTeeDelete(teeId);
-}
+  const updatedCourse: Course = {
+    ...course,
+    tees: course.tees.filter((t) => t.id !== teeId),
+  };
 
-/* ================================
-   DB mirror helpers (endWrite when complete)
-================================ */
-async function mirrorCourseUpsert(course: Course) {
-  if (!isSupabaseConfigured() || !supabase) {
-    endWrite();
-    return;
-  }
+  const supabase = getSupabase();
+  const club = getClubSlug();
 
-  try {
-    const clubId = await getClubId();
-    if (!clubId) return;
+  const { error } = await supabase
+    .from("courses")
+    .update({ tees: updatedCourse.tees })
+    .eq("club", club)
+    .eq("id", courseId);
 
-    await supabase.from("courses").upsert(
-      {
-        id: course.id,
-        club_id: clubId,
-        name: course.name,
-        location: course.location,
-        website: course.website ?? null,
-      },
-      { onConflict: "id" }
-    );
-  } finally {
-    endWrite();
-    // after write settles, allow a fresh sync
-    void ensureCoursesSyncedFromDb();
-  }
-}
+  if (error) throw error;
 
-async function mirrorCourseDelete(courseId: string) {
-  if (!isSupabaseConfigured() || !supabase) {
-    endWrite();
-    return;
-  }
-
-  try {
-    await supabase.from("courses").delete().eq("id", courseId);
-  } finally {
-    endWrite();
-    void ensureCoursesSyncedFromDb();
-  }
-}
-
-async function mirrorTeeUpsert(courseId: string, tee: Tee) {
-  if (!isSupabaseConfigured() || !supabase) {
-    endWrite();
-    return;
-  }
-
-  try {
-    await supabase.from("tees").upsert(
-      {
-        id: tee.id,
-        course_id: courseId,
-        label: tee.label,
-        meters: tee.meters,
-        par: tee.par,
-        slope: tee.slope,
-      },
-      { onConflict: "id" }
-    );
-  } finally {
-    endWrite();
-    void ensureCoursesSyncedFromDb();
-  }
-}
-
-async function mirrorTeeDelete(teeId: string) {
-  if (!isSupabaseConfigured() || !supabase) {
-    endWrite();
-    return;
-  }
-
-  try {
-    await supabase.from("tees").delete().eq("id", teeId);
-  } finally {
-    endWrite();
-    void ensureCoursesSyncedFromDb();
-  }
+  const next = [...courses];
+  next[idx] = updatedCourse;
+  saveCourses(next);
 }
