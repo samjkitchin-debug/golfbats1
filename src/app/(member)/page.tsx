@@ -104,6 +104,17 @@ export default function HomePage() {
               {nextTrip.date} · {nextTrip.format}
               {nextTrip.ferry ? ` · Ferry ${nextTrip.ferry}` : ""}
             </div>
+
+            {nextTrip.logistics?.meetingPoint || nextTrip.logistics?.meetTime ? (
+              <div className="mt-2 text-sm text-gray-600">
+                {nextTrip.logistics.meetingPoint && (
+                  <div>📍 {nextTrip.logistics.meetingPoint}</div>
+                )}
+                {nextTrip.logistics.meetTime && (
+                  <div>🕐 {nextTrip.logistics.meetTime}</div>
+                )}
+              </div>
+            ) : null}
           </div>
 
           <Link

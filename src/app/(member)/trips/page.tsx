@@ -74,6 +74,13 @@ export default function TripsListPage() {
                         {t.ferry ? ` · Ferry ${t.ferry}` : ""}
                         {t.status !== "open" ? ` · ${t.status}` : ""}
                       </div>
+                      {t.logistics?.meetingPoint || t.logistics?.meetTime ? (
+                        <div className="mt-1 text-xs text-gray-600">
+                          {t.logistics.meetingPoint && <span>📍 {t.logistics.meetingPoint}</span>}
+                          {t.logistics.meetingPoint && t.logistics.meetTime && " · "}
+                          {t.logistics.meetTime && <span>🕐 {t.logistics.meetTime}</span>}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="shrink-0 text-right text-xs text-gray-500">
