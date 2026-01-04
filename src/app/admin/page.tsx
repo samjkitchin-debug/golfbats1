@@ -62,9 +62,8 @@ export default function AdminPage() {
   }, []);
 
   function createNewTrip() {
-    const maxId = trips.reduce((m, t) => Math.max(m, t.id), 0);
-    const newId = maxId + 1;
-
+    // Your tripActions.createTrip assigns the new id internally.
+    // We can reliably navigate to the newest trip by taking the max id after creation.
     const nextTrips = createTrip(trips, {
       date: todayYmd(),
       format: "Stableford",
@@ -74,9 +73,11 @@ export default function AdminPage() {
       teeId: null,
     });
 
+    const newestId = nextTrips.reduce((m, t) => Math.max(m, t.id), 0);
+
     setTrips(nextTrips);
     saveTrips(nextTrips);
-    router.push(`/admin/trips/${newId}`);
+    router.push(`/admin/trips/${newestId}`);
   }
 
   return (
@@ -103,7 +104,7 @@ export default function AdminPage() {
           ) : (
             <ul className="space-y-2">
               {upcomingTrips.map((t) => {
-                const course = courses.find((c) => c.id === t.courseId);
+                const courseText = getTripCourseText(t, courses);
                 return (
                   <li
                     key={t.id}
@@ -113,7 +114,12 @@ export default function AdminPage() {
                       <div className="text-sm font-medium text-gray-900">
                         {t.date} • {t.format}
                       </div>
-                      <div className="text-xs text-gray-600">{getTripCourseText(t, course)}</div>
+                      <div className="text-xs text-gray-600">
+                        {courseText.title}
+                        {courseText.detail ? (
+                          <span className="text-gray-500"> • {courseText.detail}</span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -142,7 +148,7 @@ export default function AdminPage() {
           ) : (
             <ul className="space-y-2">
               {pastTrips.map((t) => {
-                const course = courses.find((c) => c.id === t.courseId);
+                const courseText = getTripCourseText(t, courses);
                 return (
                   <li
                     key={t.id}
@@ -152,7 +158,12 @@ export default function AdminPage() {
                       <div className="text-sm font-medium text-gray-900">
                         {t.date} • {t.format}
                       </div>
-                      <div className="text-xs text-gray-600">{getTripCourseText(t, course)}</div>
+                      <div className="text-xs text-gray-600">
+                        {courseText.title}
+                        {courseText.detail ? (
+                          <span className="text-gray-500"> • {courseText.detail}</span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <button
