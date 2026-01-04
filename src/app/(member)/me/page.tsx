@@ -63,7 +63,8 @@ export default function MePage() {
 
       const adminEmails = getAdminEmails();
       const email = (user.email ?? "").toLowerCase();
-      setIsAdmin(adminEmails.includes(email));
+      const adminStatus = adminEmails.includes(email);
+      setIsAdmin(adminStatus);
 
       const { data, error: memberErr } = await supabase
         .from("members")
@@ -107,12 +108,22 @@ export default function MePage() {
           </p>
         </div>
 
-        <Link
-          href="/me/edit"
-          className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
-        >
-          Edit
-        </Link>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="rounded-xl bg-brand-red px-4 py-2 text-sm font-semibold text-white"
+            >
+              Admin
+            </Link>
+          )}
+          <Link
+            href="/me/edit"
+            className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+          >
+            Edit
+          </Link>
+        </div>
       </div>
 
       {error ? (

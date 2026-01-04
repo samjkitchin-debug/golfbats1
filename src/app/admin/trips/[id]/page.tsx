@@ -114,6 +114,25 @@ export default function AdminTripPage() {
   const locked = isTripLocked(tripSafe);
   const courseText = getTripCourseText(tripSafe, courses);
 
+  // Determine trip phase
+  const now = Date.now();
+  const tripDate = new Date(tripSafe.date + "T00:00:00").getTime();
+  const cutoffDate = tripSafe.cutoffAt ? new Date(tripSafe.cutoffAt).getTime() : null;
+  const hasResults = !!tripSafe.result;
+  const tripDatePassed = now >= tripDate;
+
+  // Phase 1: Open for signups (before cutoff or manually still open)
+  const phase1 = tripSafe.status === "open";
+  
+  // Phase 2: Closed to new entrants, logistics posted (after cutoff, before trip date)
+  const phase2 = tripSafe.status === "closed" && !tripDatePassed;
+  
+  // Phase 3: Trip date passed, ready for results
+  const phase3 = tripDatePassed && !hasResults;
+  
+  // Phase 4: Results published, trip archived
+  const phase4 = hasResults;
+
   function commit(next: Trip[]) {
     setTrips(next);
     saveTrips(next);
@@ -136,14 +155,19 @@ export default function AdminTripPage() {
     commit(setTripLogistics(trips, tripIdSafe, next));
   }
 
+  function onCloseTripAndPostLogistics() {
+    // Close trip to new entrants and enable logistics
+    commit(updateTrip(trips, tripIdSafe, { status: "closed" }));
+  }
+
   function onPublish() {
     const leaderboard = parseLeaderboard(leaderboardText);
-    commit(
-      publishTripResult(trips, tripIdSafe, {
-        leaderboard,
-        notes: resultNotes || undefined,
-      })
-    );
+    // Publish results and archive in one operation
+    const withResults = publishTripResult(trips, tripIdSafe, {
+      leaderboard,
+      notes: resultNotes || undefined,
+    });
+    commit(updateTrip(withResults, tripIdSafe, { status: "archived" }));
   }
 
   function onClearResult() {
@@ -167,18 +191,37 @@ export default function AdminTripPage() {
             {courseText.detail ? <span className="text-gray-500"> • {courseText.detail}</span> : null}
           </div>
 
-          {locked ? (
-            <div className="mt-2 inline-flex w-fit rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700">
-              Trip is locked (cutoff passed or closed)
-            </div>
-          ) : null}
+          <div className="mt-2 flex items-center gap-2">
+            {phase1 && (
+              <div className="inline-flex w-fit rounded-full bg-green-100 px-3 py-1 text-xs text-green-700">
+                Phase 1: Open for signups
+              </div>
+            )}
+            {phase2 && (
+              <div className="inline-flex w-fit rounded-full bg-yellow-100 px-3 py-1 text-xs text-yellow-700">
+                Phase 2: Closed, logistics posted
+              </div>
+            )}
+            {phase3 && (
+              <div className="inline-flex w-fit rounded-full bg-blue-100 px-3 py-1 text-xs text-blue-700">
+                Phase 3: Ready for results
+              </div>
+            )}
+            {phase4 && (
+              <div className="inline-flex w-fit rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700">
+                Archived: Results published
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold text-gray-900">Basics</h2>
+      {/* Phase 1: Basics - Only show when trip is open and before cutoff */}
+      {phase1 && (
+        <section className="rounded-xl border bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Phase 1: Trip Details</h2>
 
-        <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
             <div className="text-sm font-medium text-gray-800">Date</div>
             <input
@@ -278,10 +321,36 @@ export default function AdminTripPage() {
             </select>
           </label>
         </div>
-      </section>
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold text-gray-900">Logistics</h2>
+          {/* Button to close trip and move to Phase 2 */}
+          {cutoffDate && now >= cutoffDate && (
+            <div className="mt-4 flex justify-end">
+              <button
+                className="rounded-lg bg-brand-red px-4 py-2 text-sm font-medium text-white"
+                onClick={onCloseTripAndPostLogistics}
+              >
+                Close trip & Post logistics
+              </button>
+            </div>
+          )}
+          {/* Manual close button if cutoff hasn't passed yet */}
+          {(!cutoffDate || now < cutoffDate) && (
+            <div className="mt-4 flex justify-end">
+              <button
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                onClick={onCloseTripAndPostLogistics}
+              >
+                Close trip manually
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Phase 2 & 3: Logistics - Show after cutoff passes */}
+      {(phase2 || phase3 || phase4) && (
+        <section className="rounded-xl border bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Phase 2: Logistics</h2>
 
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
@@ -327,10 +396,13 @@ export default function AdminTripPage() {
             />
           </label>
         </div>
-      </section>
+        </section>
+      )}
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold text-gray-900">Results</h2>
+      {/* Phase 3: Results - Only show after trip date has passed */}
+      {(phase3 || phase4) && (
+        <section className="rounded-xl border bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Phase 3: Results</h2>
 
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block md:col-span-2">
@@ -376,7 +448,8 @@ export default function AdminTripPage() {
             </button>
           </div>
         </div>
-      </section>
+        </section>
+      )}
     </main>
   );
 }

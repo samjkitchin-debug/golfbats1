@@ -44,6 +44,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              Back to app
+            </Link>
             <SignOutButton />
           </div>
         </div>
@@ -60,6 +66,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
           >
             Courses
+          </Link>
+          <Link
+            href="/admin/members"
+            className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            Members
           </Link>
         </div>
 
