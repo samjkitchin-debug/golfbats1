@@ -11,206 +11,140 @@ import {
   sortTripsByDateAsc,
 } from "../lib/tripActions";
 import { getTripCourseText } from "../lib/tripDisplay";
+import { createSupabaseBrowserClient } from "../lib/supabaseBrowser";
 
-const CURRENT_USER = "Sam";
-const ADMIN_USERS = ["Sam"];
+function displayNameFromEmail(email: string | null | undefined) {
+  if (!email) return "Admin";
+  const beforeAt = email.split("@")[0]?.trim();
+  return beforeAt ? beforeAt : "Admin";
+}
 
 export default function AdminPage() {
   const router = useRouter();
-  const isAdmin = ADMIN_USERS.includes(CURRENT_USER);
+
+  const [currentUser, setCurrentUser] = useState<string>("Admin");
 
   const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
   const [courses, setCourses] = useState<Course[]>(() => loadCourses());
 
+  const upcomingTrips = useMemo(() => {
+    const now = Date.now();
+    return sortTripsByDateAsc(trips).filter((t) => Date.parse(t.date) >= now);
+  }, [trips]);
+
+  const pastTrips = useMemo(() => {
+    const now = Date.now();
+    return sortTripsByDateAsc(trips).filter((t) => Date.parse(t.date) < now);
+  }, [trips]);
+
   useEffect(() => {
-    function syncAll() {
-      setTrips(loadTrips());
-      setCourses(loadCourses());
-    }
-    syncAll();
-    window.addEventListener("storage", syncAll);
-    window.addEventListener("focus", syncAll);
-    return () => {
-      window.removeEventListener("storage", syncAll);
-      window.removeEventListener("focus", syncAll);
-    };
+    // Keep local-first: load from local immediately.
+    setTrips(loadTrips());
+    setCourses(loadCourses());
   }, []);
 
-  const today = new Date().toISOString().slice(0, 10);
-
-  const upcoming = useMemo(() => {
-    return sortTripsByDateAsc(trips.filter((t) => t.status !== "archived" && t.date >= today));
-  }, [trips, today]);
-
-  // Create Trip form
-  const [date, setDate] = useState(today);
-  const [format, setFormat] = useState("Stableford");
-  const [capacity, setCapacity] = useState<number>(16);
-  const [ferry, setFerry] = useState("");
-  const [courseId, setCourseId] = useState<string>("");
-  const [teeId, setTeeId] = useState<string>("");
-
-  const selectedCourse = courseId ? courses.find((c) => c.id === courseId) : undefined;
-  const availableTees = selectedCourse?.tees ?? [];
-
   useEffect(() => {
-    setTeeId("");
-  }, [courseId]);
+    // Resolve the signed-in user for display + naming new objects.
+    (async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data } = await supabase.auth.getUser();
+        setCurrentUser(displayNameFromEmail(data.user?.email));
+      } catch {
+        setCurrentUser("Admin");
+      }
+    })();
+  }, []);
 
-  function handleCreateTrip() {
-    if (!date.trim()) return;
-    if (!format.trim()) return;
-    if (!capacity || capacity < 1) return;
-
-    setTrips((prev) => {
-      const updated = createTrip(prev, {
-        date,
-        format,
-        capacity,
-        ferry,
-        courseId: courseId ? courseId : null,
-        teeId: teeId ? teeId : null,
-      });
-
-      saveTrips(updated);
-
-      // new trip is max id
-      const newest = updated.reduce((m, t) => (t.id > m.id ? t : m), updated[0]);
-      router.push(`/admin/trips/${newest.id}`);
-
-      return updated;
-    });
-  }
-
-  if (!isAdmin) {
-    return (
-      <main className="min-h-screen bg-gray-100 p-4">
-        <div className="mx-auto max-w-md rounded bg-white p-4 shadow space-y-2">
-          <h1 className="text-lg font-semibold">Not authorized</h1>
-          <p className="text-sm text-gray-600">This area is for admins only.</p>
-          <a className="underline text-sm" href="/">
-            Back to Home
-          </a>
-        </div>
-      </main>
-    );
+  function createNewTrip() {
+    const nextTrips = createTrip(trips, currentUser);
+    setTrips(nextTrips);
+    saveTrips(nextTrips);
+    router.push(`/admin/trips/${nextTrips[0].id}`);
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 p-4">
-      <div className="mx-auto max-w-2xl space-y-4">
-        <header className="text-center space-y-1">
-          <h1 className="text-xl font-semibold">Admin</h1>
-          <p className="text-sm text-gray-600">Create, lock, export</p>
-        </header>
-
-        <section className="rounded-lg bg-white p-4 shadow space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-gray-600">Create trip</h2>
-            <a className="text-sm underline text-gray-700" href="/courses">
-              Manage courses
-            </a>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <input
-              className="rounded border p-2 text-sm"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-            <input
-              className="rounded border p-2 text-sm"
-              value={format}
-              onChange={(e) => setFormat(e.target.value)}
-              placeholder="Format"
-            />
-            <input
-              className="rounded border p-2 text-sm"
-              type="number"
-              min={1}
-              value={capacity}
-              onChange={(e) => setCapacity(Number(e.target.value))}
-              placeholder="Capacity"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <input
-              className="rounded border p-2 text-sm"
-              value={ferry}
-              onChange={(e) => setFerry(e.target.value)}
-              placeholder="Ferry (optional)"
-            />
-
-            <select
-              className="rounded border p-2 text-sm"
-              value={courseId}
-              onChange={(e) => setCourseId(e.target.value)}
-            >
-              <option value="">Course (optional)…</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.location})
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="rounded border p-2 text-sm"
-              value={teeId}
-              disabled={!courseId}
-              onChange={(e) => setTeeId(e.target.value)}
-            >
-              <option value="">{courseId ? "Tee (optional)…" : "Select course first"}</option>
-              {availableTees.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label} — {t.meters}m · Par {t.par} · Slope {t.slope}
-                </option>
-              ))}
-            </select>
-          </div>
-
+    <main>
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold text-gray-900">Admin Dashboard</h1>
           <button
-            onClick={handleCreateTrip}
-            className="rounded bg-black px-4 py-2 text-sm text-white"
+            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white"
+            onClick={createNewTrip}
           >
-            Create & open admin console
+            Create trip
           </button>
+        </div>
+
+        <section className="rounded-xl border bg-white p-5 shadow-sm" id="trips">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Upcoming trips</h2>
+            <div className="text-xs text-gray-500">Signed in as: {currentUser}</div>
+          </div>
+
+          {upcomingTrips.length === 0 ? (
+            <div className="text-sm text-gray-600">No upcoming trips.</div>
+          ) : (
+            <ul className="space-y-2">
+              {upcomingTrips.map((t) => {
+                const course = courses.find((c) => c.id === t.courseId);
+                return (
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{t.title}</div>
+                      <div className="text-xs text-gray-600">
+                        {new Date(t.date).toLocaleDateString()} • {getTripCourseText(t, course)}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="text-right text-xs text-gray-500">
+                        {t.attendees.filter((a) => a.status === "confirmed").length} confirmed
+                      </div>
+                      <button
+                        className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm"
+                        onClick={() => router.push(`/admin/trips/${t.id}`)}
+                      >
+                        Manage
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
 
-        <section className="rounded-lg bg-white p-4 shadow space-y-3">
-          <h2 className="text-sm font-medium text-gray-600">Upcoming trips</h2>
+        <section className="rounded-xl border bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Past trips</h2>
 
-          {upcoming.length === 0 ? (
-            <p className="text-sm text-gray-600">No upcoming trips</p>
+          {pastTrips.length === 0 ? (
+            <div className="text-sm text-gray-600">No past trips.</div>
           ) : (
-            <ul className="divide-y">
-              {upcoming.map((t) => {
-                const { title, detail } = getTripCourseText(t, courses);
+            <ul className="space-y-2">
+              {pastTrips.map((t) => {
+                const course = courses.find((c) => c.id === t.courseId);
                 return (
-                  <li key={t.id} className="py-3 flex items-start justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <div className="text-sm text-gray-500">
-                        {t.date} · {t.format} · {t.status}
-                      </div>
-                      <div className="font-medium">{title}</div>
-                      {detail ? <div className="text-xs text-gray-600">{detail}</div> : null}
-
-                      <div className="text-sm">
-                        <a className="underline" href={`/admin/trips/${t.id}`}>
-                          Admin console
-                        </a>
-                        {" · "}
-                        <a className="underline" href={`/trips/${t.id}`}>
-                          Member view
-                        </a>
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{t.title}</div>
+                      <div className="text-xs text-gray-600">
+                        {new Date(t.date).toLocaleDateString()} • {getTripCourseText(t, course)}
                       </div>
                     </div>
 
-                    <div className="text-right text-xs text-gray-500">
-                      {t.attendees.filter((a) => a.status === "confirmed").length} confirmed
-                    </div>
+                    <button
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm"
+                      onClick={() => router.push(`/admin/trips/${t.id}`)}
+                    >
+                      View
+                    </button>
                   </li>
                 );
               })}
