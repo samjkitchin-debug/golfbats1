@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import { loadCourses, type Course } from "../lib/courseActions";
 import {
   createTrip,
   loadTrips,
   saveTrips,
-  type Trip,
   sortTripsByDateAsc,
+  type Trip,
 } from "../lib/tripActions";
 import { getTripCourseText } from "../lib/tripDisplay";
 import { createSupabaseBrowserClient } from "../lib/supabaseBrowser";
@@ -17,6 +18,12 @@ function displayNameFromEmail(email: string | null | undefined) {
   if (!email) return "Admin";
   const beforeAt = email.split("@")[0]?.trim();
   return beforeAt ? beforeAt : "Admin";
+}
+
+function todayYmd() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export default function AdminPage() {
@@ -28,23 +35,21 @@ export default function AdminPage() {
   const [courses, setCourses] = useState<Course[]>(() => loadCourses());
 
   const upcomingTrips = useMemo(() => {
-    const now = Date.now();
-    return sortTripsByDateAsc(trips).filter((t) => Date.parse(t.date) >= now);
+    const nowYmd = todayYmd();
+    return sortTripsByDateAsc(trips).filter((t) => t.date >= nowYmd);
   }, [trips]);
 
   const pastTrips = useMemo(() => {
-    const now = Date.now();
-    return sortTripsByDateAsc(trips).filter((t) => Date.parse(t.date) < now);
+    const nowYmd = todayYmd();
+    return sortTripsByDateAsc(trips).filter((t) => t.date < nowYmd);
   }, [trips]);
 
   useEffect(() => {
-    // Keep local-first: load from local immediately.
     setTrips(loadTrips());
     setCourses(loadCourses());
   }, []);
 
   useEffect(() => {
-    // Resolve the signed-in user for display + naming new objects.
     (async () => {
       try {
         const supabase = createSupabaseBrowserClient();
@@ -57,10 +62,21 @@ export default function AdminPage() {
   }, []);
 
   function createNewTrip() {
-    const nextTrips = createTrip(trips, currentUser);
+    const maxId = trips.reduce((m, t) => Math.max(m, t.id), 0);
+    const newId = maxId + 1;
+
+    const nextTrips = createTrip(trips, {
+      date: todayYmd(),
+      format: "Stableford",
+      capacity: 16,
+      ferry: "",
+      courseId: null,
+      teeId: null,
+    });
+
     setTrips(nextTrips);
     saveTrips(nextTrips);
-    router.push(`/admin/trips/${nextTrips[0].id}`);
+    router.push(`/admin/trips/${newId}`);
   }
 
   return (
@@ -94,10 +110,10 @@ export default function AdminPage() {
                     className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2"
                   >
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{t.title}</div>
-                      <div className="text-xs text-gray-600">
-                        {new Date(t.date).toLocaleDateString()} • {getTripCourseText(t, course)}
+                      <div className="text-sm font-medium text-gray-900">
+                        {t.date} • {t.format}
                       </div>
+                      <div className="text-xs text-gray-600">{getTripCourseText(t, course)}</div>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -133,10 +149,10 @@ export default function AdminPage() {
                     className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2"
                   >
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{t.title}</div>
-                      <div className="text-xs text-gray-600">
-                        {new Date(t.date).toLocaleDateString()} • {getTripCourseText(t, course)}
+                      <div className="text-sm font-medium text-gray-900">
+                        {t.date} • {t.format}
                       </div>
+                      <div className="text-xs text-gray-600">{getTripCourseText(t, course)}</div>
                     </div>
 
                     <button
