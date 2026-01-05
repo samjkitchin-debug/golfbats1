@@ -19,9 +19,6 @@ export default async function MemberLayout({ children }: { children: React.React
   } = await supabase.auth.getUser();
 
   const isSignedIn = !!user;
-  const adminEmails = parseAdminEmails(process.env.ADMIN_EMAILS);
-  const email = (user?.email ?? "").toLowerCase();
-  const isAdmin = !!email && adminEmails.includes(email);
 
   return (
     <div className="min-h-dvh bg-gray-50">
@@ -32,9 +29,9 @@ export default async function MemberLayout({ children }: { children: React.React
             <Image
               src="/logo.png"
               alt="GolfBats logo"
-              width={53}
-              height={53}
-              className="h-[53px] w-[53px] rounded-md"
+              width={64}
+              height={64}
+              className="h-[64px] w-[64px] rounded-md"
               priority
             />
             <span className="text-lg font-semibold tracking-tight text-gray-900">

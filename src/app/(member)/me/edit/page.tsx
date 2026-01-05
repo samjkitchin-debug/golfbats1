@@ -40,6 +40,15 @@ export default function MeEditPage() {
   const [nationality, setNationality] = useState("");
   const [declaredHandicap, setDeclaredHandicap] = useState<string>("");
 
+  // Passport fields
+  const [passportEnabled, setPassportEnabled] = useState(false);
+  const [passportFullName, setPassportFullName] = useState("");
+  const [passportNumber, setPassportNumber] = useState("");
+  const [passportCountry, setPassportCountry] = useState("");
+  const [passportExpiryDate, setPassportExpiryDate] = useState("");
+  const [passportPhotoPath, setPassportPhotoPath] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -85,6 +94,34 @@ export default function MeEditPage() {
           : String(m.declared_handicap)
       );
 
+      // Check if passport feature is enabled (check NEXT_PUBLIC env var)
+      // Default to enabled if env var not set (for development/testing)
+      const passportFeatureEnabled =
+        process.env.NEXT_PUBLIC_PASSPORT_ENABLED !== "false";
+      setPassportEnabled(passportFeatureEnabled);
+
+      // Load passport data if feature is enabled
+      if (passportFeatureEnabled && user) {
+        const { data: passportData } = await supabase
+          .from("member_passports")
+          .select("passport_full_name,passport_country,passport_expiry_date,passport_photo_path")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (passportData) {
+          setPassportFullName(passportData.passport_full_name ?? "");
+          setPassportCountry(passportData.passport_country ?? "");
+          setPassportExpiryDate(
+            passportData.passport_expiry_date
+              ? new Date(passportData.passport_expiry_date).toISOString().split("T")[0]
+              : ""
+          );
+          setPassportPhotoPath(passportData.passport_photo_path ?? null);
+          // Note: passport_number is encrypted, we don't load it for display
+          // User will need to re-enter it if they want to update
+        }
+      }
+
       setLoading(false);
     }
 
@@ -93,6 +130,33 @@ export default function MeEditPage() {
       cancelled = true;
     };
   }, [supabase]);
+
+  async function handlePhotoUpload(file: File) {
+    setUploadingPhoto(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/me/passport/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to upload photo.");
+      }
+
+      setPassportPhotoPath(json.path);
+    } catch (e: any) {
+      setError(e?.message || "Failed to upload photo.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
 
   async function onSave() {
     setSaving(true);
@@ -127,6 +191,29 @@ export default function MeEditPage() {
 
       if (!res.ok) {
         throw new Error(json?.error || "Failed to save profile.");
+      }
+
+      // Save passport data if feature is enabled
+      if (passportEnabled) {
+        const passportBody = {
+          passport_full_name: passportFullName.trim(),
+          passport_number: passportNumber.trim(),
+          passport_country: passportCountry.trim(),
+          passport_expiry_date: passportExpiryDate.trim(),
+          passport_photo_path: passportPhotoPath,
+        };
+
+        const passportRes = await fetch("/me/passport/save", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(passportBody),
+        });
+
+        const passportJson = await passportRes.json().catch(() => ({}));
+
+        if (!passportRes.ok) {
+          throw new Error(passportJson?.error || "Failed to save passport data.");
+        }
       }
 
       router.push("/me");
@@ -213,9 +300,89 @@ export default function MeEditPage() {
               </p>
             </Field>
 
+            {/* Passport Section */}
+            {passportEnabled ? (
+              <>
+                <div className="mt-6 border-t border-gray-200 pt-6">
+                  <div className="text-sm font-semibold mb-4">Passport details</div>
+
+                  <Field label="Passport full name">
+                    <input
+                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                      value={passportFullName}
+                      onChange={(e) => setPassportFullName(e.target.value)}
+                      placeholder="As shown on your passport"
+                    />
+                  </Field>
+
+                  <Field label="Passport number">
+                    <input
+                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                      value={passportNumber}
+                      onChange={(e) => setPassportNumber(e.target.value)}
+                      placeholder="Enter passport number"
+                      type="text"
+                    />
+                    <p className="mt-2 text-xs">
+                      Your passport number is encrypted and stored securely.
+                    </p>
+                  </Field>
+
+                  <Field label="Passport country">
+                    <input
+                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                      value={passportCountry}
+                      onChange={(e) => setPassportCountry(e.target.value)}
+                      placeholder="e.g. United Kingdom"
+                    />
+                  </Field>
+
+                  <Field label="Passport expiry date">
+                    <input
+                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                      value={passportExpiryDate}
+                      onChange={(e) => setPassportExpiryDate(e.target.value)}
+                      type="date"
+                    />
+                  </Field>
+
+                  <Field label="Passport photo (optional)">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handlePhotoUpload(file);
+                        }
+                      }}
+                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                      disabled={uploadingPhoto}
+                    />
+                    <p className="mt-2 text-xs text-gray-600">
+                      You can take a photo with your camera or select an existing file.
+                    </p>
+                    {uploadingPhoto && (
+                      <p className="mt-2 text-xs text-gray-600">Uploading photo…</p>
+                    )}
+                    {passportPhotoPath && !uploadingPhoto && (
+                      <p className="mt-2 text-xs text-green-600">Photo uploaded successfully</p>
+                    )}
+                  </Field>
+                </div>
+              </>
+            ) : (
+              <div className="mt-6 border-t border-gray-200 pt-6">
+                <div className="text-sm font-semibold mb-2">Passport details</div>
+                <p className="text-sm text-gray-600">
+                  Passport details will be added once appropriate security has been implemented.
+                </p>
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || uploadingPhoto}
               className="w-full rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
             >
               {saving ? "Saving…" : "Save"}

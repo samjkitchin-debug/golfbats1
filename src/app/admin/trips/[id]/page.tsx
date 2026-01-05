@@ -64,11 +64,72 @@ export default function AdminTripPage() {
 
   const [leaderboardText, setLeaderboardText] = useState<string>("");
   const [resultNotes, setResultNotes] = useState<string>("");
+  const [attendeesData, setAttendeesData] = useState<Array<{
+    name: string;
+    display_name: string | null;
+    handicap: number | null;
+    profile_photo_path: string | null;
+  }>>([]);
+  const [loadingAttendees, setLoadingAttendees] = useState(false);
+
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   useEffect(() => {
     setTrips(loadTrips());
     setCourses(loadCourses());
   }, []);
+
+  // Load attendees data when trip changes
+  useEffect(() => {
+    async function loadAttendees() {
+      if (!tripSafe) return;
+
+      const confirmedAttendees = tripSafe.attendees.filter((a) => a.status === "confirmed");
+      if (confirmedAttendees.length === 0) {
+        setAttendeesData([]);
+        return;
+      }
+
+      setLoadingAttendees(true);
+      try {
+        // Fetch all members to match by name
+        const { data: members, error: membersError } = await supabase
+          .from("members")
+          .select("id,display_name,full_name,declared_handicap,profile_photo_path");
+
+        if (membersError) {
+          console.error("Failed to fetch members:", membersError);
+          setAttendeesData([]);
+          return;
+        }
+
+        // Match attendees to members
+        const matched = confirmedAttendees.map((attendee) => {
+          const member = members?.find(
+            (m) =>
+              (m.display_name && m.display_name.toLowerCase() === attendee.name.toLowerCase()) ||
+              (m.full_name && m.full_name.toLowerCase() === attendee.name.toLowerCase())
+          );
+
+          return {
+            name: attendee.name,
+            display_name: member?.display_name || null,
+            handicap: attendee.handicapForTrip ?? member?.declared_handicap ?? null,
+            profile_photo_path: member?.profile_photo_path || null,
+          };
+        });
+
+        setAttendeesData(matched);
+      } catch (error) {
+        console.error("Failed to load attendees:", error);
+        setAttendeesData([]);
+      } finally {
+        setLoadingAttendees(false);
+      }
+    }
+
+    loadAttendees();
+  }, [tripSafe?.id, tripSafe?.attendees, supabase]);
 
   const trip = useMemo(() => {
     if (!Number.isFinite(tripId)) return undefined;
@@ -205,6 +266,9 @@ export default function AdminTripPage() {
     try {
       const supabase = createSupabaseBrowserClient();
       
+      // Get confirmed attendees
+      const confirmedAttendees = tripSafe.attendees.filter((a) => a.status === "confirmed");
+      
       // Fetch all members from database
       const { data: members, error } = await supabase
         .from("members")
@@ -215,16 +279,62 @@ export default function AdminTripPage() {
         return;
       }
 
+      // Match attendees to member IDs
+      const memberIds: string[] = [];
+      const nameToMemberId: Record<string, string> = {};
+      
+      for (const attendee of confirmedAttendees) {
+        const member = members?.find(
+          (m) =>
+            (m.display_name && m.display_name.toLowerCase() === attendee.name.toLowerCase()) ||
+            (m.full_name && m.full_name.toLowerCase() === attendee.name.toLowerCase())
+        );
+        
+        if (member?.id) {
+          if (!memberIds.includes(member.id)) {
+            memberIds.push(member.id);
+          }
+          nameToMemberId[attendee.name.toLowerCase()] = member.id;
+        }
+      }
+
+      // Fetch passport data from server (includes decryption and signed URLs)
+      const passportDataMap: Record<string, unknown> = {};
+      if (memberIds.length > 0) {
+        const passportRes = await fetch(`/admin/trips/${params.id}/passport-export`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ memberIds }),
+        });
+
+        const passportJson = await passportRes.json().catch(() => ({}));
+
+        if (passportRes.ok && passportJson.passports) {
+          // Create a map of user_id -> passport data
+          for (const passport of passportJson.passports) {
+            passportDataMap[passport.user_id] = passport;
+          }
+        } else {
+          console.warn("Failed to fetch passport data:", passportJson.error);
+        }
+      }
+
       // Map to the format expected by exportTravelAgentCsv
-      const membersForExport = (members || []).map((m) => ({
-        id: m.id,
-        email: m.email,
-        full_name: m.full_name,
-        display_name: m.display_name,
-        nationality: m.nationality,
-        passport_number: null, // TODO: Add passport_number column to members table
-        passport_expiry: null, // TODO: Add passport_expiry column to members table
-      }));
+      const membersForExport = (members || []).map((m) => {
+        const passport = passportDataMap[m.id];
+        return {
+          id: m.id,
+          email: m.email,
+          full_name: m.full_name,
+          display_name: m.display_name,
+          nationality: m.nationality,
+          passport_number: passport?.passport_number || null,
+          passport_expiry: passport?.passport_expiry_date || null,
+          passport_full_name: passport?.passport_full_name || null,
+          passport_country: passport?.passport_country || null,
+          passport_photo_url: passport?.passport_photo_url || null,
+        };
+      });
 
       await exportTravelAgentCsv(tripSafe, async () => membersForExport);
     } catch (error) {
@@ -269,6 +379,54 @@ export default function AdminTripPage() {
           </div>
         </div>
       </section>
+
+      {/* Attendees Section */}
+      {tripSafe.attendees.filter((a) => a.status === "confirmed").length > 0 && (
+        <section className="rounded-xl border bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Attendees</h2>
+          
+          {loadingAttendees ? (
+            <div className="text-sm text-gray-600">Loading attendees…</div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+              {attendeesData.map((attendee, idx) => {
+                const photoUrl = attendee.profile_photo_path
+                  ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${attendee.profile_photo_path}`
+                  : null;
+
+                return (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 rounded-lg border border-gray-200 p-3"
+                  >
+                    {photoUrl ? (
+                      <img
+                        src={photoUrl}
+                        alt={attendee.display_name || attendee.name}
+                        className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-gray-300"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 flex-shrink-0 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-xs font-medium text-gray-600">
+                        {(attendee.display_name || attendee.name).charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-gray-900">
+                        {attendee.display_name || attendee.name}
+                      </div>
+                      {attendee.handicap !== null && (
+                        <div className="text-xs text-gray-600">
+                          HCP: {attendee.handicap}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Phase 1: Basics - Only show when trip is open and before cutoff */}
       {phase1 && (

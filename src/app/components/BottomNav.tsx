@@ -12,7 +12,7 @@ const navItems: NavItem[] = [
   { href: "/", label: "Home" },
   { href: "/trips", label: "Trips" },
   { href: "/results", label: "Results" },
-  { href: "/courses", label: "Courses" },
+  { href: "/members", label: "Members" },
   { href: "/me", label: "Me" },
 ];
 

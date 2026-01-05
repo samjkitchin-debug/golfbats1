@@ -432,6 +432,9 @@ type MemberForExport = {
   nationality: string | null;
   passport_number?: string | null;
   passport_expiry?: string | null;
+  passport_full_name?: string | null;
+  passport_country?: string | null;
+  passport_photo_url?: string | null;
 };
 
 export async function exportTravelAgentCsv(
@@ -450,7 +453,15 @@ export async function exportTravelAgentCsv(
 
   // Match attendees to members by name (display_name or full_name)
   const attendeeRows: string[][] = [];
-  attendeeRows.push(["Name", "Nationality", "Passport Number", "Passport Expiry"]);
+  attendeeRows.push([
+    "Name",
+    "Nationality",
+    "Passport Full Name",
+    "Passport Number",
+    "Passport Country",
+    "Passport Expiry",
+    "Passport Photo URL",
+  ]);
 
   for (const attendee of confirmedAttendees) {
     // Try to find matching member by display_name or full_name
@@ -463,8 +474,11 @@ export async function exportTravelAgentCsv(
     attendeeRows.push([
       attendee.name,
       member?.nationality ?? "",
+      member?.passport_full_name ?? "",
       member?.passport_number ?? "",
+      member?.passport_country ?? "",
       member?.passport_expiry ?? "",
+      member?.passport_photo_url ?? "",
     ]);
   }
 
