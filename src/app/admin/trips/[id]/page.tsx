@@ -79,58 +79,6 @@ export default function AdminTripPage() {
     setCourses(loadCourses());
   }, []);
 
-  // Load attendees data when trip changes
-  useEffect(() => {
-    async function loadAttendees() {
-      if (!tripSafe) return;
-
-      const confirmedAttendees = tripSafe.attendees.filter((a) => a.status === "confirmed");
-      if (confirmedAttendees.length === 0) {
-        setAttendeesData([]);
-        return;
-      }
-
-      setLoadingAttendees(true);
-      try {
-        // Fetch all members to match by name
-        const { data: members, error: membersError } = await supabase
-          .from("members")
-          .select("id,display_name,full_name,declared_handicap,profile_photo_path");
-
-        if (membersError) {
-          console.error("Failed to fetch members:", membersError);
-          setAttendeesData([]);
-          return;
-        }
-
-        // Match attendees to members
-        const matched = confirmedAttendees.map((attendee) => {
-          const member = members?.find(
-            (m) =>
-              (m.display_name && m.display_name.toLowerCase() === attendee.name.toLowerCase()) ||
-              (m.full_name && m.full_name.toLowerCase() === attendee.name.toLowerCase())
-          );
-
-          return {
-            name: attendee.name,
-            display_name: member?.display_name || null,
-            handicap: attendee.handicapForTrip ?? member?.declared_handicap ?? null,
-            profile_photo_path: member?.profile_photo_path || null,
-          };
-        });
-
-        setAttendeesData(matched);
-      } catch (error) {
-        console.error("Failed to load attendees:", error);
-        setAttendeesData([]);
-      } finally {
-        setLoadingAttendees(false);
-      }
-    }
-
-    loadAttendees();
-  }, [tripSafe?.id, tripSafe?.attendees, supabase]);
-
   const trip = useMemo(() => {
     if (!Number.isFinite(tripId)) return undefined;
     return trips.find((t) => t.id === tripId);

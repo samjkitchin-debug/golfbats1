@@ -29,6 +29,7 @@
 | members               | declared_handicap         | numeric                  | YES         |
 | members               | created_at                | timestamp with time zone | NO          |
 | members               | last_seen                 | timestamp with time zone | NO          |
+| members               | profile_photo_path        | text                     | YES         |
 | passport_access_audit | id                        | uuid                     | NO          |
 | passport_access_audit | viewer_user_id            | uuid                     | NO          |
 | passport_access_audit | target_user_id            | uuid                     | NO          |

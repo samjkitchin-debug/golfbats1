@@ -447,24 +447,35 @@ export default function MePage() {
               }
 
               setPassportPhotoPath(json.path);
-            } catch (e: any) {
-              setError(e?.message || "Failed to upload photo.");
+            } catch (e: unknown) {
+              const error = e as { message?: string };
+              setError(error?.message || "Failed to upload photo.");
             } finally {
               setUploadingPhoto(false);
             }
           }}
+          showPassportCropModal={showPassportCropModal}
+          passportImageSrc={passportImageSrc}
+          passportCrop={passportCrop}
+          passportZoom={passportZoom}
+          passportCroppedAreaPixels={passportCroppedAreaPixels}
+          setShowPassportCropModal={setShowPassportCropModal}
+          setPassportImageSrc={setPassportImageSrc}
+          setPassportCrop={setPassportCrop}
+          setPassportZoom={setPassportZoom}
+          setPassportCroppedAreaPixels={setPassportCroppedAreaPixels}
         />
 
-        <div className="rounded-2xl border border-black p-4">
-          <div className="text-sm font-semibold">Data security</div>
+        <div className="rounded-2xl border border-gray-200 p-3">
+          <div className="text-xs font-medium text-gray-600">Data security</div>
           
-          <div className="mt-3 space-y-3 text-sm">
+          <div className="mt-2 space-y-2 text-xs text-gray-600 leading-relaxed">
             <div>
-              <div className="font-semibold">Passport information</div>
+              <div className="font-medium text-gray-700">Passport information</div>
               <p className="mt-1">
                 When you provide passport details for a trip, we store:
               </p>
-              <ul className="mt-1 ml-4 list-disc space-y-1">
+              <ul className="mt-1 ml-4 list-disc space-y-0.5">
                 <li>Full name as shown on your passport</li>
                 <li>Passport number (encrypted)</li>
                 <li>Passport country</li>
@@ -474,8 +485,8 @@ export default function MePage() {
             </div>
 
             <div>
-              <div className="font-semibold">Protection measures</div>
-              <ul className="mt-1 ml-4 list-disc space-y-1">
+              <div className="font-medium text-gray-700">Protection measures</div>
+              <ul className="mt-1 ml-4 list-disc space-y-0.5">
                 <li>Passport numbers are encrypted using AES-256-GCM with server-side key management and cannot be read by anyone except authorised administrators with proper access controls</li>
                 <li>You can view, update, or delete your own passport information at any time</li>
                 <li>All administrator access to passport data is logged and audited</li>
@@ -484,7 +495,7 @@ export default function MePage() {
             </div>
 
             <div>
-              <div className="font-semibold">Disclaimer</div>
+              <div className="font-medium text-gray-700">Disclaimer</div>
               <p className="mt-1">
                 Passport information is collected only to organise trip logistics, such as ferry bookings and travel arrangements. Please do not upload passport data unless it is required for a specific trip you are attending. Your passport information may be deleted after the relevant trip is completed.
               </p>

@@ -62,7 +62,9 @@ export async function refreshCoursesFromDb(): Promise<Course[]> {
   if (clubId) {
     query = query.eq("club_id", clubId);
   } else {
-    query = query.eq("club", clubSlug);
+    // If club_id lookup fails, return empty array rather than querying non-existent 'club' column
+    console.warn("Club ID not found for slug:", clubSlug, "- returning empty courses list");
+    return loadCourses();
   }
 
   const { data: coursesData, error: coursesError } = await query.order("name", { ascending: true });
@@ -143,11 +145,11 @@ export async function createCourse(input: {
     website: cleanNullableString(input.website),
   };
 
-  if (clubId) {
-    insertData.club_id = clubId;
-  } else {
-    insertData.club = clubSlug;
+  if (!clubId) {
+    throw new Error(`Club not found for slug: ${clubSlug}. Please ensure the clubs table has a row with this slug.`);
   }
+
+  insertData.club_id = clubId;
 
   const { error: courseError } = await supabase.from("courses").insert(insertData);
 
