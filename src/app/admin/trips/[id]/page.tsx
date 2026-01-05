@@ -247,7 +247,16 @@ export default function AdminTripPage() {
       }
 
       // Fetch passport data from server (includes decryption and signed URLs)
-      const passportDataMap: Record<string, unknown> = {};
+      type PassportData = {
+        user_id: string;
+        passport_full_name: string | null;
+        passport_number: string | null;
+        passport_country: string | null;
+        passport_expiry_date: string | null;
+        passport_photo_url: string | null;
+      };
+      
+      const passportDataMap: Record<string, PassportData> = {};
       if (memberIds.length > 0) {
         const passportRes = await fetch(`/admin/trips/${params.id}/passport-export`, {
           method: "POST",
@@ -259,7 +268,7 @@ export default function AdminTripPage() {
 
         if (passportRes.ok && passportJson.passports) {
           // Create a map of user_id -> passport data
-          for (const passport of passportJson.passports) {
+          for (const passport of passportJson.passports as PassportData[]) {
             passportDataMap[passport.user_id] = passport;
           }
         } else {
