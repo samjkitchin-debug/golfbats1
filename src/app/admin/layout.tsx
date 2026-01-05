@@ -73,6 +73,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           >
             Members
           </Link>
+          <Link
+            href="/admin/dev-notes"
+            className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            Dev Notes
+          </Link>
         </div>
 
         <div className="h-0.5 w-full bg-brand-red" />

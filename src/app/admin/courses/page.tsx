@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   addTee,
   createCourse,
   deleteCourse,
   deleteTee,
   loadCourses,
+  refreshCoursesFromDb,
   updateCourse,
   updateTee,
   type Course,
@@ -29,9 +30,31 @@ export default function AdminCoursesPage() {
     return [...courses].sort((a, b) => a.name.localeCompare(b.name));
   }, [courses]);
 
-  function refresh() {
-    setCourses(loadCourses());
+  async function refresh() {
+    // Try to sync from database first, fallback to localStorage
+    try {
+      const synced = await refreshCoursesFromDb();
+      setCourses(synced);
+    } catch (error) {
+      console.warn("Failed to refresh from DB, using localStorage:", error);
+      setCourses(loadCourses());
+    }
   }
+
+  // Sync from database on mount
+  useEffect(() => {
+    async function initialSync() {
+      try {
+        const synced = await refreshCoursesFromDb();
+        setCourses(synced);
+      } catch (error) {
+        console.warn("Failed to refresh from DB, using localStorage:", error);
+        setCourses(loadCourses());
+      }
+    }
+    initialSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleAddCourse() {
     const name = newName.trim();
@@ -133,52 +156,135 @@ function CourseCard({
   onChanged: () => void;
   onDelete: (courseId: string) => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+
   const [name, setName] = useState(course.name);
   const [location, setLocation] = useState(course.location ?? "");
   const [website, setWebsite] = useState(course.website ?? "");
+
+  // Track edited existing tees
+  const [editedTees, setEditedTees] = useState<Record<string, Partial<Tee>>>({});
+  
+  // Track deleted tees (only delete on save)
+  const [deletedTeeIds, setDeletedTeeIds] = useState<Set<string>>(new Set());
+  
+  // Track new tees (temporary IDs)
+  type NewTee = { tempId: string; label: string; meters: number; par: number; slope: number };
+  const [newTees, setNewTees] = useState<NewTee[]>([]);
 
   const [teeLabel, setTeeLabel] = useState("");
   const [teeMeters, setTeeMeters] = useState("");
   const [teePar, setTeePar] = useState("");
   const [teeSlope, setTeeSlope] = useState("");
 
+  // Reset state when course changes or editing mode changes
+  useEffect(() => {
+    if (!isEditing) {
+      setName(course.name);
+      setLocation(course.location ?? "");
+      setWebsite(course.website ?? "");
+      setEditedTees({});
+      setDeletedTeeIds(new Set());
+      setNewTees([]);
+      setTeeLabel("");
+      setTeeMeters("");
+      setTeePar("");
+      setTeeSlope("");
+      setSaved(false);
+    }
+  }, [course, isEditing]);
+
   const teesSorted = useMemo(() => {
     return [...(course.tees || [])].sort((a, b) => a.label.localeCompare(b.label));
   }, [course.tees]);
 
-  function saveCourse() {
-    updateCourse(course.id, {
-      name,
-      location,
-      website,
-    });
-    onChanged();
+  async function handleSaveChanges() {
+    try {
+      // Save course details
+      await updateCourse(course.id, {
+        name,
+        location,
+        website,
+      });
+
+      // Delete tees marked for deletion
+      for (const teeId of deletedTeeIds) {
+        await deleteTee(course.id, teeId);
+      }
+
+      // Save edited existing tees (only if not deleted)
+      for (const [teeId, patch] of Object.entries(editedTees)) {
+        if (!deletedTeeIds.has(teeId) && Object.keys(patch).length > 0) {
+          await updateTee(course.id, teeId, patch);
+        }
+      }
+
+      // Save new tees
+      for (const newTee of newTees) {
+        await addTee(course.id, {
+          label: newTee.label,
+          meters: newTee.meters,
+          par: newTee.par,
+          slope: newTee.slope,
+        });
+      }
+
+      setSaved(true);
+      setTimeout(() => {
+        setIsEditing(false);
+        onChanged();
+      }, 1000);
+    } catch (error) {
+      console.error("Failed to save changes:", error);
+      alert(`Failed to save changes: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function addNewTee() {
+  function addNewTeeLine() {
     const label = teeLabel.trim();
     if (!label) return;
 
-    addTee(course.id, {
-      label,
-      meters: num(teeMeters, 0),
-      par: num(teePar, 72),
-      slope: num(teeSlope, 113),
-    });
+    setNewTees([
+      ...newTees,
+      {
+        tempId: crypto.randomUUID(),
+        label,
+        meters: num(teeMeters, 0),
+        par: num(teePar, 72),
+        slope: num(teeSlope, 113),
+      },
+    ]);
 
     setTeeLabel("");
     setTeeMeters("");
     setTeePar("");
     setTeeSlope("");
+  }
 
-    onChanged();
+  function removeNewTee(tempId: string) {
+    setNewTees(newTees.filter((t) => t.tempId !== tempId));
+  }
+
+  function updateNewTee(tempId: string, patch: Partial<NewTee>) {
+    setNewTees(newTees.map((t) => (t.tempId === tempId ? { ...t, ...patch } : t)));
   }
 
   function removeTee(teeId: string) {
     const ok = window.confirm("Delete this tee?");
     if (!ok) return;
-    deleteTee(course.id, teeId);
-    onChanged();
+    // Mark for deletion (will be deleted on save)
+    setDeletedTeeIds(new Set([...deletedTeeIds, teeId]));
+    // Remove from edited tees if present
+    const { [teeId]: _, ...rest } = editedTees;
+    setEditedTees(rest);
+  }
+
+  function updateEditedTee(teeId: string, patch: Partial<Tee>) {
+    setEditedTees((prev) => ({
+      ...prev,
+      [teeId]: { ...prev[teeId], ...patch },
+    }));
   }
 
   return (
@@ -189,183 +295,213 @@ function CourseCard({
           {course.location ? <div className="mt-1 text-sm text-gray-600">{course.location}</div> : null}
         </div>
 
-        <button
-          onClick={() => onDelete(course.id)}
-          className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-        >
-          Delete
-        </button>
-      </div>
-
-      {/* Edit course fields */}
-      <div className="mt-4 grid gap-2">
-        <div className="text-sm font-medium text-gray-700">Edit course</div>
-
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm"
-          placeholder="Course name"
-        />
-        <input
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm"
-          placeholder="Location (optional)"
-        />
-        <input
-          value={website}
-          onChange={(e) => setWebsite(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm"
-          placeholder="Website (optional)"
-        />
-
         <div className="flex gap-2">
+          {!isEditing && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Edit
+            </button>
+          )}
           <button
-            onClick={saveCourse}
-            className="rounded-md bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
-          >
-            Save changes
-          </button>
-        </div>
-      </div>
-
-      {/* Tees */}
-      <div className="mt-5">
-        <div className="text-sm font-medium text-gray-700">Tee sets</div>
-
-        {teesSorted.length === 0 ? (
-          <div className="mt-2 text-sm text-gray-600">No tees yet.</div>
-        ) : (
-          <div className="mt-3 space-y-2">
-            {teesSorted.map((tee) => (
-              <TeeRow key={tee.id} courseId={course.id} tee={tee} onChanged={onChanged} onDelete={removeTee} />
-            ))}
-          </div>
-        )}
-
-        <div className="mt-4 rounded-lg border bg-white p-4">
-          <div className="text-sm font-medium text-gray-700">Add tee</div>
-
-          <div className="mt-3 grid gap-2 md:grid-cols-4">
-            <input
-              value={teeLabel}
-              onChange={(e) => setTeeLabel(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="Label (e.g. Blue)"
-            />
-            <input
-              value={teeMeters}
-              onChange={(e) => setTeeMeters(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="Meters"
-              inputMode="numeric"
-            />
-            <input
-              value={teePar}
-              onChange={(e) => setTeePar(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="Par"
-              inputMode="numeric"
-            />
-            <input
-              value={teeSlope}
-              onChange={(e) => setTeeSlope(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="Slope"
-              inputMode="numeric"
-            />
-          </div>
-
-          <button
-            onClick={addNewTee}
-            className="mt-3 rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white hover:opacity-95"
-          >
-            Add tee
-          </button>
-
-          <div className="mt-2 text-xs text-gray-500">
-            For now: meters / par / slope. We can add course rating later if you want.
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function TeeRow({
-  courseId,
-  tee,
-  onChanged,
-  onDelete,
-}: {
-  courseId: string;
-  tee: Tee;
-  onChanged: () => void;
-  onDelete: (teeId: string) => void;
-}) {
-  const [label, setLabel] = useState(tee.label);
-  const [meters, setMeters] = useState(String(tee.meters));
-  const [par, setPar] = useState(String(tee.par));
-  const [slope, setSlope] = useState(String(tee.slope));
-
-  function save() {
-    updateTee(courseId, tee.id, {
-      label,
-      meters: num(meters, tee.meters),
-      par: num(par, tee.par),
-      slope: num(slope, tee.slope),
-    });
-    onChanged();
-  }
-
-  return (
-    <div className="rounded-md border p-3">
-      <div className="grid gap-2 md:grid-cols-5">
-        <input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm"
-          placeholder="Label"
-        />
-        <input
-          value={meters}
-          onChange={(e) => setMeters(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm"
-          placeholder="Meters"
-          inputMode="numeric"
-        />
-        <input
-          value={par}
-          onChange={(e) => setPar(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm"
-          placeholder="Par"
-          inputMode="numeric"
-        />
-        <input
-          value={slope}
-          onChange={(e) => setSlope(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm"
-          placeholder="Slope"
-          inputMode="numeric"
-        />
-
-        <div className="flex gap-2">
-          <button
-            onClick={save}
-            className="flex-1 rounded-md bg-brand-black px-3 py-2 text-sm font-medium text-white hover:opacity-95"
-          >
-            Save
-          </button>
-          <button
-            onClick={() => onDelete(tee.id)}
-            className="flex-1 rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={() => onDelete(course.id)}
+            className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
           >
             Delete
           </button>
         </div>
       </div>
-    </div>
+
+      {/* Edit course fields - only shown when editing */}
+      {isEditing && (
+        <>
+          <div className="mt-4 grid gap-2">
+            <div className="text-sm font-medium text-gray-700">Edit course</div>
+
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              placeholder="Course name"
+            />
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              placeholder="Location (optional)"
+            />
+            <input
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              placeholder="Website (optional)"
+            />
+          </div>
+
+          {/* Tees */}
+          <div className="mt-5">
+            <div className="text-sm font-medium text-gray-700">Tee sets</div>
+
+            {teesSorted.filter((tee) => !deletedTeeIds.has(tee.id)).length === 0 && newTees.length === 0 ? (
+              <div className="mt-2 text-sm text-gray-600">No tees yet.</div>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {teesSorted
+                  .filter((tee) => !deletedTeeIds.has(tee.id))
+                  .map((tee) => {
+                    const edited = editedTees[tee.id] || {};
+                    return (
+                      <div key={tee.id} className="rounded-md border p-3">
+                        <div className="grid gap-2 md:grid-cols-5">
+                          <input
+                            value={edited.label ?? tee.label}
+                            onChange={(e) => updateEditedTee(tee.id, { label: e.target.value })}
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            placeholder="Label"
+                          />
+                          <input
+                            value={edited.meters ?? String(tee.meters)}
+                            onChange={(e) => updateEditedTee(tee.id, { meters: num(e.target.value, tee.meters) })}
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            placeholder="Meters"
+                            inputMode="numeric"
+                          />
+                          <input
+                            value={edited.par ?? String(tee.par)}
+                            onChange={(e) => updateEditedTee(tee.id, { par: num(e.target.value, tee.par) })}
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            placeholder="Par"
+                            inputMode="numeric"
+                          />
+                          <input
+                            value={edited.slope ?? String(tee.slope)}
+                            onChange={(e) => updateEditedTee(tee.id, { slope: num(e.target.value, tee.slope) })}
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            placeholder="Slope"
+                            inputMode="numeric"
+                          />
+
+                          <button
+                            onClick={() => removeTee(tee.id)}
+                            className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                {/* New tees (not yet saved) */}
+                {newTees.map((newTee) => (
+                  <div key={newTee.tempId} className="rounded-md border p-3">
+                    <div className="grid gap-2 md:grid-cols-5">
+                      <input
+                        value={newTee.label}
+                        onChange={(e) => updateNewTee(newTee.tempId, { label: e.target.value })}
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        placeholder="Label"
+                      />
+                      <input
+                        value={String(newTee.meters)}
+                        onChange={(e) => updateNewTee(newTee.tempId, { meters: num(e.target.value, newTee.meters) })}
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        placeholder="Meters"
+                        inputMode="numeric"
+                      />
+                      <input
+                        value={String(newTee.par)}
+                        onChange={(e) => updateNewTee(newTee.tempId, { par: num(e.target.value, newTee.par) })}
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        placeholder="Par"
+                        inputMode="numeric"
+                      />
+                      <input
+                        value={String(newTee.slope)}
+                        onChange={(e) => updateNewTee(newTee.tempId, { slope: num(e.target.value, newTee.slope) })}
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        placeholder="Slope"
+                        inputMode="numeric"
+                      />
+
+                      <button
+                        onClick={() => removeNewTee(newTee.tempId)}
+                        className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-4 rounded-lg border bg-white p-4">
+              <div className="text-sm font-medium text-gray-700">Add tee</div>
+
+              <div className="mt-3 grid gap-2 md:grid-cols-4">
+                <input
+                  value={teeLabel}
+                  onChange={(e) => setTeeLabel(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  placeholder="Label (e.g. Blue)"
+                />
+                <input
+                  value={teeMeters}
+                  onChange={(e) => setTeeMeters(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  placeholder="Meters"
+                  inputMode="numeric"
+                />
+                <input
+                  value={teePar}
+                  onChange={(e) => setTeePar(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  placeholder="Par"
+                  inputMode="numeric"
+                />
+                <input
+                  value={teeSlope}
+                  onChange={(e) => setTeeSlope(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  placeholder="Slope"
+                  inputMode="numeric"
+                />
+              </div>
+
+              <button
+                onClick={addNewTeeLine}
+                className="mt-3 rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              >
+                Add tee
+              </button>
+
+              <div className="mt-2 text-xs text-gray-500">
+                For now: meters / par / slope. We can add course rating later if you want.
+              </div>
+            </div>
+          </div>
+
+          {/* Save changes button */}
+          <div className="mt-5 flex gap-2">
+            <button
+              onClick={handleSaveChanges}
+              className="rounded-md bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+            >
+              {saved ? "Changes saved" : "Save changes"}
+            </button>
+            <button
+              onClick={() => setIsEditing(false)}
+              className="rounded-md border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
+
 
