@@ -11,7 +11,6 @@ import {
   isTripLocked,
   loadTrips,
   publishTripResult,
-  saveTrips,
   setTripCourse,
   setTripLogistics,
   updateTrip,
@@ -59,8 +58,9 @@ export default function AdminTripPage() {
   const params = useParams<{ id: string }>();
   const tripId = Number(params?.id);
 
-  const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [leaderboardText, setLeaderboardText] = useState<string>("");
   const [resultNotes, setResultNotes] = useState<string>("");
@@ -75,19 +75,19 @@ export default function AdminTripPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   useEffect(() => {
-    setTrips(loadTrips());
-  }, []);
-
-  useEffect(() => {
-    async function loadCoursesData() {
+    async function loadData() {
+      setLoading(true);
       try {
-        const coursesData = await loadCourses();
+        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load courses:", error);
+        console.warn("Failed to load data:", error);
+      } finally {
+        setLoading(false);
       }
     }
-    loadCoursesData();
+    loadData();
   }, []);
 
   const trip = useMemo(() => {
@@ -155,66 +155,112 @@ export default function AdminTripPage() {
   // Phase 4: Results published, trip archived
   const phase4 = hasResults;
 
-  function commit(next: Trip[]) {
+  async function commit(next: Trip[]) {
     setTrips(next);
-    saveTrips(next);
   }
 
-  function patchTrip(patch: Parameters<typeof updateTrip>[2]) {
-    commit(updateTrip(trips, tripIdSafe, patch));
+  async function patchTrip(patch: Parameters<typeof updateTrip>[2]) {
+    try {
+      const updated = await updateTrip(trips, tripIdSafe, patch);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to update trip:", error);
+      alert(`Failed to update trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function onSetCourse(courseId: string | null) {
+  async function onSetCourse(courseId: string | null) {
     // Reset tee when course changes
-    commit(setTripCourse(trips, tripIdSafe, courseId, null));
+    try {
+      const updated = await setTripCourse(trips, tripIdSafe, courseId, null);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to set course:", error);
+      alert(`Failed to set course: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function onSetTee(teeId: string | null) {
-    commit(setTripCourse(trips, tripIdSafe, tripSafe.courseId, teeId));
+  async function onSetTee(teeId: string | null) {
+    try {
+      const updated = await setTripCourse(trips, tripIdSafe, tripSafe.courseId, teeId);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to set tee:", error);
+      alert(`Failed to set tee: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function onSetLogistics(next: TripLogistics) {
-    commit(setTripLogistics(trips, tripIdSafe, next));
+  async function onSetLogistics(next: TripLogistics) {
+    try {
+      const updated = await setTripLogistics(trips, tripIdSafe, next);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to set logistics:", error);
+      alert(`Failed to set logistics: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function onCloseTripAndPostLogistics() {
+  async function onCloseTripAndPostLogistics() {
     // Close trip to new entrants and enable logistics
-    commit(updateTrip(trips, tripIdSafe, { status: "closed" }));
+    try {
+      const updated = await updateTrip(trips, tripIdSafe, { status: "closed" });
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to close trip:", error);
+      alert(`Failed to close trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function onReopenTrip() {
+  async function onReopenTrip() {
     // Reopen trip to allow more attendees (go back to Phase 1)
-    commit(updateTrip(trips, tripIdSafe, { status: "open" }));
+    try {
+      const updated = await updateTrip(trips, tripIdSafe, { status: "open" });
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to reopen trip:", error);
+      alert(`Failed to reopen trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function onEnableResults() {
+  async function onEnableResults() {
     // Manually enable results posting (Phase 3)
     // We'll use a workaround: set the trip date to today to enable Phase 3
     // This allows posting results even if the actual trip date hasn't passed
     const today = new Date().toISOString().split("T")[0];
     if (tripSafe.date > today) {
-      commit(updateTrip(trips, tripIdSafe, { date: today }));
+      try {
+        const updated = await updateTrip(trips, tripIdSafe, { date: today });
+        setTrips(updated);
+      } catch (error) {
+        console.error("Failed to enable results:", error);
+        alert(`Failed to enable results: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
-  function onPublish() {
+  async function onPublish() {
     const leaderboard = parseLeaderboard(leaderboardText);
-    // Update/publish results
-    const withResults = publishTripResult(trips, tripIdSafe, {
-      leaderboard,
-      notes: resultNotes || undefined,
-    });
-    // Archive the trip if not already archived (only on first publish)
-    if (tripSafe.status !== "archived") {
-      commit(updateTrip(withResults, tripIdSafe, { status: "archived" }));
-    } else {
-      // Just update results if already archived
-      commit(withResults);
+    try {
+      // Publish results (this also archives the trip)
+      const updated = await publishTripResult(trips, tripIdSafe, {
+        leaderboard,
+        notes: resultNotes || undefined,
+      });
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to publish results:", error);
+      alert(`Failed to publish results: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  function onClearResult() {
-    commit(clearTripResult(trips, tripIdSafe));
+  async function onClearResult() {
+    try {
+      const updated = await clearTripResult(trips, tripIdSafe);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to clear result:", error);
+      alert(`Failed to clear result: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   function onExportCsv() {

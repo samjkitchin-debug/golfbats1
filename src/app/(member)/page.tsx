@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { loadTrips, saveTrips, joinTrip, leaveTrip, setMyHandicapForTrip, type Trip } from "../lib/tripActions";
+import { loadTrips, joinTrip, leaveTrip, setMyHandicapForTrip, type Trip } from "../lib/tripActions";
 import { loadCourses, type Course } from "../lib/courseActions";
 import { getTripCourseText } from "../lib/tripDisplay";
 
 export default function HomePage() {
   const CURRENT_USER = "Sam";
 
-  const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
 
   const supabase = useMemo(() => {
@@ -21,28 +21,16 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    async function loadCoursesData() {
+    async function loadData() {
       try {
-        const coursesData = await loadCourses();
+        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load courses:", error);
+        console.warn("Failed to load data:", error);
       }
     }
-    loadCoursesData();
-  }, []);
-
-  useEffect(() => {
-    function syncTrips() {
-      setTrips(loadTrips());
-    }
-    syncTrips();
-    window.addEventListener("storage", syncTrips);
-    window.addEventListener("focus", syncTrips);
-    return () => {
-      window.removeEventListener("storage", syncTrips);
-      window.removeEventListener("focus", syncTrips);
-    };
+    loadData();
   }, []);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -139,23 +127,26 @@ export default function HomePage() {
     }
 
     // Add to trip and save handicap for this trip
-    setTrips((prev) => {
-      const updated = joinTrip(prev, nextTrip.id, CURRENT_USER);
-      const withHandicap = setMyHandicapForTrip(updated, nextTrip.id, CURRENT_USER, handicapValue);
-      saveTrips(withHandicap);
-      return withHandicap;
-    });
+    try {
+      const updated = await joinTrip(trips, nextTrip.id, handicapValue);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to join trip:", error);
+      alert(`Failed to join trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function handleImOut() {
+  async function handleImOut() {
     const ok = window.confirm("Are you sure?");
     if (!ok) return;
 
-    setTrips((prev) => {
-      const updated = leaveTrip(prev, nextTrip.id, CURRENT_USER);
-      saveTrips(updated);
-      return updated;
-    });
+    try {
+      const updated = await leaveTrip(trips, nextTrip.id);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to leave trip:", error);
+      alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   return (

@@ -8,7 +8,6 @@ import { loadCourses, type Course } from "../../lib/courseActions";
 import {
   createTrip,
   loadTrips,
-  saveTrips,
   sortTripsByDateAsc,
   type Trip,
 } from "../../lib/tripActions";
@@ -55,39 +54,48 @@ function tripStatus(trip: Trip): "Open" | "Closed" | "—" {
 export default function AdminTripsPage() {
   const router = useRouter();
 
-  const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadCoursesData() {
+    async function loadData() {
+      setLoading(true);
       try {
-        const coursesData = await loadCourses();
+        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load courses:", error);
+        console.warn("Failed to load data:", error);
+      } finally {
+        setLoading(false);
       }
     }
-    loadCoursesData();
+    loadData();
   }, []);
 
   const sortedTrips = useMemo(() => sortTripsByDateAsc(trips), [trips]);
 
-  function createNewTrip() {
-    const nextTrips = createTrip(trips, {
-      date: todayYmd(),
-      format: "Stableford",
-      capacity: 16,
-      ferry: "",
-      courseId: null,
-      teeId: null,
-    });
+  async function createNewTrip() {
+    try {
+      const nextTrips = await createTrip(trips, {
+        date: todayYmd(),
+        format: "Stableford",
+        capacity: 16,
+        ferry: "",
+        courseId: null,
+        teeId: null,
+      });
 
-    // Your Trip ids appear numeric in this file; keep your existing logic.
-    const newestId = nextTrips.reduce((m, t) => Math.max(m, t.id), 0);
+      // Find the newest trip
+      const newestId = nextTrips.reduce((m, t) => Math.max(m, t.id), 0);
 
-    setTrips(nextTrips);
-    saveTrips(nextTrips);
-    router.push(`/admin/trips/${newestId}`);
+      setTrips(nextTrips);
+      router.push(`/admin/trips/${newestId}`);
+    } catch (error) {
+      console.error("Failed to create trip:", error);
+      alert(`Failed to create trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   function courseName(trip: Trip) {
@@ -118,43 +126,49 @@ export default function AdminTripsPage() {
         </div>
       </div>
 
-      <section className="mt-4 overflow-hidden rounded-xl border bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b">
-            <tr className="text-gray-700">
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Course</th>
-              <th className="px-4 py-3">Format</th>
-              <th className="px-4 py-3">Capacity</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {sortedTrips.map((t) => (
-              <tr key={t.id} className="border-b last:border-b-0">
-                <td className="px-4 py-3 font-medium text-gray-900">{t.date}</td>
-                <td className="px-4 py-3 text-gray-800">{courseName(t)}</td>
-                <td className="px-4 py-3 text-gray-800">{t.format}</td>
-                <td className="px-4 py-3 text-gray-800">{t.capacity}</td>
-                <td className="px-4 py-3 text-gray-700">{tripStatus(t)}</td>
-                <td className="px-4 py-3 text-right">
-                  <Link
-                    href={`/admin/trips/${t.id}`}
-                    className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-800"
-                  >
-                    Edit
-                  </Link>
-                </td>
+      {loading ? (
+        <div className="mt-4 rounded-xl border bg-white p-5 text-sm text-gray-600">
+          Loading trips...
+        </div>
+      ) : (
+        <section className="mt-4 overflow-hidden rounded-xl border bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b">
+              <tr className="text-gray-700">
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Course</th>
+                <th className="px-4 py-3">Format</th>
+                <th className="px-4 py-3">Capacity</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3" />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sortedTrips.map((t) => (
+                <tr key={t.id} className="border-b last:border-b-0">
+                  <td className="px-4 py-3 font-medium text-gray-900">{t.date}</td>
+                  <td className="px-4 py-3 text-gray-800">{courseName(t)}</td>
+                  <td className="px-4 py-3 text-gray-800">{t.format}</td>
+                  <td className="px-4 py-3 text-gray-800">{t.capacity}</td>
+                  <td className="px-4 py-3 text-gray-700">{tripStatus(t)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      href={`/admin/trips/${t.id}`}
+                      className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-800"
+                    >
+                      Edit
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
-        {sortedTrips.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-gray-700">No trips yet.</div>
-        ) : null}
-      </section>
+          {sortedTrips.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-gray-700">No trips yet.</div>
+          ) : null}
+        </section>
+      )}
     </main>
   );
 }

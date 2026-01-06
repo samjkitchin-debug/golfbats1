@@ -10,7 +10,6 @@ import {
   joinTrip,
   leaveTrip,
   loadTrips,
-  saveTrips,
   setMyHandicapForTrip,
   type Trip,
 } from "../../../lib/tripActions";
@@ -27,7 +26,7 @@ export default function TripDetailPage() {
   
   const tripId = useMemo(() => toTripId(params?.id), [params?.id]);
 
-  const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
 
   const supabase = useMemo(() => {
@@ -38,28 +37,16 @@ export default function TripDetailPage() {
   }, []);
 
   useEffect(() => {
-    async function loadCoursesData() {
+    async function loadData() {
       try {
-        const coursesData = await loadCourses();
+        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load courses:", error);
+        console.warn("Failed to load data:", error);
       }
     }
-    loadCoursesData();
-  }, []);
-
-  useEffect(() => {
-    function syncTrips() {
-      setTrips(loadTrips());
-    }
-    syncTrips();
-    window.addEventListener("storage", syncTrips);
-    window.addEventListener("focus", syncTrips);
-    return () => {
-      window.removeEventListener("storage", syncTrips);
-      window.removeEventListener("focus", syncTrips);
-    };
+    loadData();
   }, []);
 
   const trip = useMemo(() => {
@@ -115,11 +102,6 @@ export default function TripDetailPage() {
   const tripIdSafe = trip.id;
   const locked = isTripLocked(trip);
 
-  function persist(updated: Trip[]) {
-    setTrips(updated);
-    saveTrips(updated);
-  }
-
   async function handleImIn() {
     // Prevent duplicate joins
     if (myEntry) return;
@@ -171,18 +153,29 @@ export default function TripDetailPage() {
     }
 
     // Add to trip and save handicap for this trip
-    const updated = joinTrip(trips, tripIdSafe, CURRENT_USER);
-    const withHandicap = setMyHandicapForTrip(updated, tripIdSafe, CURRENT_USER, handicapValue);
-    persist(withHandicap);
+    try {
+      const updated = await joinTrip(trips, tripIdSafe, handicapValue);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to join trip:", error);
+      alert(`Failed to join trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function handleImOut() {
+  async function handleImOut() {
     const ok = window.confirm("Are you sure?");
     if (!ok) return;
-    persist(leaveTrip(trips, tripIdSafe, CURRENT_USER));
+
+    try {
+      const updated = await leaveTrip(trips, tripIdSafe);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to leave trip:", error);
+      alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function saveHandicap() {
+  async function saveHandicap() {
     if (!myEntry) return;
 
     const trimmed = hcp.trim();
@@ -190,7 +183,13 @@ export default function TripDetailPage() {
 
     if (trimmed !== "" && !Number.isFinite(parsed)) return;
 
-    persist(setMyHandicapForTrip(trips, tripIdSafe, CURRENT_USER, trimmed === "" ? null : parsed));
+    try {
+      const updated = await setMyHandicapForTrip(trips, tripIdSafe, trimmed === "" ? null : parsed);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to save handicap:", error);
+      alert(`Failed to save handicap: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   const confirmed = trip.attendees

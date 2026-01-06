@@ -71,15 +71,9 @@ export type Trip = {
   updatedAtUtc?: string;
 };
 
-const LS_KEY = "golfbats:trips:v1";
-
 /* ================================
    Utilities
 ================================ */
-
-function canUseStorage() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
 
 function nowIsoUtc() {
   return new Date().toISOString();
@@ -148,20 +142,39 @@ function normalizeTrip(input: any): Trip {
 }
 
 /* ================================
-   Storage
+   Storage - Database API
 ================================ */
 
-export function loadTrips(): Trip[] {
-  if (!canUseStorage()) return [];
-  const raw = window.localStorage.getItem(LS_KEY);
-  const parsed = safeJsonParse<any[]>(raw, []);
-  if (!Array.isArray(parsed)) return [];
-  return parsed.map(normalizeTrip);
+/**
+ * Load trips from database API
+ * No longer uses localStorage - always fetches from server
+ */
+export async function loadTrips(): Promise<Trip[]> {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const res = await fetch("/api/trips");
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.warn("Failed to load trips:", json?.error);
+      return [];
+    }
+
+    const trips = json.trips || [];
+    return trips.map(normalizeTrip);
+  } catch (error) {
+    console.warn("Failed to load trips:", error);
+    return [];
+  }
 }
 
+/**
+ * @deprecated Trips are now saved via individual API calls (createTrip, updateTrip, etc.)
+ * This function does nothing.
+ */
 export function saveTrips(trips: Trip[]) {
-  if (!canUseStorage()) return;
-  window.localStorage.setItem(LS_KEY, JSON.stringify(trips));
+  // No-op: trips are stored in database via API routes
 }
 
 /* ================================
@@ -185,12 +198,9 @@ export function isTripLocked(trip: Trip) {
    CRUD reducers
 ================================ */
 
-export function createTrip(trips: Trip[], partial: Partial<Trip> = {}): Trip[] {
-  const maxId = trips.reduce((m, t) => Math.max(m, Number(t.id) || 0), 0);
-  const id = maxId + 1;
-
+export async function createTrip(trips: Trip[], partial: Partial<Trip> = {}): Promise<Trip[]> {
   const nextTrip: Trip = normalizeTrip({
-    id,
+    id: 0, // Temporary, will be set by server
     name: partial.name,
     date: partial.date ?? new Date().toISOString().slice(0, 10),
     format: partial.format ?? "Stableford",
@@ -215,52 +225,110 @@ export function createTrip(trips: Trip[], partial: Partial<Trip> = {}): Trip[] {
     updatedAtUtc: nowIsoUtc(),
   });
 
-  const out = [nextTrip, ...trips.map(normalizeTrip)];
-  saveTrips(out);
-  return out;
-}
-
-export function updateTrip(trips: Trip[], tripId: number, patch: Partial<Trip>): Trip[] {
-  const out = trips.map((t) => {
-    const base = normalizeTrip(t);
-    if (base.id !== tripId) return base;
-
-    // preserve nullability rules:
-    const next: Trip = normalizeTrip({
-      ...base,
-      ...patch,
-      id: base.id,
-
-      // courseId/teeId must remain string | null (not undefined)
-      courseId: patch.courseId === undefined ? base.courseId : patch.courseId,
-      teeId: patch.teeId === undefined ? base.teeId : patch.teeId,
-
-      // cutoffAt must be string | undefined (not null)
-      cutoffAt: patch.cutoffAt === (null as any) ? undefined : patch.cutoffAt,
-
-      logistics: patch.logistics ? { ...(base.logistics ?? {}), ...patch.logistics } : base.logistics,
-
-      updatedAtUtc: nowIsoUtc(),
+  try {
+    const res = await fetch("/api/trips", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ trip: nextTrip }),
     });
 
-    return next;
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to create trip.");
+    }
+
+    // Reload trips from server
+    return await loadTrips();
+  } catch (error) {
+    console.error("Failed to create trip:", error);
+    throw error;
+  }
+}
+
+export async function updateTrip(trips: Trip[], tripId: number, patch: Partial<Trip>): Promise<Trip[]> {
+  const base = trips.find((t) => normalizeTrip(t).id === tripId);
+  if (!base) {
+    throw new Error("Trip not found");
+  }
+
+  const normalized = normalizeTrip(base);
+
+  // preserve nullability rules:
+  const updated: Trip = normalizeTrip({
+    ...normalized,
+    ...patch,
+    id: normalized.id,
+
+    // courseId/teeId must remain string | null (not undefined)
+    courseId: patch.courseId === undefined ? normalized.courseId : patch.courseId,
+    teeId: patch.teeId === undefined ? normalized.teeId : patch.teeId,
+
+    // cutoffAt must be string | undefined (not null)
+    cutoffAt: patch.cutoffAt === (null as any) ? undefined : patch.cutoffAt,
+
+    logistics: patch.logistics ? { ...(normalized.logistics ?? {}), ...patch.logistics } : normalized.logistics,
+
+    updatedAtUtc: nowIsoUtc(),
   });
 
-  saveTrips(out);
-  return out;
+  try {
+    const res = await fetch("/api/trips", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ trip: updated, id: tripId }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to update trip.");
+    }
+
+    // Reload trips from server
+    return await loadTrips();
+  } catch (error) {
+    console.error("Failed to update trip:", error);
+    throw error;
+  }
 }
 
-export function deleteTrip(trips: Trip[], tripId: number): Trip[] {
-  const out = trips.filter((t) => normalizeTrip(t).id !== tripId);
-  saveTrips(out);
-  return out;
+export async function deleteTrip(trips: Trip[], tripId: number): Promise<Trip[]> {
+  try {
+    const res = await fetch("/api/trips", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: tripId }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to delete trip.");
+    }
+
+    // Reload trips from server
+    return await loadTrips();
+  } catch (error) {
+    console.error("Failed to delete trip:", error);
+    throw error;
+  }
 }
 
-export function setTripCourse(trips: Trip[], tripId: number, courseId: string | null, teeId: string | null) {
+export async function setTripCourse(
+  trips: Trip[],
+  tripId: number,
+  courseId: string | null,
+  teeId: string | null
+): Promise<Trip[]> {
   return updateTrip(trips, tripId, { courseId, teeId });
 }
 
-export function setTripLogistics(trips: Trip[], tripId: number, logistics: TripLogistics) {
+export async function setTripLogistics(
+  trips: Trip[],
+  tripId: number,
+  logistics: TripLogistics
+): Promise<Trip[]> {
   return updateTrip(trips, tripId, { logistics });
 }
 
@@ -268,85 +336,125 @@ export function setTripLogistics(trips: Trip[], tripId: number, logistics: TripL
    Results (Admin)
 ================================ */
 
-export function publishTripResult(
+export async function publishTripResult(
   trips: Trip[],
   tripId: number,
   payload: TripResult | { leaderboard: { name: string; points: number }[]; notes?: string }
-) {
-  const result: TripResult = {
-    leaderboard: (payload as any).leaderboard ?? [],
-    notes: (payload as any).notes,
-    publishedAt: nowIsoUtc(),
-  };
-  return updateTrip(trips, tripId, { result });
+): Promise<Trip[]> {
+  try {
+    const res = await fetch(`/api/trips/${tripId}/result`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        leaderboard: (payload as any).leaderboard ?? [],
+        notes: (payload as any).notes,
+      }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to publish result.");
+    }
+
+    // Reload trips from server
+    return await loadTrips();
+  } catch (error) {
+    console.error("Failed to publish result:", error);
+    throw error;
+  }
 }
 
-export function clearTripResult(trips: Trip[], tripId: number) {
-  return updateTrip(trips, tripId, { result: undefined });
+export async function clearTripResult(trips: Trip[], tripId: number): Promise<Trip[]> {
+  try {
+    const res = await fetch(`/api/trips/${tripId}/result`, {
+      method: "DELETE",
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to clear result.");
+    }
+
+    // Reload trips from server
+    return await loadTrips();
+  } catch (error) {
+    console.error("Failed to clear result:", error);
+    throw error;
+  }
 }
 
 /* ================================
    RSVP + handicap snapshot (Member)
 ================================ */
 
-export function joinTrip(trips: Trip[], tripId: number, memberName: string): Trip[] {
-  const name = normalizeName(memberName);
-  if (!name) return trips.map(normalizeTrip);
+export async function joinTrip(trips: Trip[], tripId: number, handicap: number | null = null): Promise<Trip[]> {
+  try {
+    const res = await fetch(`/api/trips/${tripId}/join`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ handicap }),
+    });
 
-  const out = trips.map((t) => {
-    const base = normalizeTrip(t);
-    if (base.id !== tripId) return base;
+    const json = await res.json().catch(() => ({}));
 
-    const existing = base.attendees.find((a) => a.name === name);
-    const attendees: Attendee[] = existing
-      ? base.attendees.map((a) => (a.name === name ? { ...a, status: "confirmed" } : a))
-      : [...base.attendees, { name, status: "confirmed", joinedAt: Date.now() }];
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to join trip.");
+    }
 
-    return normalizeTrip({ ...base, attendees, updatedAtUtc: nowIsoUtc() });
-  });
-
-  saveTrips(out);
-  return out;
+    // Reload trips from server
+    return await loadTrips();
+  } catch (error) {
+    console.error("Failed to join trip:", error);
+    throw error;
+  }
 }
 
-export function leaveTrip(trips: Trip[], tripId: number, memberName: string): Trip[] {
-  const name = normalizeName(memberName);
-  if (!name) return trips.map(normalizeTrip);
+export async function leaveTrip(trips: Trip[], tripId: number): Promise<Trip[]> {
+  try {
+    const res = await fetch(`/api/trips/${tripId}/leave`, {
+      method: "POST",
+    });
 
-  const out = trips.map((t) => {
-    const base = normalizeTrip(t);
-    if (base.id !== tripId) return base;
+    const json = await res.json().catch(() => ({}));
 
-    const attendees: Attendee[] = base.attendees.map((a) => (a.name === name ? { ...a, status: "out" } : a));
-    return normalizeTrip({ ...base, attendees, updatedAtUtc: nowIsoUtc() });
-  });
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to leave trip.");
+    }
 
-  saveTrips(out);
-  return out;
+    // Reload trips from server
+    return await loadTrips();
+  } catch (error) {
+    console.error("Failed to leave trip:", error);
+    throw error;
+  }
 }
 
-export function setMyHandicapForTrip(
+export async function setMyHandicapForTrip(
   trips: Trip[],
   tripId: number,
-  memberName: string,
   handicap: number | null
-): Trip[] {
-  const name = normalizeName(memberName);
-  if (!name) return trips.map(normalizeTrip);
+): Promise<Trip[]> {
+  try {
+    const res = await fetch(`/api/trips/${tripId}/handicap`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ handicap }),
+    });
 
-  const out = trips.map((t) => {
-    const base = normalizeTrip(t);
-    if (base.id !== tripId) return base;
+    const json = await res.json().catch(() => ({}));
 
-    const attendees: Attendee[] = base.attendees.map((a) =>
-      a.name === name ? { ...a, handicapForTrip: handicap } : a
-    );
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to update handicap.");
+    }
 
-    return normalizeTrip({ ...base, attendees, updatedAtUtc: nowIsoUtc() });
-  });
-
-  saveTrips(out);
-  return out;
+    // Reload trips from server
+    return await loadTrips();
+  } catch (error) {
+    console.error("Failed to update handicap:", error);
+    throw error;
+  }
 }
 
 /* ================================

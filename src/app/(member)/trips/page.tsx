@@ -7,32 +7,20 @@ import { getTripCourseText } from "../../lib/tripDisplay";
 import { loadTrips, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
 
 export default function TripsListPage() {
-  const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
 
   useEffect(() => {
-    async function loadCoursesData() {
+    async function loadData() {
       try {
-        const coursesData = await loadCourses();
+        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load courses:", error);
+        console.warn("Failed to load data:", error);
       }
     }
-    loadCoursesData();
-  }, []);
-
-  useEffect(() => {
-    function syncTrips() {
-      setTrips(loadTrips());
-    }
-    syncTrips();
-    window.addEventListener("storage", syncTrips);
-    window.addEventListener("focus", syncTrips);
-    return () => {
-      window.removeEventListener("storage", syncTrips);
-      window.removeEventListener("focus", syncTrips);
-    };
+    loadData();
   }, []);
 
   const today = new Date().toISOString().slice(0, 10);

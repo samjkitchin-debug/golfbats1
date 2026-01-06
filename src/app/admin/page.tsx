@@ -8,7 +8,6 @@ import {
   createTrip,
   deleteTrip,
   loadTrips,
-  saveTrips,
   sortTripsByDateAsc,
   type Trip,
 } from "../lib/tripActions";
@@ -32,7 +31,7 @@ export default function AdminPage() {
 
   const [currentUser, setCurrentUser] = useState<string>("Admin");
 
-  const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
 
   const upcomingTrips = useMemo(() => {
@@ -46,19 +45,16 @@ export default function AdminPage() {
   }, [trips]);
 
   useEffect(() => {
-    setTrips(loadTrips());
-  }, []);
-
-  useEffect(() => {
-    async function loadCoursesData() {
+    async function loadData() {
       try {
-        const coursesData = await loadCourses();
+        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load courses:", error);
+        console.warn("Failed to load data:", error);
       }
     }
-    loadCoursesData();
+    loadData();
   }, []);
 
   useEffect(() => {
@@ -73,31 +69,39 @@ export default function AdminPage() {
     })();
   }, []);
 
-  function createNewTrip() {
+  async function createNewTrip() {
     // Your tripActions.createTrip assigns the new id internally.
     // We can reliably navigate to the newest trip by taking the max id after creation.
-    const nextTrips = createTrip(trips, {
-      date: todayYmd(),
-      format: "Stableford",
-      capacity: 16,
-      ferry: "",
-      courseId: null,
-      teeId: null,
-    });
+    try {
+      const nextTrips = await createTrip(trips, {
+        date: todayYmd(),
+        format: "Stableford",
+        capacity: 16,
+        ferry: "",
+        courseId: null,
+        teeId: null,
+      });
 
-    const newestId = nextTrips.reduce((m, t) => Math.max(m, t.id), 0);
+      const newestId = nextTrips.reduce((m, t) => Math.max(m, t.id), 0);
 
-    setTrips(nextTrips);
-    saveTrips(nextTrips);
-    router.push(`/admin/trips/${newestId}`);
+      setTrips(nextTrips);
+      router.push(`/admin/trips/${newestId}`);
+    } catch (error) {
+      console.error("Failed to create trip:", error);
+      alert(`Failed to create trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  function handleDeleteTrip(tripId: number) {
+  async function handleDeleteTrip(tripId: number) {
     const ok = window.confirm("Delete this trip? This cannot be undone.");
     if (!ok) return;
-    const nextTrips = deleteTrip(trips, tripId);
-    setTrips(nextTrips);
-    saveTrips(nextTrips);
+    try {
+      const nextTrips = await deleteTrip(trips, tripId);
+      setTrips(nextTrips);
+    } catch (error) {
+      console.error("Failed to delete trip:", error);
+      alert(`Failed to delete trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   return (

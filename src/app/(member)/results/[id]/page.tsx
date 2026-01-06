@@ -16,32 +16,20 @@ export default function ResultDetailPage() {
   const params = useParams<{ id: string }>();
   const tripId = useMemo(() => toTripId(params?.id), [params?.id]);
 
-  const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
 
   useEffect(() => {
-    async function loadCoursesData() {
+    async function loadData() {
       try {
-        const coursesData = await loadCourses();
+        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load courses:", error);
+        console.warn("Failed to load data:", error);
       }
     }
-    loadCoursesData();
-  }, []);
-
-  useEffect(() => {
-    function syncTrips() {
-      setTrips(loadTrips());
-    }
-    syncTrips();
-    window.addEventListener("storage", syncTrips);
-    window.addEventListener("focus", syncTrips);
-    return () => {
-      window.removeEventListener("storage", syncTrips);
-      window.removeEventListener("focus", syncTrips);
-    };
+    loadData();
   }, []);
 
   const trip = useMemo(() => {

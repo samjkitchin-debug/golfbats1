@@ -113,3 +113,179 @@ export async function GET() {
   }
 }
 
+/**
+ * POST /api/trips
+ * Create or update a trip
+ * Body: { trip: Trip, id?: number } - if id provided, updates; otherwise creates
+ */
+export async function POST(req: Request) {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const body = await req.json();
+    const { trip, id } = body as { trip: any; id?: number };
+
+    if (!trip) {
+      return NextResponse.json({ error: "Trip data is required." }, { status: 400 });
+    }
+
+    // Get club_id
+    const clubSlug = process.env.NEXT_PUBLIC_CLUB_SLUG || "golfbats";
+    const { data: clubData } = await supabase
+      .from("clubs")
+      .select("id")
+      .eq("slug", clubSlug)
+      .single();
+
+    if (!clubData) {
+      return NextResponse.json(
+        { error: `Club not found for slug: ${clubSlug}` },
+        { status: 400 }
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    if (id) {
+      // Update existing trip - find by legacy_id
+      const { data: existingTrip } = await supabase
+        .from("trips")
+        .select("id")
+        .eq("legacy_id", id)
+        .single();
+
+      if (!existingTrip) {
+        return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+      }
+
+      const updateData: any = {
+        trip_date: trip.date,
+        format: trip.format,
+        ferry: trip.ferry || null,
+        capacity: trip.capacity,
+        status: trip.status,
+        cutoff_at: trip.cutoffAt ? new Date(trip.cutoffAt).toISOString() : null,
+        course_id: trip.courseId || null,
+        tee_id: trip.teeId || null,
+        meeting_point: trip.logistics?.meetingPoint || null,
+        meet_time: trip.logistics?.meetTime || null,
+        ferry_details: trip.logistics?.ferryDetails || null,
+        notes: trip.logistics?.notes || null,
+        updated_at: now,
+      };
+
+      const { error: updateError } = await supabase
+        .from("trips")
+        .update(updateData)
+        .eq("id", existingTrip.id);
+
+      if (updateError) {
+        return NextResponse.json(
+          { error: updateError.message || "Failed to update trip." },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json({ ok: true });
+    } else {
+      // Create new trip
+      // Get next legacy_id
+      const { data: maxTrip } = await supabase
+        .from("trips")
+        .select("legacy_id")
+        .order("legacy_id", { ascending: false })
+        .limit(1)
+        .single();
+
+      const nextLegacyId = maxTrip?.legacy_id ? Number(maxTrip.legacy_id) + 1 : 1;
+
+      const tripId = crypto.randomUUID();
+      const insertData: any = {
+        id: tripId,
+        club_id: clubData.id,
+        legacy_id: nextLegacyId,
+        trip_date: trip.date || new Date().toISOString().slice(0, 10),
+        format: trip.format || "Stableford",
+        ferry: trip.ferry || null,
+        capacity: trip.capacity || 16,
+        status: trip.status || "open",
+        cutoff_at: trip.cutoffAt ? new Date(trip.cutoffAt).toISOString() : null,
+        course_id: trip.courseId || null,
+        tee_id: trip.teeId || null,
+        meeting_point: trip.logistics?.meetingPoint || null,
+        meet_time: trip.logistics?.meetTime || null,
+        ferry_details: trip.logistics?.ferryDetails || null,
+        notes: trip.logistics?.notes || null,
+        created_at: now,
+        updated_at: now,
+      };
+
+      const { error: insertError } = await supabase.from("trips").insert(insertData);
+
+      if (insertError) {
+        return NextResponse.json(
+          { error: insertError.message || "Failed to create trip." },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json({ ok: true, id: nextLegacyId });
+    }
+  } catch (error) {
+    console.error("Post trips error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "An error occurred." },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/trips
+ * Delete a trip
+ * Body: { id: number } - legacy_id
+ */
+export async function DELETE(req: Request) {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const body = await req.json();
+    const { id } = body as { id?: number };
+
+    if (!id) {
+      return NextResponse.json({ error: "Trip ID is required." }, { status: 400 });
+    }
+
+    // Find trip by legacy_id
+    const { data: trip } = await supabase
+      .from("trips")
+      .select("id")
+      .eq("legacy_id", id)
+      .single();
+
+    if (!trip) {
+      return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+    }
+
+    // Delete related data first
+    await supabase.from("trip_attendees").delete().eq("trip_id", trip.id);
+    await supabase.from("trip_results").delete().eq("trip_id", trip.id);
+
+    // Delete trip
+    const { error: deleteError } = await supabase.from("trips").delete().eq("id", trip.id);
+
+    if (deleteError) {
+      return NextResponse.json(
+        { error: deleteError.message || "Failed to delete trip." },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Delete trips error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "An error occurred." },
+      { status: 500 }
+    );
+  }
+}
+
