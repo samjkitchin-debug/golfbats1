@@ -11,6 +11,11 @@
 | courses               | website                   | text                     | YES         |
 | courses               | created_at                | timestamp with time zone | NO          |
 | courses               | updated_at                | timestamp with time zone | NO          |
+| dev_notes             | id                        | uuid                     | NO          |
+| dev_notes             | user_id                   | uuid                     | NO          |
+| dev_notes             | note                      | text                     | NO          |
+| dev_notes             | created_at                | timestamp with time zone | NO          |
+| dev_notes             | updated_at                | timestamp with time zone | NO          |
 | member_passports      | id                        | uuid                     | NO          |
 | member_passports      | user_id                   | uuid                     | NO          |
 | member_passports      | passport_full_name        | text                     | NO          |
@@ -80,8 +85,3 @@
 | trips                 | created_at                | timestamp with time zone | NO          |
 | trips                 | updated_at                | timestamp with time zone | NO          |
 | trips                 | legacy_id                 | integer                  | YES         |
-| dev_notes             | id                        | uuid                     | NO          |
-| dev_notes             | user_id                   | uuid                     | NO          |
-| dev_notes             | note                      | text                     | NO          |
-| dev_notes             | created_at                | timestamp with time zone | NO          |
-| dev_notes             | updated_at                | timestamp with time zone | NO          |

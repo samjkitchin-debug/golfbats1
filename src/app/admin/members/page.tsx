@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
+type MemberStatus = "pending" | "active" | string;
+
 type MemberRow = {
   id: string;
   email: string | null;
@@ -13,6 +15,7 @@ type MemberRow = {
   declared_handicap: number | null;
   created_at: string | null;
   last_seen: string | null;
+  status: MemberStatus;
 };
 
 type PassportStatus = {
@@ -45,6 +48,7 @@ export default function AdminMembersPage() {
   const [passportDetails, setPassportDetails] = useState<PassportDetails | null>(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+  const [approvingMemberId, setApprovingMemberId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -53,7 +57,7 @@ export default function AdminMembersPage() {
 
       const { data: rows, error: membersError } = await supabase
         .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status")
         .order("created_at", { ascending: false });
 
       if (membersError) {
@@ -148,7 +152,7 @@ export default function AdminMembersPage() {
       // Reload members list
       const { data: rows, error: membersError } = await supabase
         .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status")
         .order("created_at", { ascending: false });
 
       if (membersError) {
@@ -160,6 +164,45 @@ export default function AdminMembersPage() {
       setError(e instanceof Error ? e.message : "Failed to delete member.");
     } finally {
       setDeletingMemberId(null);
+    }
+  }
+
+  async function handleApproveMember(memberId: string, memberName: string) {
+    const confirmed = window.confirm(
+      `Approve ${memberName}? This will grant them full access to the app.`
+    );
+
+    if (!confirmed) return;
+
+    setApprovingMemberId(memberId);
+    setError(null);
+
+    try {
+      const res = await fetch(`/admin/members/${memberId}/approve`, {
+        method: "POST",
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to approve member.");
+      }
+
+      // Reload members list
+      const { data: rows, error: membersError } = await supabase
+        .from("members")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status")
+        .order("created_at", { ascending: false });
+
+      if (membersError) {
+        setError(membersError.message);
+      } else {
+        setMembers(rows ?? []);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to approve member.");
+    } finally {
+      setApprovingMemberId(null);
     }
   }
 
@@ -189,6 +232,7 @@ export default function AdminMembersPage() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Nat.</th>
                 <th className="px-4 py-3">HCP</th>
+                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Passport</th>
                 <th className="px-4 py-3">Created</th>
                 <th className="px-4 py-3">Last seen</th>
@@ -201,6 +245,7 @@ export default function AdminMembersPage() {
                 const passportStatus = passportStatuses[m.id];
                 const hasCompletePassport = passportStatus?.isComplete ?? false;
                 const hasPassport = passportStatus?.hasPassport ?? false;
+                const isActive = (m.status ?? "pending") === "active";
 
                 return (
                   <tr key={m.id} className="border-b last:border-b-0">
@@ -209,6 +254,17 @@ export default function AdminMembersPage() {
                     <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
                     <td className="px-4 py-3 text-gray-800">
                       {m.declared_handicap ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {isActive ? (
+                        <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                          Pending
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {hasCompletePassport ? (
@@ -239,6 +295,15 @@ export default function AdminMembersPage() {
                             className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
                           >
                             View
+                          </button>
+                        )}
+                        {!isActive && (
+                          <button
+                            onClick={() => handleApproveMember(m.id, name)}
+                            disabled={approvingMemberId === m.id}
+                            className="rounded-md border border-green-300 bg-white px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {approvingMemberId === m.id ? "Approving..." : "Approve"}
                           </button>
                         )}
                         <button
