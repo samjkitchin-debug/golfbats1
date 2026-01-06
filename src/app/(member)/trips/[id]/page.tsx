@@ -290,7 +290,7 @@ export default function TripDetailPage() {
           </div>
         )}
 
-        <div className="mt-2 text-xs text-gray-500">Stored on your attendee record for this trip (localStorage).</div>
+        <div className="mt-2 text-xs text-gray-500">Stored on your attendee record for this trip.</div>
       </section>
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">

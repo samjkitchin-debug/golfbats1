@@ -1,14 +1,16 @@
 /**
- * Trip Actions (local-first UI cache)
+ * Trip Actions (database-backed)
  *
  * This file MUST export the functions imported by:
  * - /admin/page.tsx
  * - /admin/trips/[id]/page.tsx
  * - /(member)/trips/[id]/page.tsx
  *
- * Keep it boring and stable:
- * - localStorage is the UI source of truth
- * - reducers return nextTrips
+ * All operations now use the database API:
+ * - loadTrips() fetches from /api/trips
+ * - createTrip, updateTrip, deleteTrip use POST/DELETE to /api/trips
+ * - joinTrip, leaveTrip, setMyHandicapForTrip use /api/trips/[id]/* routes
+ * - publishTripResult, clearTripResult use /api/trips/[id]/result
  * - types match pages (cutoffAt is string | undefined; courseId/teeId are string | null)
  */
 
