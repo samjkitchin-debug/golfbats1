@@ -38,6 +38,22 @@ function isPublicPath(pathname: string) {
   return false;
 }
 
+function isProfileEditPath(pathname: string) {
+  // Allow access to profile editing pages without profile check
+  return pathname === "/me/edit" || pathname === "/me/edit/save" || pathname.startsWith("/me/profile-photo") || pathname.startsWith("/me/passport");
+}
+
+async function hasCompleteProfile(supabase: ReturnType<typeof createServerClient>, userId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("members")
+    .select("full_name, display_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  // Profile is complete if member row exists and has at least full_name or display_name
+  return !!(data && (data.full_name || data.display_name));
+}
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
@@ -77,6 +93,18 @@ export async function middleware(req: NextRequest) {
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname + search);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Check if profile is complete (unless on profile edit pages)
+  if (!isProfileEditPath(pathname)) {
+    const profileComplete = await hasCompleteProfile(supabase, user.id);
+    
+    if (!profileComplete) {
+      const profileUrl = req.nextUrl.clone();
+      profileUrl.pathname = "/me/edit";
+      profileUrl.searchParams.set("required", "true");
+      return NextResponse.redirect(profileUrl);
+    }
   }
 
   return res;

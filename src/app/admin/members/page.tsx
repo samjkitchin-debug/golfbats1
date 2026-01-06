@@ -44,6 +44,7 @@ export default function AdminMembersPage() {
   const [viewingMemberId, setViewingMemberId] = useState<string | null>(null);
   const [passportDetails, setPassportDetails] = useState<PassportDetails | null>(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -123,6 +124,45 @@ export default function AdminMembersPage() {
     setPassportDetails(null);
   }
 
+  async function handleDeleteMember(memberId: string, memberName: string) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${memberName}? This action cannot be undone. All associated data (passport, trip attendees, etc.) will also be deleted.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingMemberId(memberId);
+    setError(null);
+
+    try {
+      const res = await fetch(`/admin/members/${memberId}/delete`, {
+        method: "DELETE",
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to delete member.");
+      }
+
+      // Reload members list
+      const { data: rows, error: membersError } = await supabase
+        .from("members")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen")
+        .order("created_at", { ascending: false });
+
+      if (membersError) {
+        setError(membersError.message);
+      } else {
+        setMembers(rows ?? []);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to delete member.");
+    } finally {
+      setDeletingMemberId(null);
+    }
+  }
+
   return (
     <main className="mx-auto w-full max-w-5xl px-4 pb-10">
       <div className="mt-6 flex items-center justify-between">
@@ -192,14 +232,23 @@ export default function AdminMembersPage() {
                       {m.last_seen ? new Date(m.last_seen).toLocaleString("en-SG") : "—"}
                     </td>
                     <td className="px-4 py-3">
-                      {hasPassport && (
+                      <div className="flex items-center gap-2">
+                        {hasPassport && (
+                          <button
+                            onClick={() => handleViewPassport(m.id)}
+                            className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                          >
+                            View
+                          </button>
+                        )}
                         <button
-                          onClick={() => handleViewPassport(m.id)}
-                          className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                          onClick={() => handleDeleteMember(m.id, name)}
+                          disabled={deletingMemberId === m.id}
+                          className="rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          View
+                          {deletingMemberId === m.id ? "Deleting..." : "Delete"}
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 );

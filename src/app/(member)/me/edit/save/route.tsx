@@ -66,6 +66,14 @@ export async function POST(req: Request) {
     const display_name = asTrimmedString(json.display_name);
     const nationality = asTrimmedString(json.nationality);
 
+    // Validate that at least one name is provided
+    if (!full_name && !display_name) {
+      return NextResponse.json(
+        { error: "Please provide either a full name or display name." },
+        { status: 400 }
+      );
+    }
+
     const declared_handicap = asNullableNumber(json.declared_handicap);
     if (
       declared_handicap !== null &&

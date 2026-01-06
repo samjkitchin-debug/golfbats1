@@ -31,6 +31,14 @@ export default function MeEditPage() {
     );
   }, []);
 
+  // Check if profile creation is required (from URL param)
+  const [profileRequired, setProfileRequired] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setProfileRequired(params.get("required") === "true");
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,9 +181,19 @@ export default function MeEditPage() {
       return;
     }
 
+    const trimmedFullName = fullName.trim();
+    const trimmedDisplayName = displayName.trim();
+
+    // Validate that at least one name is provided
+    if (!trimmedFullName && !trimmedDisplayName) {
+      setSaving(false);
+      setError("Please provide either a full name or display name.");
+      return;
+    }
+
     const body: SaveBody = {
-      full_name: fullName.trim(),
-      display_name: displayName.trim(),
+      full_name: trimmedFullName,
+      display_name: trimmedDisplayName,
       nationality: nationality.trim(),
       declared_handicap: handicapNum,
     };
@@ -216,7 +234,12 @@ export default function MeEditPage() {
         }
       }
 
-      router.push("/me");
+      // If profile was required, redirect to home; otherwise go to profile page
+      if (profileRequired) {
+        router.push("/");
+      } else {
+        router.push("/me");
+      }
       router.refresh();
     } catch (e: any) {
       setError(e?.message || "Failed to save profile.");
@@ -229,17 +252,28 @@ export default function MeEditPage() {
     <div className="px-4 pb-24 pt-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Edit profile</h1>
-          <p className="mt-1 text-sm">Update your details for GolfBats.</p>
+          <h1 className="text-2xl font-bold">{profileRequired ? "Create profile" : "Edit profile"}</h1>
+          <p className="mt-1 text-sm">{profileRequired ? "Please complete your profile to continue." : "Update your details for GolfBats."}</p>
         </div>
 
-        <Link
-          href="/me"
-          className="rounded-xl border border-black px-4 py-2 text-sm font-semibold"
-        >
-          Cancel
-        </Link>
+        {!profileRequired && (
+          <Link
+            href="/me"
+            className="rounded-xl border border-black px-4 py-2 text-sm font-semibold"
+          >
+            Cancel
+          </Link>
+        )}
       </div>
+
+      {profileRequired ? (
+        <div className="mt-4 rounded-2xl border-2 border-amber-500 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">Profile Required</p>
+          <p className="mt-1 text-sm text-amber-800">
+            Please complete your profile before continuing. At least a full name or display name is required.
+          </p>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mt-4 rounded-2xl border border-black p-4">
