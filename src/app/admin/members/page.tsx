@@ -168,12 +168,6 @@ export default function AdminMembersPage() {
   }
 
   async function handleApproveMember(memberId: string, memberName: string) {
-    const confirmed = window.confirm(
-      `Approve ${memberName}? This will grant them full access to the app.`
-    );
-
-    if (!confirmed) return;
-
     setApprovingMemberId(memberId);
     setError(null);
 
