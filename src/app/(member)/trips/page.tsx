@@ -66,22 +66,44 @@ export default function TripsListPage() {
               const signupOpenDateYmd = isPhase0 ? new Date(signupOpenAt).toISOString().slice(0, 10) : null;
 
               return (
-                <li key={t.id} className="py-3">
+                <li key={t.id} className="py-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-gray-900">{t.name || title}</div>
-                      {t.name && (
-                        <div className="mt-0.5 text-sm text-gray-600">{title}</div>
-                      )}
-                      {detail ? (
-                        <div className="mt-0.5 text-xs text-gray-500">{detail}</div>
-                      ) : null}
-                      <div className="mt-1 text-sm text-gray-700">
-                        {t.date} · {t.format}
-                        {t.ferry ? ` · Ferry ${t.ferry}` : ""}
-                        {t.status === "closed" ? " · Closed" : isPhase0 ? "" : t.status === "open" ? " · Open for sign up" : ""}
-                        {isPhase0 && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
+                      {/* Trip Name - Priority 1 */}
+                      <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
+                      
+                      {/* Course - Priority 2 */}
+                      <div className="mt-1.5">
+                        <div className="text-base font-medium text-gray-800">{title || "Course TBD"}</div>
+                        {detail && (
+                          <div className="mt-0.5 text-sm text-gray-600">{detail}</div>
+                        )}
                       </div>
+                      
+                      {/* Date - Priority 3 */}
+                      <div className="mt-2 text-base text-gray-900 font-medium">
+                        {t.date}
+                      </div>
+                      
+                      {/* Secondary Info */}
+                      <div className="mt-2 text-sm text-gray-600">
+                        {t.format && <span>{t.format}</span>}
+                        {t.format && t.ferry && " · "}
+                        {t.ferry && <span>Ferry {t.ferry}</span>}
+                      </div>
+                      
+                      {/* Status */}
+                      <div className="mt-1.5 text-sm">
+                        {t.status?.toLowerCase() === "closed" ? (
+                          <span className="text-orange-600 font-medium">Closed</span>
+                        ) : isPhase0 && signupOpenDateYmd ? (
+                          <span className="text-blue-600 font-medium">Signups open {signupOpenDateYmd}</span>
+                        ) : t.status?.toLowerCase() === "open" ? (
+                          <span className="text-green-600 font-medium">Open for sign up</span>
+                        ) : null}
+                      </div>
+                      
+                      {/* Phase 0 Info Box */}
                       {isPhase0 && (
                         <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200 p-2">
                           <div className="text-xs text-blue-900">
@@ -89,14 +111,17 @@ export default function TripsListPage() {
                           </div>
                         </div>
                       )}
+                      
+                      {/* Logistics */}
                       {t.logistics?.meetingPoint || t.logistics?.meetTime ? (
-                        <div className="mt-1 text-xs text-gray-600">
-                          {t.logistics.meetingPoint && <span>📍 {t.logistics.meetingPoint}</span>}
-                          {t.logistics.meetingPoint && t.logistics.meetTime && " · "}
-                          {t.logistics.meetTime && <span>🕐 {t.logistics.meetTime}</span>}
+                        <div className="mt-2 text-xs text-gray-600">
+                          {t.logistics.meetingPoint && <div>📍 {t.logistics.meetingPoint}</div>}
+                          {t.logistics.meetTime && <div>🕐 {t.logistics.meetTime}</div>}
                         </div>
                       ) : null}
-                      <div className="mt-1 text-xs text-gray-500">
+                      
+                      {/* Confirmed Count */}
+                      <div className="mt-2 text-xs text-gray-500">
                         {confirmedCount(t)} confirmed
                       </div>
                     </div>
@@ -127,19 +152,30 @@ export default function TripsListPage() {
               const top3 = t.result?.leaderboard?.slice(0, 3) ?? [];
 
               return (
-                <li key={t.id} className="py-3 space-y-1">
-                  <div className="flex items-start justify-between gap-3">
+                <li key={t.id} className="py-4 space-y-2">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-gray-900">{t.name || title}</div>
-                      {t.name && (
-                        <div className="mt-0.5 text-sm text-gray-600">{title}</div>
-                      )}
-                      {detail ? (
-                        <div className="mt-0.5 text-xs text-gray-500">{detail}</div>
-                      ) : null}
-                      <div className="mt-1 text-sm text-gray-700">
-                        {t.date} · {t.format}
-                        {t.ferry ? ` · Ferry ${t.ferry}` : ""}
+                      {/* Trip Name - Priority 1 */}
+                      <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
+                      
+                      {/* Course - Priority 2 */}
+                      <div className="mt-1.5">
+                        <div className="text-base font-medium text-gray-800">{title || "Course TBD"}</div>
+                        {detail && (
+                          <div className="mt-0.5 text-sm text-gray-600">{detail}</div>
+                        )}
+                      </div>
+                      
+                      {/* Date - Priority 3 */}
+                      <div className="mt-2 text-base text-gray-900 font-medium">
+                        {t.date}
+                      </div>
+                      
+                      {/* Secondary Info */}
+                      <div className="mt-2 text-sm text-gray-600">
+                        {t.format && <span>{t.format}</span>}
+                        {t.format && t.ferry && " · "}
+                        {t.ferry && <span>Ferry {t.ferry}</span>}
                       </div>
                     </div>
 
