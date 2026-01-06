@@ -234,8 +234,6 @@ export default function AdminMembersPage() {
                 <th className="px-4 py-3">HCP</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Passport</th>
-                <th className="px-4 py-3">Created</th>
-                <th className="px-4 py-3">Last seen</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -280,12 +278,6 @@ export default function AdminMembersPage() {
                           None
                         </span>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      {m.created_at ? new Date(m.created_at).toLocaleString("en-SG") : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      {m.last_seen ? new Date(m.last_seen).toLocaleString("en-SG") : "—"}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
