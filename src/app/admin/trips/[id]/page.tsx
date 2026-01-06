@@ -79,17 +79,19 @@ export default function AdminTripPage() {
     async function loadData() {
       setLoading(true);
       try {
-        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        // Bypass cache to ensure we get the latest trip data
+        const [tripsData, coursesData] = await Promise.all([loadTrips(true), loadCourses()]);
+        console.log("Admin trip page: loaded", tripsData.length, "trips, looking for ID", tripId);
         setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load data:", error);
+        console.error("Failed to load data:", error);
       } finally {
         setLoading(false);
       }
     }
     loadData();
-  }, []);
+  }, [tripId]);
 
   const trip = useMemo(() => {
     if (!Number.isFinite(tripId)) return undefined;

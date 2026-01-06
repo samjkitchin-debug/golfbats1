@@ -202,7 +202,10 @@ export function isTripLocked(trip: Trip) {
    CRUD reducers
 ================================ */
 
-export async function createTrip(trips: Trip[], partial: Partial<Trip> = {}): Promise<Trip[]> {
+export async function createTrip(
+  trips: Trip[],
+  partial: Partial<Trip> = {}
+): Promise<{ trips: Trip[]; newTripId: number | null }> {
   const nextTrip: Trip = normalizeTrip({
     id: 0, // Temporary, will be set by server
     name: partial.name,
@@ -242,17 +245,25 @@ export async function createTrip(trips: Trip[], partial: Partial<Trip> = {}): Pr
       throw new Error(json?.error || "Failed to create trip.");
     }
 
-    // The API returns the new trip's legacy_id, but we need to reload to get full trip data
+    // The API returns the new trip's legacy_id in json.id
+    const newTripId = json?.id;
+    
     // Bypass cache to ensure we get the newly created trip
     const freshRes = await fetch("/api/trips?bypassCache=true");
     const freshJson = await freshRes.json().catch(() => ({}));
     
     if (freshRes.ok && freshJson.trips) {
-      return freshJson.trips.map(normalizeTrip);
+      const allTrips = freshJson.trips.map(normalizeTrip);
+      // Verify the new trip is in the list
+      if (newTripId && !allTrips.find(t => t.id === newTripId)) {
+        console.warn("New trip ID", newTripId, "not found in reloaded trips");
+      }
+      return { trips: allTrips, newTripId: newTripId || null };
     }
     
     // Fallback to normal load (shouldn't happen, but just in case)
-    return await loadTrips();
+    const fallbackTrips = await loadTrips();
+    return { trips: fallbackTrips, newTripId: newTripId || null };
   } catch (error) {
     console.error("Failed to create trip:", error);
     throw error;

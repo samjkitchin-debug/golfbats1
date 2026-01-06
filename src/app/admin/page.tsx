@@ -74,10 +74,8 @@ export default function AdminPage() {
   }, []);
 
   async function createNewTrip() {
-    // Your tripActions.createTrip assigns the new id internally.
-    // We can reliably navigate to the newest trip by taking the max id after creation.
     try {
-      const nextTrips = await createTrip(trips, {
+      const result = await createTrip(trips, {
         date: todayYmd(),
         format: "Stableford",
         capacity: 16,
@@ -86,10 +84,26 @@ export default function AdminPage() {
         teeId: null,
       });
 
-      const newestId = nextTrips.reduce((m, t) => Math.max(m, t.id), 0);
+      setTrips(result.trips);
+      
+      // Use the ID returned from the API
+      if (result.newTripId) {
+        router.push(`/admin/trips/${result.newTripId}`);
+      } else {
+        // Fallback: find the newest trip by created_at timestamp
+        const newestTrip = result.trips.reduce((newest, t) => {
+          if (!newest) return t;
+          const newestTime = newest.createdAtUtc ? new Date(newest.createdAtUtc).getTime() : 0;
+          const tTime = t.createdAtUtc ? new Date(t.createdAtUtc).getTime() : 0;
+          return tTime > newestTime ? t : newest;
+        }, null as Trip | null);
 
-      setTrips(nextTrips);
-      router.push(`/admin/trips/${newestId}`);
+        if (newestTrip) {
+          router.push(`/admin/trips/${newestTrip.id}`);
+        } else {
+          alert("Trip created but could not find it. Please refresh the page.");
+        }
+      }
     } catch (error) {
       console.error("Failed to create trip:", error);
       alert(`Failed to create trip: ${error instanceof Error ? error.message : String(error)}`);
