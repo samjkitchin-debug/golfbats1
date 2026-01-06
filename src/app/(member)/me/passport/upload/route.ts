@@ -105,6 +105,32 @@ export async function POST(req: Request) {
       );
     }
 
+    // Best-effort cleanup: remove older passport images for this user so only the latest is kept.
+    try {
+      const { data: existingFiles, error: listError } = await supabase.storage
+        .from("passport-images")
+        .list(user.id, { limit: 100 });
+
+      if (!listError && existingFiles && existingFiles.length > 0) {
+        const filesToDelete = existingFiles
+          .map((f) => `${user.id}/${f.name}`)
+          .filter((fullPath) => fullPath !== filePath);
+
+        if (filesToDelete.length > 0) {
+          const { error: removeError } = await supabase.storage
+            .from("passport-images")
+            .remove(filesToDelete);
+
+          if (removeError) {
+            console.warn("Failed to clean up old passport images:", removeError);
+          }
+        }
+      }
+    } catch (cleanupError) {
+      console.warn("Passport image cleanup error:", cleanupError);
+      // Non-fatal – continue.
+    }
+
     // Return full path including bucket name for database storage
     return NextResponse.json({ path: `passport-images/${filePath}`, ok: true });
   } catch (e: any) {

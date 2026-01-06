@@ -282,7 +282,8 @@ export default function MeEditPage() {
         <div className="mt-4 rounded-2xl border-2 border-amber-500 bg-amber-50 p-4">
           <p className="text-sm font-semibold text-amber-900">Profile Required</p>
           <p className="mt-1 text-sm text-amber-800">
-            Please complete your profile before continuing. At least a full name or display name is required.
+            Please complete your profile before continuing. Your full name, display name, nationality and declared handicap are required.
+            Passport details can be added later, but will be required if you wish to join a trip.
           </p>
         </div>
       ) : null}

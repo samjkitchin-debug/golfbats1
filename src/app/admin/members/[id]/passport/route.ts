@@ -83,14 +83,20 @@ export async function GET(
     let photoUrl = null;
     if (passport.passport_photo_path) {
       try {
+        // Stored values look like "passport-images/{user_id}/{file}.jpg"
+        // Storage bucket key should be "{user_id}/{file}.jpg"
         let photoPath = passport.passport_photo_path;
         if (photoPath.startsWith("passport-images/")) {
           photoPath = photoPath.replace("passport-images/", "");
         }
 
-        const { data: signedUrlData } = await supabase.storage
+        const { data: signedUrlData, error: signedUrlError } = await supabase.storage
           .from("passport-images")
           .createSignedUrl(photoPath, 3600); // 1 hour
+
+        if (signedUrlError) {
+          console.error("Failed to generate signed URL for photo:", signedUrlError);
+        }
 
         photoUrl = signedUrlData?.signedUrl || null;
       } catch (err) {

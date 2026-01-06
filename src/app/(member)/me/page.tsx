@@ -77,6 +77,7 @@ export default function MePage() {
   const [passportCountry, setPassportCountry] = useState("");
   const [passportExpiryDate, setPassportExpiryDate] = useState("");
   const [passportPhotoPath, setPassportPhotoPath] = useState<string | null>(null);
+  const [passportPhotoUrl, setPassportPhotoUrl] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [savingPassport, setSavingPassport] = useState(false);
 
@@ -149,7 +150,24 @@ export default function MePage() {
             ? new Date(p.passport_expiry_date).toISOString().split("T")[0]
             : ""
         );
-        setPassportPhotoPath(p.passport_photo_path ?? null);
+        const path = p.passport_photo_path ?? null;
+        setPassportPhotoPath(path);
+
+        if (path) {
+          try {
+            const res = await fetch("/me/passport/photo");
+            const json = await res.json().catch(() => ({}));
+            if (res.ok && json.photoUrl) {
+              setPassportPhotoUrl(json.photoUrl);
+            } else {
+              setPassportPhotoUrl(null);
+            }
+          } catch {
+            setPassportPhotoUrl(null);
+          }
+        } else {
+          setPassportPhotoUrl(null);
+        }
       }
 
       setLoading(false);
@@ -399,6 +417,7 @@ export default function MePage() {
           passportExpiryDate={passportExpiryDate}
           setPassportExpiryDate={setPassportExpiryDate}
           passportPhotoPath={passportPhotoPath}
+          passportPhotoUrl={passportPhotoUrl}
           setPassportPhotoPath={setPassportPhotoPath}
           uploadingPhoto={uploadingPhoto}
           setUploadingPhoto={setUploadingPhoto}
@@ -613,6 +632,58 @@ function ProfileBlock({
 
       {editing ? (
         <div className="mt-4 space-y-3">
+          {/* Profile photo moved to top with inline change button */}
+          <div>
+            <div className="text-xs font-semibold">Profile photo</div>
+            <div className="mt-2 flex items-center gap-3">
+              {profilePhotoPath ? (
+                <img
+                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${profilePhotoPath}`}
+                  alt="Profile"
+                  className="h-16 w-16 rounded-full object-cover border border-gray-300"
+                />
+              ) : (
+                <div className="h-16 w-16 rounded-full border border-gray-300 bg-gray-100 flex items-center justify-center text-xs text-gray-500">
+                  No photo
+                </div>
+              )}
+              <div>
+                <input
+                  id="profile-photo-input"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.addEventListener("load", () => {
+                        setImageSrc(reader.result as string);
+                        setShowCropModal(true);
+                        setZoom(1);
+                        setCrop({ x: 0, y: 0 });
+                      });
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="hidden"
+                  disabled={uploadingProfilePhoto}
+                />
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("profile-photo-input")?.click()}
+                  disabled={uploadingProfilePhoto}
+                  className="rounded-xl border border-black bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-60"
+                >
+                  {profilePhotoPath ? "Change photo" : "Add photo"}
+                </button>
+                {uploadingProfilePhoto && (
+                  <p className="mt-1 text-xs text-gray-600">Uploading photo…</p>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div>
             <div className="text-xs font-semibold">Email</div>
             <div className="mt-1 text-sm text-gray-600">{member?.email ?? "—"}</div>
@@ -660,47 +731,10 @@ function ProfileBlock({
             />
           </div>
 
-          <div>
-            <div className="text-xs font-semibold">Profile photo</div>
-            {profilePhotoPath && (
-              <div className="mt-2">
-                <img
-                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${profilePhotoPath}`}
-                  alt="Profile"
-                  className="h-20 w-20 rounded-full object-cover border border-gray-300"
-                />
-              </div>
-            )}
-            <input
-              type="file"
-              accept="image/jpeg,image/jpg,image/png"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.addEventListener("load", () => {
-                    setImageSrc(reader.result as string);
-                    setShowCropModal(true);
-                    setZoom(1);
-                    setCrop({ x: 0, y: 0 });
-                  });
-                  reader.readAsDataURL(file);
-                }
-              }}
-              className="mt-2 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-              disabled={uploadingProfilePhoto}
-            />
-            {uploadingProfilePhoto && (
-              <p className="mt-1 text-xs text-gray-600">Uploading photo…</p>
-            )}
-            {profilePhotoPath && !uploadingProfilePhoto && (
-              <p className="mt-1 text-xs text-green-600">Photo uploaded successfully</p>
-            )}
-          </div>
-
-          {/* Crop Modal */}
+          {/* Profile Photo Crop Modal */}
           {showCropModal && imageSrc && (
             <ImageCropModal
+              title="Crop Profile Photo"
               imageSrc={imageSrc}
               crop={crop}
               zoom={zoom}
@@ -786,6 +820,7 @@ function PassportBlock({
   passportExpiryDate,
   setPassportExpiryDate,
   passportPhotoPath,
+  passportPhotoUrl,
   setPassportPhotoPath,
   uploadingPhoto,
   setUploadingPhoto,
@@ -816,6 +851,7 @@ function PassportBlock({
   passportExpiryDate: string;
   setPassportExpiryDate: (v: string) => void;
   passportPhotoPath: string | null;
+  passportPhotoUrl: string | null;
   setPassportPhotoPath: (v: string | null) => void;
   uploadingPhoto: boolean;
   setUploadingPhoto: (v: boolean) => void;
@@ -907,27 +943,48 @@ function PassportBlock({
 
           <div>
             <div className="text-xs font-semibold">Passport photo (optional)</div>
-            <input
-              type="file"
-              accept="image/jpeg,image/jpg,image/png"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.addEventListener("load", () => {
-                    setPassportImageSrc(reader.result as string);
-                    setShowPassportCropModal(true);
-                    setPassportZoom(1);
-                    setPassportCrop({ x: 0, y: 0 });
-                  });
-                  reader.readAsDataURL(file);
-                }
-              }}
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-              disabled={uploadingPhoto}
-            />
+            {passportPhotoUrl && (
+              <div className="mt-2">
+                <img
+                  src={passportPhotoUrl}
+                  alt="Passport"
+                  className="max-h-40 w-full rounded-lg border border-gray-300 object-contain"
+                />
+              </div>
+            )}
+            <div className="mt-1">
+              <input
+                id="passport-photo-input"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.addEventListener("load", () => {
+                      setPassportImageSrc(reader.result as string);
+                      setShowPassportCropModal(true);
+                      setPassportZoom(1);
+                      setPassportCrop({ x: 0, y: 0 });
+                    });
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                className="hidden"
+                disabled={uploadingPhoto}
+              />
+              <button
+                type="button"
+                onClick={() => document.getElementById("passport-photo-input")?.click()}
+                disabled={uploadingPhoto}
+                className="w-full rounded-xl border border-black bg-white px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-60"
+              >
+                {passportPhotoPath ? "Change photo" : "Add photo"}
+              </button>
+            </div>
             <p className="mt-1 text-xs text-gray-500">
-              You can take a photo with your camera or select an existing file.
+              You can use your camera or select an existing file.
             </p>
             {uploadingPhoto && (
               <p className="mt-1 text-xs text-gray-600">Uploading photo…</p>
@@ -961,8 +1018,14 @@ function PassportBlock({
                 : "—"
             }
           />
-          {passport?.passport_photo_path && (
-            <Row label="Passport photo" value="Uploaded" />
+          {passportPhotoUrl && (
+            <div className="mt-3 flex justify-center">
+              <img
+                src={passportPhotoUrl}
+                alt="Passport"
+                className="max-h-48 rounded-lg border border-gray-300 object-contain"
+              />
+            </div>
           )}
         </div>
       )}
@@ -970,6 +1033,7 @@ function PassportBlock({
       {/* Passport Crop Modal */}
       {showPassportCropModal && passportImageSrc && (
         <ImageCropModal
+          title="Crop Passport Photo"
           imageSrc={passportImageSrc}
           crop={passportCrop}
           zoom={passportZoom}
@@ -1060,6 +1124,7 @@ function createImage(url: string): Promise<HTMLImageElement> {
 
 // Image Crop Modal Component
 function ImageCropModal({
+  title,
   imageSrc,
   crop,
   zoom,
@@ -1069,6 +1134,7 @@ function ImageCropModal({
   onCancel,
   onSave,
 }: {
+  title: string;
   imageSrc: string;
   crop: Point;
   zoom: number;
@@ -1081,15 +1147,15 @@ function ImageCropModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4">
       <div className="w-full max-w-md rounded-xl bg-white p-4">
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">Crop Profile Photo</h3>
+        <h3 className="mb-4 text-lg font-semibold text-gray-900">{title}</h3>
         
         <div className="relative h-64 w-full bg-gray-100 rounded-lg overflow-hidden">
           <Cropper
             image={imageSrc}
             crop={crop}
             zoom={zoom}
-            aspect={1}
-            cropShape="round"
+            aspect={title === "Crop Passport Photo" ? 1.5 : 1}
+            cropShape={title === "Crop Passport Photo" ? "rect" : "round"}
             showGrid={true}
             onCropChange={onCropChange}
             onZoomChange={onZoomChange}
