@@ -255,7 +255,7 @@ export async function createTrip(
     if (freshRes.ok && freshJson.trips) {
       const allTrips = freshJson.trips.map(normalizeTrip);
       // Verify the new trip is in the list
-      if (newTripId && !allTrips.find(t => t.id === newTripId)) {
+      if (newTripId && !allTrips.find((t: Trip) => t.id === newTripId)) {
         console.warn("New trip ID", newTripId, "not found in reloaded trips");
       }
       return { trips: allTrips, newTripId: newTripId || null };
@@ -427,8 +427,8 @@ export async function joinTrip(trips: Trip[], tripId: number, handicap: number |
       throw new Error(json?.error || "Failed to join trip.");
     }
 
-    // Reload trips from server
-    return await loadTrips();
+    // Reload trips from server with cache bypass to ensure we get the updated trip
+    return await loadTrips(true);
   } catch (error) {
     console.error("Failed to join trip:", error);
     throw error;
@@ -447,8 +447,8 @@ export async function leaveTrip(trips: Trip[], tripId: number): Promise<Trip[]> 
       throw new Error(json?.error || "Failed to leave trip.");
     }
 
-    // Reload trips from server
-    return await loadTrips();
+    // Reload trips from server with cache bypass to ensure we get the updated trip
+    return await loadTrips(true);
   } catch (error) {
     console.error("Failed to leave trip:", error);
     throw error;

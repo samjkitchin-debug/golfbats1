@@ -25,12 +25,40 @@ export default function HomePage() {
 
   useEffect(() => {
     async function loadData() {
-      try {
-        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
-        setTrips(tripsData);
-        setCourses(coursesData);
-      } catch (error) {
-        console.warn("Failed to load data:", error);
+      let retries = 0;
+      const maxRetries = 3;
+      
+      while (retries < maxRetries) {
+        try {
+          // Bypass cache on first load to ensure we get fresh data
+          const [tripsData, coursesData] = await Promise.all([
+            loadTrips(retries === 0), // Bypass cache on first attempt
+            loadCourses()
+          ]);
+          
+          if (tripsData.length === 0 && retries < maxRetries - 1) {
+            // If we got empty data, retry with cache bypass
+            retries++;
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+            continue;
+          }
+          
+          setTrips(tripsData);
+          setCourses(coursesData);
+          return; // Success, exit retry loop
+        } catch (error) {
+          console.error(`Failed to load data (attempt ${retries + 1}/${maxRetries}):`, error);
+          retries++;
+          
+          if (retries >= maxRetries) {
+            // Final attempt failed - show error to user
+            alert("Failed to load trips. Please refresh the page.");
+            return;
+          }
+          
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+        }
       }
     }
     loadData();
@@ -181,11 +209,34 @@ export default function HomePage() {
         // Add to trip and save handicap for this trip
         const updated = await joinTrip(trips, nextTrip.id, handicapValue);
         setTrips(updated);
+        
+        // Reload trips to verify join succeeded and get latest data
+        try {
+          const freshTrips = await loadTrips(true); // Bypass cache
+          setTrips(freshTrips);
+          
+          // Verify we're now in the trip
+          const freshNextTrip = freshTrips.find(t => t.id === nextTrip.id);
+          if (freshNextTrip) {
+            const freshMyEntry = currentUserName
+              ? freshNextTrip.attendees.find((a) => a.name === currentUserName)
+              : undefined;
+            if (!freshMyEntry) {
+              console.warn("Join may have failed - not found in attendees after reload");
+              alert("There was an issue confirming your join. Please refresh the page to check your status.");
+            }
+          }
+        } catch (reloadError) {
+          console.error("Failed to reload trips after join:", reloadError);
+          // Don't show error to user - the join might have succeeded
+        }
+      } else {
+        alert("You must be signed in to join a trip.");
       }
     } catch (error) {
-      console.error("Failed to update member handicap:", error);
+      console.error("Failed to join trip:", error);
       alert(
-        `Failed to join trip: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to join trip: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
       );
     }
   }
