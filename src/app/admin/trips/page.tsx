@@ -67,10 +67,12 @@ export default function AdminTripsPage() {
       setLoading(true);
       try {
         const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        console.log("Loaded trips:", tripsData.length, tripsData);
         setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load data:", error);
+        console.error("Failed to load data:", error);
+        alert(`Failed to load trips: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
         setLoading(false);
       }

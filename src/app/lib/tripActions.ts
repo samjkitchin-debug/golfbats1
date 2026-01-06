@@ -151,22 +151,24 @@ function normalizeTrip(input: any): Trip {
  * Load trips from database API
  * No longer uses localStorage - always fetches from server
  */
-export async function loadTrips(): Promise<Trip[]> {
+export async function loadTrips(bypassCache = false): Promise<Trip[]> {
   if (typeof window === "undefined") return [];
 
   try {
-    const res = await fetch("/api/trips");
+    const url = bypassCache ? "/api/trips?bypassCache=true" : "/api/trips";
+    const res = await fetch(url);
     const json = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      console.warn("Failed to load trips:", json?.error);
+      console.error("Failed to load trips:", json?.error);
       return [];
     }
 
     const trips = json.trips || [];
+    console.log("loadTrips: received", trips.length, "trips from API");
     return trips.map(normalizeTrip);
   } catch (error) {
-    console.warn("Failed to load trips:", error);
+    console.error("Failed to load trips:", error);
     return [];
   }
 }
@@ -240,7 +242,16 @@ export async function createTrip(trips: Trip[], partial: Partial<Trip> = {}): Pr
       throw new Error(json?.error || "Failed to create trip.");
     }
 
-    // Reload trips from server
+    // The API returns the new trip's legacy_id, but we need to reload to get full trip data
+    // Bypass cache to ensure we get the newly created trip
+    const freshRes = await fetch("/api/trips?bypassCache=true");
+    const freshJson = await freshRes.json().catch(() => ({}));
+    
+    if (freshRes.ok && freshJson.trips) {
+      return freshJson.trips.map(normalizeTrip);
+    }
+    
+    // Fallback to normal load (shouldn't happen, but just in case)
     return await loadTrips();
   } catch (error) {
     console.error("Failed to create trip:", error);
