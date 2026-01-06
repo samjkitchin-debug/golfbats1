@@ -8,10 +8,9 @@ import { loadCourses, type Course } from "../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../lib/tripDisplay";
 
 export default function HomePage() {
-  const CURRENT_USER = "Sam";
-
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
 
   const supabase = useMemo(() => {
     return createBrowserClient(
@@ -37,6 +36,28 @@ export default function HomePage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    async function loadCurrentUser() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          const { data: memberData } = await supabase
+            .from("members")
+            .select("display_name,full_name")
+            .eq("id", user.id)
+            .maybeSingle();
+          const name = memberData?.display_name || memberData?.full_name || null;
+          setCurrentUserName(name);
+        }
+      } catch (error) {
+        console.warn("Failed to load current user:", error);
+      }
+    }
+    loadCurrentUser();
+  }, [supabase]);
+
   const today = new Date().toISOString().slice(0, 10);
 
   const nextTrip = useMemo(() => {
@@ -51,7 +72,7 @@ export default function HomePage() {
       <div className="rounded-xl border bg-white p-5 shadow-sm">
         <div className="text-lg font-semibold text-gray-900">No upcoming trips</div>
         <div className="mt-2 text-sm text-gray-600">
-          When the admin creates the next outing, it’ll appear here.
+          When the admin creates the next outing, it'll appear here.
         </div>
         <div className="mt-4">
           <Link href="/trips" className="text-sm text-gray-700 hover:text-gray-900">
@@ -63,7 +84,9 @@ export default function HomePage() {
   }
 
   const courseText = getTripCourseText(nextTrip, courses);
-  const myEntry = nextTrip.attendees.find((a) => a.name === CURRENT_USER);
+  const myEntry = currentUserName
+    ? nextTrip.attendees.find((a) => a.name === currentUserName)
+    : undefined;
 
   async function handleImIn() {
     // Prevent duplicate joins

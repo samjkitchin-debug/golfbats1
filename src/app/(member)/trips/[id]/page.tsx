@@ -21,13 +21,13 @@ function toTripId(raw: string): number | null {
 }
 
 export default function TripDetailPage() {
-  const CURRENT_USER = "Sam";
   const params = useParams<{ id: string }>();
   
   const tripId = useMemo(() => toTripId(params?.id), [params?.id]);
 
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
 
   const supabase = useMemo(() => {
     return createBrowserClient(
@@ -49,6 +49,28 @@ export default function TripDetailPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    async function loadCurrentUser() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          const { data: memberData } = await supabase
+            .from("members")
+            .select("display_name,full_name")
+            .eq("id", user.id)
+            .maybeSingle();
+          const name = memberData?.display_name || memberData?.full_name || null;
+          setCurrentUserName(name);
+        }
+      } catch (error) {
+        console.warn("Failed to load current user:", error);
+      }
+    }
+    loadCurrentUser();
+  }, [supabase]);
+
   const trip = useMemo(() => {
     if (!tripId) return undefined;
     return trips.find((t) => t.id === tripId);
@@ -60,9 +82,9 @@ export default function TripDetailPage() {
   }, [trip, courses]);
 
   const myEntry = useMemo(() => {
-    if (!trip) return undefined;
-    return trip.attendees.find((a) => a.name === CURRENT_USER);
-  }, [trip]);
+    if (!trip || !currentUserName) return undefined;
+    return trip.attendees.find((a) => a.name === currentUserName);
+  }, [trip, currentUserName]);
 
   const [hcp, setHcp] = useState<string>("");
 
