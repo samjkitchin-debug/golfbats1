@@ -15,7 +15,7 @@ const getTripsData = cache(
     async () => {
       const supabase = await createSupabaseServerClient();
 
-  // Fetch trips
+  // Fetch trips (include all trips, even those without legacy_id)
   const { data: tripsData, error: tripsError } = await supabase
     .from("trips")
     .select("*")
@@ -51,7 +51,7 @@ const getTripsData = cache(
   }
 
   // Map database trips to UI Trip format
-  const trips = tripsData.map((trip) => {
+  const trips = tripsData.map((trip, index) => {
     const attendees = (attendeesData || [])
       .filter((a) => a.trip_id === trip.id)
       .map((a) => {
@@ -75,8 +75,26 @@ const getTripsData = cache(
         points: Number(r.metric_value) || 0,
       }));
 
+    // Generate unique numeric ID: use legacy_id if available, otherwise use a hash of the UUID
+    // This ensures trips without legacy_id still get unique IDs
+    let numericId: number;
+    if (trip.legacy_id) {
+      numericId = trip.legacy_id;
+    } else {
+      // Generate a unique numeric ID from the UUID (simple hash)
+      const uuid = trip.id;
+      let hash = 0;
+      for (let i = 0; i < uuid.length; i++) {
+        const char = uuid.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+      }
+      // Use a large negative number to avoid conflicts with positive legacy_ids
+      numericId = Math.abs(hash) % 1000000 + 1000000; // Range: 1000000-1999999
+    }
+
     return {
-      id: trip.legacy_id || 0, // Use legacy_id as numeric ID for UI compatibility
+      id: numericId,
       name: trip.name || undefined,
       date: trip.trip_date,
       format: trip.format,
@@ -178,8 +196,25 @@ export async function GET(req: Request) {
             points: Number(r.metric_value) || 0,
           }));
 
+        // Generate unique numeric ID: use legacy_id if available, otherwise use a hash of the UUID
+        let numericId: number;
+        if (trip.legacy_id) {
+          numericId = trip.legacy_id;
+        } else {
+          // Generate a unique numeric ID from the UUID (simple hash)
+          const uuid = trip.id;
+          let hash = 0;
+          for (let i = 0; i < uuid.length; i++) {
+            const char = uuid.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+          }
+          // Use a large number to avoid conflicts with positive legacy_ids
+          numericId = Math.abs(hash) % 1000000 + 1000000; // Range: 1000000-1999999
+        }
+
         return {
-          id: trip.legacy_id || 0,
+          id: numericId,
           name: trip.name || undefined,
           date: trip.trip_date,
           format: trip.format,
