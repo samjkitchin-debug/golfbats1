@@ -70,7 +70,7 @@ export async function DELETE(
     // - member_passports has ON DELETE CASCADE on user_id
     // - trip_attendees has member_id reference (check if CASCADE exists)
     // - passport_access_audit has target_user_id with ON DELETE CASCADE
-    
+
     const { error: deleteError } = await supabase
       .from("members")
       .delete()
@@ -103,6 +103,49 @@ export async function DELETE(
     if (notesError) {
       console.warn("Failed to delete dev notes:", notesError);
       // Continue - not critical
+    }
+
+    // Best-effort cleanup of profile and passport images for this member
+    try {
+      // Remove profile photo (single known path pattern)
+      const { data: memberProfile } = await supabase
+        .from("members")
+        .select("profile_photo_path")
+        .eq("id", memberId)
+        .maybeSingle();
+
+      const profilePath =
+        memberProfile && typeof memberProfile.profile_photo_path === "string"
+          ? memberProfile.profile_photo_path
+          : null;
+
+      if (profilePath && profilePath.startsWith("profile-photos/")) {
+        const relativePath = profilePath.replace("profile-photos/", "");
+        const { error: removeProfileError } = await supabase.storage
+          .from("profile-photos")
+          .remove([relativePath]);
+        if (removeProfileError) {
+          console.warn("Failed to delete profile photo for member:", removeProfileError);
+        }
+      }
+
+      // Remove any passport images under this user folder
+      const { data: passportFiles, error: listError } = await supabase.storage
+        .from("passport-images")
+        .list(memberId, { limit: 100 });
+
+      if (!listError && passportFiles && passportFiles.length > 0) {
+        const filesToDelete = passportFiles.map((f) => `${memberId}/${f.name}`);
+        const { error: removePassportsError } = await supabase.storage
+          .from("passport-images")
+          .remove(filesToDelete);
+        if (removePassportsError) {
+          console.warn("Failed to delete passport images for member:", removePassportsError);
+        }
+      }
+    } catch (storageCleanupError) {
+      console.warn("Member storage cleanup error:", storageCleanupError);
+      // Non-fatal – continue.
     }
 
     // Note: We cannot delete the auth.users record directly via Supabase client

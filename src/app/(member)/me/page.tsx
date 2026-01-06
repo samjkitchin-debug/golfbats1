@@ -80,6 +80,7 @@ export default function MePage() {
   const [passportPhotoPath, setPassportPhotoPath] = useState<string | null>(null);
   const [passportPhotoUrl, setPassportPhotoUrl] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [passportPhotoJustUploaded, setPassportPhotoJustUploaded] = useState(false);
   const [savingPassport, setSavingPassport] = useState(false);
 
   useEffect(() => {
@@ -195,6 +196,10 @@ export default function MePage() {
     member?.declared_handicap !== undefined;
 
   const isApproved = (member?.status ?? "pending") === "active";
+  const passportComplete =
+    !!passport?.passport_full_name &&
+    !!passport?.passport_country &&
+    !!passport?.passport_expiry_date;
 
   return (
     <div className="px-4 pb-24 pt-4">
@@ -217,6 +222,31 @@ export default function MePage() {
           )}
         </div>
       </div>
+
+      {/* Status & trip eligibility pills */}
+      {!loading && !error && (
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 font-medium ${
+              isApproved
+                ? "bg-green-100 text-green-800"
+                : "bg-amber-100 text-amber-800"
+            }`}
+          >
+            Status: {isApproved ? "Active" : "Pending approval"}
+          </span>
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 font-medium ${
+              passportComplete
+                ? "bg-green-100 text-green-800"
+                : "bg-amber-100 text-amber-800"
+            }`}
+          >
+            Trips:{" "}
+            {passportComplete ? "Ready to join trips" : "Add passport details before joining trips"}
+          </span>
+        </div>
+      )}
 
       {/* Profile gate state */}
       {!loading && !error && (
@@ -397,6 +427,7 @@ export default function MePage() {
           onToggleEdit={() => {
             setEditingPassport(!editingPassport);
             setPassportSaved(false);
+            setPassportPhotoJustUploaded(false);
             if (!editingPassport) {
               // Reset to current values when starting edit
               setPassportFullName(passport?.passport_full_name ?? "");
@@ -423,6 +454,7 @@ export default function MePage() {
           setPassportPhotoPath={setPassportPhotoPath}
           uploadingPhoto={uploadingPhoto}
           setUploadingPhoto={setUploadingPhoto}
+          photoJustUploaded={passportPhotoJustUploaded}
           saving={savingPassport}
           saved={passportSaved}
           onSave={async () => {
@@ -472,6 +504,7 @@ export default function MePage() {
           }}
           onPhotoUpload={async (file: File) => {
             setUploadingPhoto(true);
+            setPassportPhotoJustUploaded(false);
             setError(null);
 
             try {
@@ -490,6 +523,10 @@ export default function MePage() {
               }
 
               setPassportPhotoPath(json.path);
+              setPassportPhotoJustUploaded(true);
+              setTimeout(() => {
+                setPassportPhotoJustUploaded(false);
+              }, 4000);
             } catch (e: unknown) {
               const error = e as { message?: string };
               setError(error?.message || "Failed to upload photo.");
@@ -820,6 +857,7 @@ function PassportBlock({
   setPassportPhotoPath,
   uploadingPhoto,
   setUploadingPhoto,
+  photoJustUploaded,
   saving,
   saved,
   onSave,
@@ -851,6 +889,7 @@ function PassportBlock({
   setPassportPhotoPath: (v: string | null) => void;
   uploadingPhoto: boolean;
   setUploadingPhoto: (v: boolean) => void;
+  photoJustUploaded: boolean;
   saving: boolean;
   saved: boolean;
   onSave: () => Promise<void>;
@@ -988,7 +1027,7 @@ function PassportBlock({
             {uploadingPhoto && (
               <p className="mt-1 text-xs text-gray-600">Uploading photo…</p>
             )}
-            {passportPhotoPath && !uploadingPhoto && (
+            {photoJustUploaded && !uploadingPhoto && (
               <p className="mt-1 text-xs text-green-600">Photo uploaded successfully</p>
             )}
           </div>

@@ -68,10 +68,12 @@ export default function TripDetailPage() {
 
   useEffect(() => {
     if (!myEntry) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHcp("");
       return;
     }
     const v = myEntry.handicapForTrip;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHcp(v === null || v === undefined ? "" : String(v));
   }, [myEntry]);
 
@@ -106,59 +108,84 @@ export default function TripDetailPage() {
     // Prevent duplicate joins
     if (myEntry) return;
 
-    // Prompt for handicap
-    const handicapInput = window.prompt("Please enter your current handicap (or leave blank to skip):");
-    if (handicapInput === null) return; // User cancelled
-
-    let handicapValue: number | null = null;
-    if (handicapInput.trim() !== "") {
-      const parsed = Number(handicapInput.trim());
-      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-        alert("Handicap must be a number between 0 and 36.");
-        return;
-      }
-      handicapValue = parsed;
-    }
-
-    // Update member profile in database
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       if (user) {
-        // Get current member data to preserve other fields
         const { data: memberData } = await supabase
           .from("members")
-          .select("full_name,display_name,nationality")
+          .select("full_name,display_name,nationality,declared_handicap")
           .eq("id", user.id)
           .maybeSingle();
 
-        // Update member profile with new handicap
+        const existingHandicap =
+          memberData && typeof memberData.declared_handicap === "number"
+            ? memberData.declared_handicap
+            : null;
+
+        let handicapValue: number | null = existingHandicap;
+
+        if (existingHandicap !== null) {
+          const wantsEdit = window.confirm(
+            `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`
+          );
+          if (wantsEdit) {
+            const input = window.prompt(
+              "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
+              String(existingHandicap)
+            );
+            if (input === null) return;
+            const trimmed = input.trim();
+            if (trimmed === "") {
+              handicapValue = existingHandicap;
+            } else {
+              const parsed = Number(trimmed);
+              if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
+                alert("Handicap must be a number between 0 and 36.");
+                return;
+              }
+              handicapValue = parsed;
+            }
+          }
+        } else {
+          const input = window.prompt(
+            "Please enter your current handicap (0–36), or leave blank if you are not sure yet:"
+          );
+          if (input === null) return;
+          const trimmed = input.trim();
+          if (trimmed !== "") {
+            const parsed = Number(trimmed);
+            if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
+              alert("Handicap must be a number between 0 and 36.");
+              return;
+            }
+            handicapValue = parsed;
+          } else {
+            handicapValue = null;
+          }
+        }
+
         await supabase
           .from("members")
           .update({
             declared_handicap: handicapValue,
             last_seen: new Date().toISOString(),
-            // Preserve existing fields
             full_name: memberData?.full_name ?? null,
             display_name: memberData?.display_name ?? null,
             nationality: memberData?.nationality ?? null,
           })
           .eq("id", user.id);
+
+        const updated = await joinTrip(trips, tripIdSafe, handicapValue);
+        setTrips(updated);
       }
     } catch (error) {
       console.error("Failed to update member handicap:", error);
-      // Continue anyway - we'll still add them to the trip
-    }
-
-    // Add to trip and save handicap for this trip
-    try {
-      const updated = await joinTrip(trips, tripIdSafe, handicapValue);
-      setTrips(updated);
-    } catch (error) {
-      console.error("Failed to join trip:", error);
-      alert(`Failed to join trip: ${error instanceof Error ? error.message : String(error)}`);
+      alert(
+        `Failed to join trip: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

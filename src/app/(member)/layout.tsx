@@ -26,15 +26,17 @@ export default async function MemberLayout({ children }: { children: React.React
       {/* Header */}
       <header className="sticky top-0 z-20 bg-white">
         <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
-          <MainNav />
+          <div className="flex w-16 justify-start">
+            <MainNav />
+          </div>
 
           <Link href="/" className="flex flex-1 justify-center">
             <Image
               src="/logo.png"
               alt="GolfBats logo"
-              width={78}
-              height={78}
-              className="h-[78px] w-[78px] rounded-md"
+              width={86}
+              height={86}
+              className="h-[86px] w-[86px] rounded-md"
               priority
             />
           </Link>

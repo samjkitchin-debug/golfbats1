@@ -407,27 +407,43 @@ export default function MeEditPage() {
                   </Field>
 
                   <Field label="Passport photo (optional)">
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          handlePhotoUpload(file);
+                    <div>
+                      <input
+                        id="passport-photo-input"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handlePhotoUpload(file);
+                          }
+                        }}
+                        className="hidden"
+                        disabled={uploadingPhoto}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          document.getElementById("passport-photo-input")?.click()
                         }
-                      }}
-                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-                      disabled={uploadingPhoto}
-                    />
-                    <p className="mt-2 text-xs text-gray-600">
-                      You can take a photo with your camera or select an existing file.
-                    </p>
-                    {uploadingPhoto && (
-                      <p className="mt-2 text-xs text-gray-600">Uploading photo…</p>
-                    )}
-                    {passportPhotoPath && !uploadingPhoto && (
-                      <p className="mt-2 text-xs text-green-600">Photo uploaded successfully</p>
-                    )}
+                        disabled={uploadingPhoto}
+                        className="inline-flex items-center rounded-full border border-black bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-60"
+                      >
+                        {passportPhotoPath ? "Change photo" : "Add photo"}
+                      </button>
+                      <p className="mt-2 text-xs text-gray-600">
+                        You can use your camera or select an existing file.
+                      </p>
+                      {uploadingPhoto && (
+                        <p className="mt-2 text-xs text-gray-600">Uploading photo…</p>
+                      )}
+                      {passportPhotoPath && !uploadingPhoto && (
+                        <p className="mt-2 text-xs text-green-600">
+                          Photo uploaded successfully
+                        </p>
+                      )}
+                    </div>
                   </Field>
                 </div>
               </>

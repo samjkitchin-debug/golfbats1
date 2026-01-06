@@ -574,10 +574,10 @@ export default function AdminTripPage() {
           {cutoffDate && now >= cutoffDate && (
             <div className="mt-4 flex justify-end">
               <button
-                className="rounded-lg bg-brand-red px-4 py-2 text-sm font-medium text-white"
+                className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                 onClick={onCloseTripAndPostLogistics}
               >
-                Close trip & Post logistics
+                Close RSVP & post logistics
               </button>
             </div>
           )}
@@ -585,10 +585,10 @@ export default function AdminTripPage() {
           {(!cutoffDate || now < cutoffDate) && (
             <div className="mt-4 flex justify-end">
               <button
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                 onClick={onCloseTripAndPostLogistics}
               >
-                Close trip manually
+                Close RSVP & post logistics
               </button>
             </div>
           )}

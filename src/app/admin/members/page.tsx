@@ -59,42 +59,50 @@ export default function AdminMembersPage() {
       setLoading(true);
       setError(null);
 
-      const { data: rows, error: membersError } = await supabase
-        .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin");
-
-      if (membersError) {
-        setError(membersError.message);
-        setLoading(false);
-        return;
-      }
-
-      // Sort: admins first, then alphabetically by name
-      const sorted = (rows ?? []).sort((a, b) => {
-        const aIsAdmin = !!a.is_admin;
-        const bIsAdmin = !!b.is_admin;
-        if (aIsAdmin !== bIsAdmin) {
-          return aIsAdmin ? -1 : 1; // Admins first
-        }
-        const aName = (a.display_name || a.full_name || "").toLowerCase();
-        const bName = (b.display_name || b.full_name || "").toLowerCase();
-        return aName.localeCompare(bName);
-      });
-
-      setMembers(sorted);
-
-      // Check passport status for all members via admin API route
-      // This bypasses RLS issues since it uses server-side client
       try {
-        const res = await fetch("/api/admin/passport-statuses");
-        const json = await res.json().catch(() => ({}));
-        if (res.ok && json.statuses) {
-          setPassportStatuses(json.statuses);
+        const [membersResult, passportResult] = await Promise.all([
+          supabase
+            .from("members")
+            .select(
+              "id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin"
+            ),
+          fetch("/api/admin/passport-statuses").then(async (res) => {
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              throw new Error(json?.error || "Failed to load passport statuses.");
+            }
+            return json;
+          }),
+        ]);
+
+        const { data: rows, error: membersError } = membersResult;
+
+        if (membersError) {
+          setError(membersError.message);
         } else {
-          console.error("Failed to load passport statuses:", json.error);
+          // Sort: admins first, then alphabetically by name
+          const sorted = (rows ?? []).sort((a, b) => {
+            const aIsAdmin = !!a.is_admin;
+            const bIsAdmin = !!b.is_admin;
+            if (aIsAdmin !== bIsAdmin) {
+              return aIsAdmin ? -1 : 1; // Admins first
+            }
+            const aName = (a.display_name || a.full_name || "").toLowerCase();
+            const bName = (b.display_name || b.full_name || "").toLowerCase();
+            return aName.localeCompare(bName);
+          });
+
+          setMembers(sorted);
         }
-      } catch (err) {
-        console.error("Error loading passport statuses:", err);
+
+        if (passportResult?.statuses) {
+          setPassportStatuses(passportResult.statuses as Record<string, PassportStatus>);
+        }
+      } catch (err: unknown) {
+        console.error("Error loading admin members:", err);
+        if (err instanceof Error) {
+          setError(err.message);
+        }
       }
 
       setLoading(false);
@@ -368,11 +376,11 @@ export default function AdminMembersPage() {
       ) : (
         <>
           {/* Admins block */}
-          <div className="mt-4 overflow-hidden rounded-xl border bg-white">
+          <div className="mt-4 overflow-x-auto rounded-xl border bg-white">
             <div className="border-b px-4 py-3 text-sm font-semibold text-gray-900">
               Admins
             </div>
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[880px] text-left text-sm">
               <colgroup>
                 <col className="w-[22%]" /> {/* Name */}
                 <col className="w-[24%]" /> {/* Email */}
@@ -438,7 +446,7 @@ export default function AdminMembersPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-3">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
                             <button
                               onClick={() => {
                                 setEditingRolesMember(m);
@@ -480,11 +488,11 @@ export default function AdminMembersPage() {
           </div>
 
           {/* Non-admin members block */}
-          <div className="mt-6 overflow-hidden rounded-xl border bg-white">
+          <div className="mt-6 overflow-x-auto rounded-xl border bg-white">
             <div className="border-b px-4 py-3 text-sm font-semibold text-gray-900">
               Members
             </div>
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[880px] text-left text-sm">
               <colgroup>
                 <col className="w-[22%]" /> {/* Name */}
                 <col className="w-[24%]" /> {/* Email */}
@@ -550,7 +558,7 @@ export default function AdminMembersPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-3">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                             <button
                               onClick={() => {
                                 setEditingRolesMember(m);
