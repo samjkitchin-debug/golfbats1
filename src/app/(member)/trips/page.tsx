@@ -143,7 +143,7 @@ export default function TripsListPage() {
             console.log("[handleJoinTrip] Waiting 500ms before reload...");
             await new Promise(resolve => setTimeout(resolve, 500));
             console.log("[handleJoinTrip] Reloading trips and user data...");
-            const [freshTrips, freshUserData] = await Promise.all([
+            const [freshTrips, freshUserResponse] = await Promise.all([
               loadTrips(true), // Bypass cache
               supabase
                 .from("members")
@@ -152,9 +152,10 @@ export default function TripsListPage() {
                 .maybeSingle(),
             ]);
             console.log("[handleJoinTrip] Reloaded trips:", freshTrips.length, "trips");
-            console.log("[handleJoinTrip] Fresh user data:", freshUserData);
+            console.log("[handleJoinTrip] Fresh user data:", freshUserResponse);
             setTrips(freshTrips);
             // Update current user name to match what's in attendees
+            const freshUserData = freshUserResponse.data;
             if (freshUserData) {
               const name = freshUserData.display_name || freshUserData.full_name || null;
               console.log("[handleJoinTrip] Setting currentUserName to:", name);
