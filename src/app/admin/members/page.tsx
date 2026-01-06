@@ -50,6 +50,9 @@ export default function AdminMembersPage() {
   const [loadingPassport, setLoadingPassport] = useState(false);
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
   const [approvingMemberId, setApprovingMemberId] = useState<string | null>(null);
+  const [editingRolesMember, setEditingRolesMember] = useState<MemberRow | null>(null);
+  const [rolesIsAdmin, setRolesIsAdmin] = useState(false);
+  const [savingRoles, setSavingRoles] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -281,12 +284,77 @@ export default function AdminMembersPage() {
       if (membersError) {
         setError(membersError.message);
       } else {
-        setMembers(rows ?? []);
+        // Sort: admins first, then alphabetically by name
+        const sorted = (rows ?? []).sort((a, b) => {
+          const aIsAdmin = !!a.is_admin;
+          const bIsAdmin = !!b.is_admin;
+          if (aIsAdmin !== bIsAdmin) {
+            return aIsAdmin ? -1 : 1; // Admins first
+          }
+          const aName = (a.display_name || a.full_name || "").toLowerCase();
+          const bName = (b.display_name || b.full_name || "").toLowerCase();
+          return aName.localeCompare(bName);
+        });
+        setMembers(sorted);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to remove admin status.");
     } finally {
       setApprovingMemberId(null);
+    }
+  }
+
+  async function handleSaveRoles() {
+    if (!editingRolesMember) return;
+    setSavingRoles(true);
+    setError(null);
+
+    try {
+      const targetId = editingRolesMember.id;
+      const targetName = editingRolesMember.display_name || editingRolesMember.full_name || "Member";
+
+      if (rolesIsAdmin && !editingRolesMember.is_admin) {
+        // Promote to admin
+        const res = await fetch(`/admin/members/${targetId}/make-admin`, { method: "POST" });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to make member admin.");
+        }
+      } else if (!rolesIsAdmin && editingRolesMember.is_admin) {
+        // Remove admin
+        const res = await fetch(`/admin/members/${targetId}/remove-admin`, { method: "POST" });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to remove admin status.");
+        }
+      }
+
+      // Reload members list
+      const { data: rows, error: membersError } = await supabase
+        .from("members")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin");
+
+      if (membersError) {
+        setError(membersError.message);
+      } else {
+        const sorted = (rows ?? []).sort((a, b) => {
+          const aIsAdmin = !!a.is_admin;
+          const bIsAdmin = !!b.is_admin;
+          if (aIsAdmin !== bIsAdmin) {
+            return aIsAdmin ? -1 : 1;
+          }
+          const aName = (a.display_name || a.full_name || "").toLowerCase();
+          const bName = (b.display_name || b.full_name || "").toLowerCase();
+          return aName.localeCompare(bName);
+        });
+        setMembers(sorted);
+      }
+
+      setEditingRolesMember(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save roles.");
+    } finally {
+      setSavingRoles(false);
     }
   }
 
@@ -308,117 +376,221 @@ export default function AdminMembersPage() {
           Loading…
         </div>
       ) : (
-        <div className="mt-4 overflow-hidden rounded-xl border bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-white">
-              <tr className="text-gray-700">
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Nat.</th>
-                <th className="px-4 py-3">HCP</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Passport</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((m) => {
-                const name = m.display_name || m.full_name || "—";
-                const passportStatus = passportStatuses[m.id];
-                const hasCompletePassport = passportStatus?.isComplete ?? false;
-                const hasPassport = passportStatus?.hasPassport ?? false;
-                const isActive = (m.status ?? "pending") === "active";
-                const isAdmin = !!m.is_admin;
+        <>
+          {/* Admins block */}
+          <div className="mt-4 overflow-hidden rounded-xl border bg-white">
+            <div className="border-b px-4 py-3 text-sm font-semibold text-gray-900">
+              Admins
+            </div>
+            <table className="w-full text-left text-sm">
+              <thead className="border-b bg-white">
+                <tr className="text-gray-700">
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Nat.</th>
+                  <th className="px-4 py-3">HCP</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Passport</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {members
+                  .filter((m) => m.is_admin)
+                  .map((m) => {
+                    const name = m.display_name || m.full_name || "—";
+                    const passportStatus = passportStatuses[m.id];
+                    const hasCompletePassport = passportStatus?.isComplete ?? false;
+                    const hasPassport = passportStatus?.hasPassport ?? false;
+                    const isActive = (m.status ?? "pending") === "active";
 
-                return (
-                  <tr key={m.id} className="border-b last:border-b-0">
-                    <td className="px-4 py-3 font-medium text-gray-900">{name}</td>
-                    <td className="px-4 py-3 text-gray-800">{m.email ?? "—"}</td>
-                    <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
-                    <td className="px-4 py-3 text-gray-800">
-                      {m.declared_handicap ?? "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {isActive ? (
-                        <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
-                          Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
-                          Pending
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {hasCompletePassport ? (
-                        <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
-                          Complete
-                        </span>
-                      ) : hasPassport ? (
-                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
-                          Incomplete
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800">
-                          None
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-3">
-                        {/* Admin Toggle */}
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={isAdmin}
-                            onChange={() => {
-                              if (isAdmin) {
-                                handleRemoveAdmin(m.id, name);
-                              } else {
-                                handleMakeAdmin(m.id, name);
-                              }
-                            }}
-                            disabled={approvingMemberId === m.id}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"></div>
-                        </label>
-                        {hasPassport && (
+                    return (
+                      <tr key={m.id} className="border-b last:border-b-0">
+                        <td className="px-4 py-3 font-medium text-gray-900">{name}</td>
+                        <td className="px-4 py-3 text-gray-800">{m.email ?? "—"}</td>
+                        <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
+                        <td className="px-4 py-3 text-gray-800">
+                          {m.declared_handicap ?? "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isActive ? (
+                            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                              Pending
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {hasCompletePassport ? (
+                            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                              Complete
+                            </span>
+                          ) : hasPassport ? (
+                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                              Incomplete
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800">
+                              None
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              onClick={() => {
+                                setEditingRolesMember(m);
+                                setRolesIsAdmin(!!m.is_admin);
+                              }}
+                              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                              Roles
+                            </button>
+                            {hasPassport && (
+                              <button
+                                onClick={() => handleViewPassport(m.id)}
+                                className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                              >
+                                View
+                              </button>
+                            )}
+                            {!isActive && (
+                              <button
+                                onClick={() => handleApproveMember(m.id, name)}
+                                disabled={approvingMemberId === m.id}
+                                className="rounded-md border border-green-300 bg-white px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {approvingMemberId === m.id ? "Approving..." : "Approve"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteMember(m.id, name)}
+                              disabled={deletingMemberId === m.id}
+                              className="rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {deletingMemberId === m.id ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Non-admin members block */}
+          <div className="mt-6 overflow-hidden rounded-xl border bg-white">
+            <div className="border-b px-4 py-3 text-sm font-semibold text-gray-900">
+              Members
+            </div>
+            <table className="w-full text-left text-sm">
+              <thead className="border-b bg-white">
+                <tr className="text-gray-700">
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Nat.</th>
+                  <th className="px-4 py-3">HCP</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Passport</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+              {members
+                .filter((m) => !m.is_admin)
+                .map((m) => {
+                  const name = m.display_name || m.full_name || "—";
+                  const passportStatus = passportStatuses[m.id];
+                  const hasCompletePassport = passportStatus?.isComplete ?? false;
+                  const hasPassport = passportStatus?.hasPassport ?? false;
+                  const isActive = (m.status ?? "pending") === "active";
+
+                  return (
+                    <tr key={m.id} className="border-b last:border-b-0">
+                      <td className="px-4 py-3 font-medium text-gray-900">{name}</td>
+                      <td className="px-4 py-3 text-gray-800">{m.email ?? "—"}</td>
+                      <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
+                      <td className="px-4 py-3 text-gray-800">
+                        {m.declared_handicap ?? "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isActive ? (
+                          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                            Pending
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {hasCompletePassport ? (
+                          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                            Complete
+                          </span>
+                        ) : hasPassport ? (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                            Incomplete
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800">
+                            None
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-3">
                           <button
-                            onClick={() => handleViewPassport(m.id)}
+                            onClick={() => {
+                              setEditingRolesMember(m);
+                              setRolesIsAdmin(!!m.is_admin);
+                            }}
                             className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
                           >
-                            View
+                            Roles
                           </button>
-                        )}
-                        {!isActive && (
+                          {hasPassport && (
+                            <button
+                              onClick={() => handleViewPassport(m.id)}
+                              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                              View
+                            </button>
+                          )}
+                          {!isActive && (
+                            <button
+                              onClick={() => handleApproveMember(m.id, name)}
+                              disabled={approvingMemberId === m.id}
+                              className="rounded-md border border-green-300 bg-white px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {approvingMemberId === m.id ? "Approving..." : "Approve"}
+                            </button>
+                          )}
                           <button
-                            onClick={() => handleApproveMember(m.id, name)}
-                            disabled={approvingMemberId === m.id}
-                            className="rounded-md border border-green-300 bg-white px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => handleDeleteMember(m.id, name)}
+                            disabled={deletingMemberId === m.id}
+                            className="rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            {approvingMemberId === m.id ? "Approving..." : "Approve"}
+                            {deletingMemberId === m.id ? "Deleting..." : "Delete"}
                           </button>
-                        )}
-                        <button
-                          onClick={() => handleDeleteMember(m.id, name)}
-                          disabled={deletingMemberId === m.id}
-                          className="rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {deletingMemberId === m.id ? "Deleting..." : "Delete"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
-          {members.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-gray-700">No members found.</div>
-          ) : null}
-        </div>
+            {members.filter((m) => !m.is_admin).length === 0 ? (
+              <div className="px-4 py-6 text-sm text-gray-700">No members found.</div>
+            ) : null}
+          </div>
+        </>
       )}
 
       {/* Passport Details Modal */}
@@ -495,6 +667,70 @@ export default function AdminMembersPage() {
             ) : (
               <div className="mt-4 text-sm text-gray-600">No passport details found.</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Roles Modal */}
+      {editingRolesMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-white p-6 shadow-lg">
+            <div className="flex items-start justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Member roles</h2>
+              <button
+                onClick={() => setEditingRolesMember(null)}
+                className="rounded-md p-1 text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4 text-sm">
+              <div>
+                <div className="text-xs font-semibold text-gray-500">Member</div>
+                <div className="mt-1 text-gray-900">
+                  {editingRolesMember.display_name ||
+                    editingRolesMember.full_name ||
+                    editingRolesMember.email ||
+                    "Member"}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <div>
+                  <div className="text-xs font-semibold text-gray-700">Admin access</div>
+                  <p className="mt-0.5 text-xs text-gray-600">
+                    Admins can access the Admin area and manage trips, courses and members.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={rolesIsAdmin}
+                    onChange={(e) => setRolesIsAdmin(e.target.checked)}
+                    disabled={savingRoles}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"></div>
+                </label>
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  onClick={() => setEditingRolesMember(null)}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveRoles}
+                  disabled={savingRoles}
+                  className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {savingRoles ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
