@@ -83,28 +83,18 @@ export default function AdminMembersPage() {
 
       setMembers(sorted);
 
-      // Check passport status for all members
-      const memberIds = (rows ?? []).map((m) => m.id);
-      if (memberIds.length > 0) {
-        const { data: passports, error: passportError } = await supabase
-          .from("member_passports")
-          .select("user_id,passport_full_name,passport_number_encrypted,passport_country,passport_expiry_date,passport_photo_path")
-          .in("user_id", memberIds);
-
-        if (!passportError && passports) {
-          const statuses: Record<string, PassportStatus> = {};
-          for (const passport of passports) {
-            const hasPassport = true;
-            const isComplete =
-              !!passport.passport_full_name &&
-              !!passport.passport_number_encrypted &&
-              !!passport.passport_country &&
-              !!passport.passport_expiry_date;
-
-            statuses[passport.user_id] = { memberId: passport.user_id, hasPassport, isComplete };
-          }
-          setPassportStatuses(statuses);
+      // Check passport status for all members via admin API route
+      // This bypasses RLS issues since it uses server-side client
+      try {
+        const res = await fetch("/api/admin/passport-statuses");
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.statuses) {
+          setPassportStatuses(json.statuses);
+        } else {
+          console.error("Failed to load passport statuses:", json.error);
         }
+      } catch (err) {
+        console.error("Error loading passport statuses:", err);
       }
 
       setLoading(false);
@@ -449,14 +439,12 @@ export default function AdminMembersPage() {
                             >
                               Roles
                             </button>
-                            {hasPassport && (
-                              <button
-                                onClick={() => handleViewPassport(m.id)}
-                                className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                              >
-                                View
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handleViewPassport(m.id)}
+                              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                              View
+                            </button>
                             {!isActive && (
                               <button
                                 onClick={() => handleApproveMember(m.id, name)}
@@ -545,23 +533,21 @@ export default function AdminMembersPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-3">
-                          <button
-                            onClick={() => {
-                              setEditingRolesMember(m);
-                              setRolesIsAdmin(!!m.is_admin);
-                            }}
-                            className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                          >
-                            Roles
-                          </button>
-                          {hasPassport && (
+                            <button
+                              onClick={() => {
+                                setEditingRolesMember(m);
+                                setRolesIsAdmin(!!m.is_admin);
+                              }}
+                              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                              Roles
+                            </button>
                             <button
                               onClick={() => handleViewPassport(m.id)}
                               className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
                             >
                               View
                             </button>
-                          )}
                           {!isActive && (
                             <button
                               onClick={() => handleApproveMember(m.id, name)}
