@@ -65,6 +65,14 @@ export default function AdminTripPage() {
   const [leaderboardText, setLeaderboardText] = useState<string>("");
   const [resultNotes, setResultNotes] = useState<string>("");
   const [tripNameInput, setTripNameInput] = useState<string>("");
+  const [formatInput, setFormatInput] = useState<string>("");
+  const [capacityInput, setCapacityInput] = useState<string>("");
+  const [ferryInput, setFerryInput] = useState<string>("");
+  const [cutoffLocalInput, setCutoffLocalInput] = useState<string>("");
+  const [meetingPointInput, setMeetingPointInput] = useState<string>("");
+  const [meetTimeInput, setMeetTimeInput] = useState<string>("");
+  const [ferryDetailsInput, setFerryDetailsInput] = useState<string>("");
+  const [logisticsNotesInput, setLogisticsNotesInput] = useState<string>("");
   const [attendeesData, setAttendeesData] = useState<Array<{
     name: string;
     display_name: string | null;
@@ -101,6 +109,14 @@ export default function AdminTripPage() {
   // Keep Trip Name input in sync with loaded trip, but avoid patching on every keypress
   useEffect(() => {
     setTripNameInput(trip?.name ?? "");
+    setFormatInput(trip?.format ?? "");
+    setCapacityInput(String(trip?.capacity ?? ""));
+    setFerryInput(trip?.ferry ?? "");
+    setCutoffLocalInput(toDatetimeLocalValue(trip?.cutoffAt));
+    setMeetingPointInput(trip?.logistics?.meetingPoint ?? "");
+    setMeetTimeInput(trip?.logistics?.meetTime ?? "");
+    setFerryDetailsInput(trip?.logistics?.ferryDetails ?? "");
+    setLogisticsNotesInput(trip?.logistics?.notes ?? "");
   }, [trip?.id, trip?.name]);
 
   const course = useMemo(() => {
@@ -487,8 +503,13 @@ export default function AdminTripPage() {
             <div className="text-sm font-medium text-gray-800">Format</div>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={tripSafe.format}
-              onChange={(e) => patchTrip({ format: e.target.value })}
+              value={formatInput}
+              onChange={(e) => setFormatInput(e.target.value)}
+              onBlur={() => {
+                if ((tripSafe.format ?? "") !== (formatInput ?? "")) {
+                  void patchTrip({ format: formatInput || "" });
+                }
+              }}
               disabled={locked}
             />
           </label>
@@ -498,8 +519,14 @@ export default function AdminTripPage() {
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               type="number"
-              value={tripSafe.capacity}
-              onChange={(e) => patchTrip({ capacity: Number(e.target.value) })}
+              value={capacityInput}
+              onChange={(e) => setCapacityInput(e.target.value)}
+              onBlur={() => {
+                const next = Number(capacityInput);
+                if (Number.isFinite(next) && next !== tripSafe.capacity) {
+                  void patchTrip({ capacity: next });
+                }
+              }}
               disabled={locked}
             />
           </label>
@@ -508,8 +535,13 @@ export default function AdminTripPage() {
             <div className="text-sm font-medium text-gray-800">Ferry</div>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={tripSafe.ferry ?? ""}
-              onChange={(e) => patchTrip({ ferry: e.target.value })}
+              value={ferryInput}
+              onChange={(e) => setFerryInput(e.target.value)}
+              onBlur={() => {
+                if ((tripSafe.ferry ?? "") !== (ferryInput ?? "")) {
+                  void patchTrip({ ferry: ferryInput || null });
+                }
+              }}
               disabled={locked}
             />
           </label>
@@ -532,8 +564,13 @@ export default function AdminTripPage() {
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               type="datetime-local"
-              value={toDatetimeLocalValue(tripSafe.cutoffAt)}
-              onChange={(e) => patchTrip({ cutoffAt: fromDatetimeLocalValue(e.target.value) })}
+              value={cutoffLocalInput}
+              onChange={(e) => setCutoffLocalInput(e.target.value)}
+              onBlur={() => {
+                if (toDatetimeLocalValue(tripSafe.cutoffAt) !== cutoffLocalInput) {
+                  void patchTrip({ cutoffAt: fromDatetimeLocalValue(cutoffLocalInput) });
+                }
+              }}
             />
           </label>
 
@@ -607,10 +644,13 @@ export default function AdminTripPage() {
             <div className="text-sm font-medium text-gray-800">Meeting point</div>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={tripSafe.logistics?.meetingPoint ?? ""}
-              onChange={(e) =>
-                onSetLogistics({ ...tripSafe.logistics, meetingPoint: e.target.value })
-              }
+              value={meetingPointInput}
+              onChange={(e) => setMeetingPointInput(e.target.value)}
+              onBlur={() => {
+                if ((tripSafe.logistics?.meetingPoint ?? "") !== (meetingPointInput ?? "")) {
+                  void onSetLogistics({ ...(tripSafe.logistics ?? {}), meetingPoint: meetingPointInput || undefined });
+                }
+              }}
             />
           </label>
 
@@ -618,10 +658,13 @@ export default function AdminTripPage() {
             <div className="text-sm font-medium text-gray-800">Meet time</div>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={tripSafe.logistics?.meetTime ?? ""}
-              onChange={(e) =>
-                onSetLogistics({ ...tripSafe.logistics, meetTime: e.target.value })
-              }
+              value={meetTimeInput}
+              onChange={(e) => setMeetTimeInput(e.target.value)}
+              onBlur={() => {
+                if ((tripSafe.logistics?.meetTime ?? "") !== (meetTimeInput ?? "")) {
+                  void onSetLogistics({ ...(tripSafe.logistics ?? {}), meetTime: meetTimeInput || undefined });
+                }
+              }}
             />
           </label>
 
@@ -629,10 +672,13 @@ export default function AdminTripPage() {
             <div className="text-sm font-medium text-gray-800">Ferry details</div>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={tripSafe.logistics?.ferryDetails ?? ""}
-              onChange={(e) =>
-                onSetLogistics({ ...tripSafe.logistics, ferryDetails: e.target.value })
-              }
+              value={ferryDetailsInput}
+              onChange={(e) => setFerryDetailsInput(e.target.value)}
+              onBlur={() => {
+                if ((tripSafe.logistics?.ferryDetails ?? "") !== (ferryDetailsInput ?? "")) {
+                  void onSetLogistics({ ...(tripSafe.logistics ?? {}), ferryDetails: ferryDetailsInput || undefined });
+                }
+              }}
             />
           </label>
 
@@ -641,8 +687,13 @@ export default function AdminTripPage() {
             <textarea
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               rows={4}
-              value={tripSafe.logistics?.notes ?? ""}
-              onChange={(e) => onSetLogistics({ ...tripSafe.logistics, notes: e.target.value })}
+              value={logisticsNotesInput}
+              onChange={(e) => setLogisticsNotesInput(e.target.value)}
+              onBlur={() => {
+                if ((tripSafe.logistics?.notes ?? "") !== (logisticsNotesInput ?? "")) {
+                  void onSetLogistics({ ...(tripSafe.logistics ?? {}), notes: logisticsNotesInput || undefined });
+                }
+              }}
             />
           </label>
         </div>
