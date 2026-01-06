@@ -64,6 +64,7 @@ export default function AdminTripPage() {
 
   const [leaderboardText, setLeaderboardText] = useState<string>("");
   const [resultNotes, setResultNotes] = useState<string>("");
+  const [tripNameInput, setTripNameInput] = useState<string>("");
   const [attendeesData, setAttendeesData] = useState<Array<{
     name: string;
     display_name: string | null;
@@ -94,6 +95,11 @@ export default function AdminTripPage() {
     if (!Number.isFinite(tripId)) return undefined;
     return trips.find((t) => t.id === tripId);
   }, [trips, tripId]);
+
+  // Keep Trip Name input in sync with loaded trip, but avoid patching on every keypress
+  useEffect(() => {
+    setTripNameInput(trip?.name ?? "");
+  }, [trip?.id, trip?.name]);
 
   const course = useMemo(() => {
     if (!trip) return undefined;
@@ -453,8 +459,13 @@ export default function AdminTripPage() {
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               type="text"
-              value={tripSafe.name ?? ""}
-              onChange={(e) => patchTrip({ name: e.target.value || undefined })}
+              value={tripNameInput}
+              onChange={(e) => setTripNameInput(e.target.value)}
+              onBlur={(e) => {
+                const next = e.target.value.trim();
+                if (next === (tripSafe.name ?? "")) return;
+                void patchTrip({ name: next || undefined });
+              }}
               placeholder="e.g. Batam Weekend Getaway"
             />
           </label>

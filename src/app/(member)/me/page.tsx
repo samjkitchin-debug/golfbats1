@@ -511,22 +511,8 @@ export default function MePage() {
 
         <div className="rounded-2xl border border-gray-200 p-3">
           <div className="text-xs font-medium text-gray-600">Data security</div>
-          
-          <div className="mt-2 space-y-2 text-xs text-gray-600 leading-relaxed">
-            <div>
-              <div className="font-medium text-gray-700">Passport information</div>
-              <p className="mt-1">
-                When you provide passport details for a trip, we store:
-              </p>
-              <ul className="mt-1 ml-4 list-disc space-y-0.5">
-                <li>Full name as shown on your passport</li>
-                <li>Passport number (encrypted)</li>
-                <li>Passport country</li>
-                <li>Expiry date</li>
-                <li>Optional passport photo</li>
-              </ul>
-            </div>
 
+          <div className="mt-2 space-y-2 text-xs text-gray-600 leading-relaxed">
             <div>
               <div className="font-medium text-gray-700">Protection measures</div>
               <ul className="mt-1 ml-4 list-disc space-y-0.5">
@@ -954,36 +940,48 @@ function PassportBlock({
 
           <div>
             <div className="text-xs font-semibold">Passport photo (optional)</div>
-            <div className="mt-1">
-              <input
-                id="passport-photo-input"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.addEventListener("load", () => {
-                      setPassportImageSrc(reader.result as string);
-                      setShowPassportCropModal(true);
-                      setPassportZoom(1);
-                      setPassportCrop({ x: 0, y: 0 });
-                    });
-                    reader.readAsDataURL(file);
-                  }
-                }}
-                className="hidden"
-                disabled={uploadingPhoto}
-              />
-              <button
-                type="button"
-                onClick={() => document.getElementById("passport-photo-input")?.click()}
-                disabled={uploadingPhoto}
-                className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-              >
-                {passportPhotoPath ? "Change photo" : "Add passport photo"}
-              </button>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <div>
+                <input
+                  id="passport-photo-input"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.addEventListener("load", () => {
+                        setPassportImageSrc(reader.result as string);
+                        setShowPassportCropModal(true);
+                        setPassportZoom(1);
+                        setPassportCrop({ x: 0, y: 0 });
+                      });
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="hidden"
+                  disabled={uploadingPhoto}
+                />
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("passport-photo-input")?.click()}
+                  disabled={uploadingPhoto}
+                  className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  {passportPhotoPath ? "Change photo" : "Add passport photo"}
+                </button>
+              </div>
+
+              {passportPhotoUrl && (
+                <button
+                  type="button"
+                  onClick={() => window.open(passportPhotoUrl, "_blank")}
+                  className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                >
+                  View passport photo
+                </button>
+              )}
             </div>
             <p className="mt-1 text-xs text-gray-500">
               You can use your camera or select an existing file.
@@ -1020,6 +1018,17 @@ function PassportBlock({
                 : "—"
             }
           />
+          {passportPhotoUrl && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => window.open(passportPhotoUrl, "_blank")}
+                className="text-xs font-medium text-brand-red underline"
+              >
+                View passport photo
+              </button>
+            </div>
+          )}
         </div>
       )}
 

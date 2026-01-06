@@ -32,9 +32,9 @@ export default async function MemberLayout({ children }: { children: React.React
             <Image
               src="/logo.png"
               alt="GolfBats logo"
-              width={70}
-              height={70}
-              className="h-[70px] w-[70px] rounded-md"
+              width={78}
+              height={78}
+              className="h-[78px] w-[78px] rounded-md"
               priority
             />
           </Link>

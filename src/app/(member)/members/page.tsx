@@ -150,10 +150,9 @@ export default function MembersPage() {
                     <div className="text-sm font-semibold text-gray-900 truncate">
                       {displayName}
                     </div>
-                    {member.nationality && (
-                      <div className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 truncate">
-                        {flag && <span>{flag}</span>}
-                        <span className="truncate">{member.nationality}</span>
+                    {flag && (
+                      <div className="mt-0.5 flex items-center gap-1 text-xs text-gray-500">
+                        <span>{flag}</span>
                       </div>
                     )}
                   </div>
