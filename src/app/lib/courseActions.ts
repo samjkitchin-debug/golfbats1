@@ -23,6 +23,23 @@ function getSupabase() {
   return createSupabaseBrowserClient();
 }
 
+/**
+ * Revalidate the courses cache after mutations
+ */
+async function revalidateCoursesCache() {
+  if (typeof window === "undefined") return;
+  try {
+    await fetch("/api/courses/revalidate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tag: "courses" }),
+    });
+  } catch (error) {
+    // Silently fail - cache will expire naturally
+    console.warn("Failed to revalidate courses cache:", error);
+  }
+}
+
 function cleanNullableString(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
@@ -113,6 +130,9 @@ export async function createCourse(input: {
     throw new Error(`Failed to create course: ${courseError.message || JSON.stringify(courseError)}`);
   }
 
+  // Invalidate cache
+  await revalidateCoursesCache();
+
   // Return course object (tees will be loaded separately)
   const course: Course = {
     id: courseId,
@@ -154,6 +174,9 @@ export async function updateCourse(courseId: string, patch: Partial<Omit<Course,
     throw new Error(`Failed to update course: ${error.message || JSON.stringify(error)}`);
   }
 
+  // Invalidate cache
+  await revalidateCoursesCache();
+
   // Return updated course (will be reloaded from DB by caller)
   const courses = await loadCourses();
   const updated = courses.find((c) => c.id === courseId);
@@ -189,6 +212,9 @@ export async function deleteCourse(courseId: string) {
     throw new Error(`Failed to delete course: ${error.message || JSON.stringify(error)}`);
   }
 
+  // Invalidate cache
+  await revalidateCoursesCache();
+
   // Course deleted from database - no need to update localStorage
 }
 
@@ -213,6 +239,9 @@ export async function addTee(courseId: string, teeInput: Omit<Tee, "id">) {
   });
 
   if (teeError) throw teeError;
+
+  // Invalidate cache
+  await revalidateCoursesCache();
 
   const tee: Tee = {
     id: teeId,
@@ -251,6 +280,9 @@ export async function updateTee(courseId: string, teeId: string, patch: Partial<
     throw new Error(`Failed to update tee: ${error.message || JSON.stringify(error)}`);
   }
 
+  // Invalidate cache
+  await revalidateCoursesCache();
+
   // Return updated tee (will be reloaded from DB by caller)
   const courses = await loadCourses();
   const course = courses.find((c) => c.id === courseId);
@@ -279,6 +311,9 @@ export async function deleteTee(courseId: string, teeId: string) {
   if (error) {
     throw new Error(`Failed to delete tee: ${error.message || JSON.stringify(error)}`);
   }
+
+  // Invalidate cache
+  await revalidateCoursesCache();
 
   // Tee deleted from database - no need to update localStorage
 }

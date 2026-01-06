@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+
+const CACHE_TAG = "trips";
 
 /**
  * POST /api/trips/[id]/result
@@ -103,6 +106,9 @@ export async function POST(
       .eq("id", trip.id)
       .eq("status", "open"); // Only update if currently open
 
+    // Invalidate trips cache
+    revalidateTag(CACHE_TAG);
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Publish result error:", error);
@@ -154,6 +160,9 @@ export async function DELETE(
       // Delete result
       await supabase.from("trip_results").delete().eq("id", result.id);
     }
+
+    // Invalidate trips cache
+    revalidateTag(CACHE_TAG);
 
     return NextResponse.json({ ok: true });
   } catch (error) {

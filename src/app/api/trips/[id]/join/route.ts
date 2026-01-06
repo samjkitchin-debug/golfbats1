@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+
+const CACHE_TAG = "trips";
 
 /**
  * POST /api/trips/[id]/join
@@ -83,6 +86,9 @@ export async function POST(
         );
       }
     }
+
+    // Invalidate trips cache
+    revalidateTag(CACHE_TAG);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
