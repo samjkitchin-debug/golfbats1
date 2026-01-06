@@ -2,13 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../lib/courseActions";
 import { getTripCourseText } from "../../lib/tripDisplay";
-import { loadTrips, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
+import { loadTrips, joinTrip, leaveTrip, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
 
 export default function TripsListPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+
+  const supabase = useMemo(() => {
+    return createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+  }, []);
 
   useEffect(() => {
     document.title = "GolfBats - Trips";
@@ -26,6 +35,61 @@ export default function TripsListPage() {
     }
     loadData();
   }, []);
+
+  useEffect(() => {
+    async function loadCurrentUser() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          const { data: memberData } = await supabase
+            .from("members")
+            .select("display_name, full_name")
+            .eq("id", user.id)
+            .maybeSingle();
+          const name = memberData?.display_name || memberData?.full_name || null;
+          setCurrentUserName(name);
+        }
+      } catch (error) {
+        console.warn("Failed to load current user:", error);
+      }
+    }
+    loadCurrentUser();
+  }, [supabase]);
+
+  async function handleJoinTrip(tripId: number, trip: Trip) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const { data: memberData } = await supabase
+          .from("members")
+          .select("declared_handicap")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        const handicapValue = memberData?.declared_handicap ?? null;
+        const updated = await joinTrip(trips, tripId, handicapValue);
+        setTrips(updated);
+      }
+    } catch (error) {
+      console.error("Failed to join trip:", error);
+      alert(`Failed to join trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function handleLeaveTrip(tripId: number) {
+    try {
+      const updated = await leaveTrip(trips, tripId);
+      setTrips(updated);
+    } catch (error) {
+      console.error("Failed to leave trip:", error);
+      alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -64,6 +128,12 @@ export default function TripsListPage() {
               const signupOpenAt = tripDate - 30 * 24 * 60 * 60 * 1000;
               const isPhase0 = t.status === "open" && !t.result && Number.isFinite(signupOpenAt) && now < signupOpenAt;
               const signupOpenDateYmd = isPhase0 ? new Date(signupOpenAt).toISOString().slice(0, 10) : null;
+              
+              // Check if user is already in the trip
+              const myEntry = currentUserName
+                ? t.attendees.find((a) => a.name === currentUserName)
+                : undefined;
+              const joinDisabled = isPhase0 || t.status !== "open";
 
               return (
                 <li key={t.id} className="py-4">
@@ -124,6 +194,27 @@ export default function TripsListPage() {
                       <div className="mt-2 text-xs text-gray-500">
                         {confirmedCount(t)} confirmed
                       </div>
+                      
+                      {/* I'm in / I'm out Button */}
+                      {t.status === "open" && !isPhase0 && (
+                        <div className="mt-3">
+                          {myEntry ? (
+                            <button
+                              onClick={() => void handleLeaveTrip(t.id)}
+                              className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:opacity-95"
+                            >
+                              I'm Out
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => void handleJoinTrip(t.id, t)}
+                              className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:opacity-95"
+                            >
+                              Join Trip
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <Link

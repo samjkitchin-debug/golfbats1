@@ -14,6 +14,8 @@ import {
   type Trip,
 } from "../../../lib/tripActions";
 import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay";
+import { ConfirmModal } from "../../../components/ConfirmModal";
+import { PromptModal } from "../../../components/PromptModal";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -28,6 +30,22 @@ export default function TripDetailPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+    onCancel: () => {},
+  });
+  const [promptModal, setPromptModal] = useState<{ isOpen: boolean; title: string; message: string; defaultValue: string; placeholder: string; onConfirm: (value: string) => void; onCancel: () => void }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    defaultValue: "",
+    placeholder: "",
+    onConfirm: () => {},
+    onCancel: () => {},
+  });
 
   const supabase = useMemo(() => {
     return createBrowserClient(
@@ -165,59 +183,102 @@ export default function TripDetailPage() {
 
         let handicapValue: number | null = existingHandicap;
 
-        if (existingHandicap !== null) {
-          const wantsEdit = window.confirm(
-            `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`
-          );
-          if (wantsEdit) {
-            const input = window.prompt(
-              "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
-              String(existingHandicap)
+        // Prepare the join action function
+        const continueWithHandicap = async (handicapValue: number | null) => {
+          try {
+            await supabase
+              .from("members")
+              .update({
+                declared_handicap: handicapValue,
+                last_seen: new Date().toISOString(),
+                full_name: memberData?.full_name ?? null,
+                display_name: memberData?.display_name ?? null,
+                nationality: memberData?.nationality ?? null,
+              })
+              .eq("id", user.id);
+
+            const updated = await joinTrip(trips, tripIdSafe, handicapValue);
+            setTrips(updated);
+          } catch (error) {
+            console.error("Failed to join trip:", error);
+            alert(
+              `Failed to join trip: ${error instanceof Error ? error.message : String(error)}`
             );
-            if (input === null) return;
-            const trimmed = input.trim();
-            if (trimmed === "") {
-              handicapValue = existingHandicap;
-            } else {
-              const parsed = Number(trimmed);
-              if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-                alert("Handicap must be a number between 0 and 36.");
-                return;
-              }
-              handicapValue = parsed;
-            }
           }
+        };
+
+        if (existingHandicap !== null) {
+          // Show confirm modal to ask if they want to edit
+          setConfirmModal({
+            isOpen: true,
+            title: "Edit Handicap?",
+            message: `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`,
+            onConfirm: () => {
+              setConfirmModal({ ...confirmModal, isOpen: false });
+              // Show prompt modal for editing handicap
+              setPromptModal({
+                isOpen: true,
+                title: "Enter Handicap",
+                message: "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
+                defaultValue: String(existingHandicap),
+                placeholder: "0–36",
+                onConfirm: (input: string) => {
+                  setPromptModal({ ...promptModal, isOpen: false });
+                  const trimmed = input.trim();
+                  let handicapValue: number | null = existingHandicap;
+                  if (trimmed === "") {
+                    handicapValue = existingHandicap;
+                  } else {
+                    const parsed = Number(trimmed);
+                    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
+                      alert("Handicap must be a number between 0 and 36.");
+                      return;
+                    }
+                    handicapValue = parsed;
+                  }
+                  void continueWithHandicap(handicapValue);
+                },
+                onCancel: () => {
+                  setPromptModal({ ...promptModal, isOpen: false });
+                },
+              });
+            },
+            onCancel: () => {
+              setConfirmModal({ ...confirmModal, isOpen: false });
+              // Use existing handicap without editing
+              void continueWithHandicap(existingHandicap);
+            },
+          });
         } else {
-          const input = window.prompt(
-            "Please enter your current handicap (0–36), or leave blank if you are not sure yet:"
-          );
-          if (input === null) return;
-          const trimmed = input.trim();
-          if (trimmed !== "") {
-            const parsed = Number(trimmed);
-            if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-              alert("Handicap must be a number between 0 and 36.");
-              return;
-            }
-            handicapValue = parsed;
-          } else {
-            handicapValue = null;
-          }
+          // Show prompt modal for new handicap
+          setPromptModal({
+            isOpen: true,
+            title: "Enter Handicap",
+            message: "Please enter your current handicap (0–36), or leave blank if you are not sure yet:",
+            defaultValue: "",
+            placeholder: "0–36",
+            onConfirm: (input: string) => {
+              setPromptModal({ ...promptModal, isOpen: false });
+              const trimmed = input.trim();
+              let handicapValue: number | null = null;
+              if (trimmed !== "") {
+                const parsed = Number(trimmed);
+                if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
+                  alert("Handicap must be a number between 0 and 36.");
+                  return;
+                }
+                handicapValue = parsed;
+              }
+              void continueWithHandicap(handicapValue);
+            },
+            onCancel: () => {
+              setPromptModal({ ...promptModal, isOpen: false });
+              // Join without handicap
+              void continueWithHandicap(null);
+            },
+          });
         }
 
-        await supabase
-          .from("members")
-          .update({
-            declared_handicap: handicapValue,
-            last_seen: new Date().toISOString(),
-            full_name: memberData?.full_name ?? null,
-            display_name: memberData?.display_name ?? null,
-            nationality: memberData?.nationality ?? null,
-          })
-          .eq("id", user.id);
-
-        const updated = await joinTrip(trips, tripIdSafe, handicapValue);
-        setTrips(updated);
       }
     } catch (error) {
       console.error("Failed to update member handicap:", error);
@@ -228,16 +289,24 @@ export default function TripDetailPage() {
   }
 
   async function handleImOut() {
-    const ok = window.confirm("Are you sure?");
-    if (!ok) return;
-
-    try {
-      const updated = await leaveTrip(trips, tripIdSafe);
-      setTrips(updated);
-    } catch (error) {
-      console.error("Failed to leave trip:", error);
-      alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: "Leave Trip?",
+      message: "Are you sure you want to leave this trip?",
+      onConfirm: async () => {
+        setConfirmModal({ ...confirmModal, isOpen: false });
+        try {
+          const updated = await leaveTrip(trips, tripIdSafe);
+          setTrips(updated);
+        } catch (error) {
+          console.error("Failed to leave trip:", error);
+          alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      },
+      onCancel: () => {
+        setConfirmModal({ ...confirmModal, isOpen: false });
+      },
+    });
   }
 
   async function saveHandicap() {
@@ -303,7 +372,7 @@ export default function TripDetailPage() {
                 disabled={true}
                 className="flex-1 rounded bg-gray-200 py-2 text-sm text-gray-500 cursor-not-allowed"
               >
-                I'm In
+                Join Trip
               </button>
               <button
                 onClick={handleImOut}
@@ -324,7 +393,7 @@ export default function TripDetailPage() {
                 joinDisabled ? "bg-gray-200 text-gray-500" : "bg-green-600 hover:opacity-95"
               }`}
             >
-              I'm In
+              Join Trip
             </button>
           )}
         </div>
@@ -475,6 +544,28 @@ export default function TripDetailPage() {
           <div className="text-sm text-gray-600">Not published yet.</div>
         )}
       </section>
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmLabel="Yes"
+        cancelLabel="No"
+        onConfirm={confirmModal.onConfirm}
+        onCancel={confirmModal.onCancel}
+      />
+
+      <PromptModal
+        isOpen={promptModal.isOpen}
+        title={promptModal.title}
+        message={promptModal.message}
+        defaultValue={promptModal.defaultValue}
+        placeholder={promptModal.placeholder}
+        confirmLabel="OK"
+        cancelLabel="Cancel"
+        onConfirm={promptModal.onConfirm}
+        onCancel={promptModal.onCancel}
+      />
     </div>
   );
 }

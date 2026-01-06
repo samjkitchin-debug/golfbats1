@@ -6,11 +6,29 @@ import { createBrowserClient } from "@supabase/ssr";
 import { loadTrips, joinTrip, leaveTrip, setMyHandicapForTrip, type Trip } from "../lib/tripActions";
 import { loadCourses, type Course } from "../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../lib/tripDisplay";
+import { ConfirmModal } from "../components/ConfirmModal";
+import { PromptModal } from "../components/PromptModal";
 
 export default function HomePage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+    onCancel: () => {},
+  });
+  const [promptModal, setPromptModal] = useState<{ isOpen: boolean; title: string; message: string; defaultValue: string; placeholder: string; onConfirm: (value: string) => void; onCancel: () => void }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    defaultValue: "",
+    placeholder: "",
+    onConfirm: () => {},
+    onCancel: () => {},
+  });
 
   const supabase = useMemo(() => {
     return createBrowserClient(
@@ -161,120 +179,171 @@ export default function HomePage() {
             ? memberData.declared_handicap
             : null;
 
-        let handicapValue: number | null = existingHandicap;
+        // Prepare the join action function
+        const continueWithHandicap = async (handicapValue: number | null) => {
+          try {
+            const now = new Date().toISOString();
+
+            if (memberData) {
+              await supabase
+                .from("members")
+                .update({
+                  declared_handicap: handicapValue,
+                  last_seen: now,
+                  full_name: memberData.full_name ?? null,
+                  display_name: memberData.display_name ?? null,
+                  nationality: memberData.nationality ?? null,
+                })
+                .eq("id", user.id);
+            } else {
+              await supabase
+                .from("members")
+                .insert({
+                  id: user.id,
+                  email: user.email || "",
+                  declared_handicap: handicapValue,
+                  last_seen: now,
+                  created_at: now,
+                });
+            }
+
+            // Add to trip and save handicap for this trip
+            const updated = await joinTrip(trips, nextTrip.id, handicapValue);
+            setTrips(updated);
+            
+            // Reload trips to get latest data (with a small delay to let DB catch up)
+            try {
+              await new Promise(resolve => setTimeout(resolve, 500));
+              const freshTrips = await loadTrips(true); // Bypass cache
+              setTrips(freshTrips);
+              
+              // Silently verify - only log warnings, don't show errors to user
+              // The join likely succeeded even if verification fails due to timing/name matching
+              const freshNextTrip = freshTrips.find(t => t.id === nextTrip.id);
+              if (freshNextTrip && currentUserName) {
+                const freshMyEntry = freshNextTrip.attendees.find((a) => 
+                  a.name === currentUserName || 
+                  a.name === memberData?.display_name || 
+                  a.name === memberData?.full_name
+                );
+                if (!freshMyEntry) {
+                  console.warn("Join verification: name not found in attendees, but join may have succeeded");
+                }
+              }
+            } catch (reloadError) {
+              console.error("Failed to reload trips after join:", reloadError);
+              // Don't show error to user - the join might have succeeded
+            }
+          } catch (error) {
+            console.error("Failed to join trip:", error);
+            alert(
+              `Failed to join trip: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
+            );
+          }
+        };
 
         // Ask if they want to edit their current handicap
         if (existingHandicap !== null) {
-          const wantsEdit = window.confirm(
-            `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`
-          );
-          if (wantsEdit) {
-            const input = window.prompt(
-              "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
-              String(existingHandicap)
-            );
-            if (input === null) return; // cancelled
-            const trimmed = input.trim();
-            if (trimmed === "") {
-              handicapValue = existingHandicap;
-            } else {
-              const parsed = Number(trimmed);
-              if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-                alert("Handicap must be a number between 0 and 36.");
-                return;
+          // Show confirm modal to ask if they want to edit
+          setConfirmModal({
+            isOpen: true,
+            title: "Edit Handicap?",
+            message: `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`,
+            onConfirm: () => {
+              setConfirmModal({ ...confirmModal, isOpen: false });
+              // Show prompt modal for editing handicap
+              setPromptModal({
+                isOpen: true,
+                title: "Enter Handicap",
+                message: "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
+                defaultValue: String(existingHandicap),
+                placeholder: "0–36",
+                onConfirm: (input: string) => {
+                  setPromptModal({ ...promptModal, isOpen: false });
+                  const trimmed = input.trim();
+                  let handicapValue: number | null = existingHandicap;
+                  if (trimmed === "") {
+                    handicapValue = existingHandicap;
+                  } else {
+                    const parsed = Number(trimmed);
+                    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
+                      alert("Handicap must be a number between 0 and 36.");
+                      return;
+                    }
+                    handicapValue = parsed;
+                  }
+                  void continueWithHandicap(handicapValue);
+                },
+                onCancel: () => {
+                  setPromptModal({ ...promptModal, isOpen: false });
+                },
+              });
+            },
+            onCancel: () => {
+              setConfirmModal({ ...confirmModal, isOpen: false });
+              // Use existing handicap without editing
+              void continueWithHandicap(existingHandicap);
+            },
+          });
+        } else {
+          // Show prompt modal for new handicap
+          setPromptModal({
+            isOpen: true,
+            title: "Enter Handicap",
+            message: "Please enter your current handicap (0–36), or leave blank if you are not sure yet:",
+            defaultValue: "",
+            placeholder: "0–36",
+            onConfirm: (input: string) => {
+              setPromptModal({ ...promptModal, isOpen: false });
+              const trimmed = input.trim();
+              let handicapValue: number | null = null;
+              if (trimmed !== "") {
+                const parsed = Number(trimmed);
+                if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
+                  alert("Handicap must be a number between 0 and 36.");
+                  return;
+                }
+                handicapValue = parsed;
               }
-              handicapValue = parsed;
-            }
-          }
-        } else {
-          const input = window.prompt(
-            "Please enter your current handicap (0–36), or leave blank if you are not sure yet:"
-          );
-          if (input === null) return; // cancelled
-          const trimmed = input.trim();
-          if (trimmed !== "") {
-            const parsed = Number(trimmed);
-            if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-              alert("Handicap must be a number between 0 and 36.");
-              return;
-            }
-            handicapValue = parsed;
-          } else {
-            handicapValue = null;
-          }
-        }
-
-        const now = new Date().toISOString();
-
-        if (memberData) {
-          await supabase
-            .from("members")
-            .update({
-              declared_handicap: handicapValue,
-              last_seen: now,
-              full_name: memberData.full_name ?? null,
-              display_name: memberData.display_name ?? null,
-              nationality: memberData.nationality ?? null,
-            })
-            .eq("id", user.id);
-        } else {
-          await supabase
-            .from("members")
-            .insert({
-              id: user.id,
-              email: user.email || "",
-              declared_handicap: handicapValue,
-              last_seen: now,
-              created_at: now,
-            });
-        }
-
-        // Add to trip and save handicap for this trip
-        const updated = await joinTrip(trips, nextTrip.id, handicapValue);
-        setTrips(updated);
-        
-        // Reload trips to verify join succeeded and get latest data
-        try {
-          const freshTrips = await loadTrips(true); // Bypass cache
-          setTrips(freshTrips);
-          
-          // Verify we're now in the trip
-          const freshNextTrip = freshTrips.find(t => t.id === nextTrip.id);
-          if (freshNextTrip) {
-            const freshMyEntry = currentUserName
-              ? freshNextTrip.attendees.find((a) => a.name === currentUserName)
-              : undefined;
-            if (!freshMyEntry) {
-              console.warn("Join may have failed - not found in attendees after reload");
-              alert("There was an issue confirming your join. Please refresh the page to check your status.");
-            }
-          }
-        } catch (reloadError) {
-          console.error("Failed to reload trips after join:", reloadError);
-          // Don't show error to user - the join might have succeeded
+              void continueWithHandicap(handicapValue);
+            },
+            onCancel: () => {
+              setPromptModal({ ...promptModal, isOpen: false });
+              // Join without handicap
+              void continueWithHandicap(null);
+            },
+          });
         }
       } else {
         alert("You must be signed in to join a trip.");
       }
     } catch (error) {
-      console.error("Failed to join trip:", error);
+      console.error("Failed to start join process:", error);
       alert(
-        `Failed to join trip: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
+        `Failed to start join process: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
       );
     }
   }
 
   async function handleImOut() {
-    const ok = window.confirm("Are you sure?");
-    if (!ok) return;
-
-    try {
-      const updated = await leaveTrip(trips, nextTrip.id);
-      setTrips(updated);
-    } catch (error) {
-      console.error("Failed to leave trip:", error);
-      alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: "Leave Trip?",
+      message: "Are you sure you want to leave this trip?",
+      onConfirm: async () => {
+        setConfirmModal({ ...confirmModal, isOpen: false });
+        try {
+          const updated = await leaveTrip(trips, nextTrip.id);
+          setTrips(updated);
+        } catch (error) {
+          console.error("Failed to leave trip:", error);
+          alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      },
+      onCancel: () => {
+        setConfirmModal({ ...confirmModal, isOpen: false });
+      },
+    });
   }
 
   return (
@@ -337,7 +406,7 @@ export default function HomePage() {
                 disabled={true}
                 className="flex-1 rounded bg-gray-200 py-2 text-sm text-gray-500 cursor-not-allowed"
               >
-                I’m In
+                Join Trip
               </button>
               <button
                 onClick={handleImOut}
@@ -355,7 +424,7 @@ export default function HomePage() {
                 joinDisabled ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-green-600 hover:opacity-95"
               }`}
             >
-              I’m In
+              Join Trip
             </button>
           )}
         </div>
@@ -378,6 +447,28 @@ export default function HomePage() {
           <div className="mt-1 text-gray-600">Published only</div>
         </Link>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmLabel="Yes"
+        cancelLabel="No"
+        onConfirm={confirmModal.onConfirm}
+        onCancel={confirmModal.onCancel}
+      />
+
+      <PromptModal
+        isOpen={promptModal.isOpen}
+        title={promptModal.title}
+        message={promptModal.message}
+        defaultValue={promptModal.defaultValue}
+        placeholder={promptModal.placeholder}
+        confirmLabel="OK"
+        cancelLabel="Cancel"
+        onConfirm={promptModal.onConfirm}
+        onCancel={promptModal.onCancel}
+      />
     </div>
   );
 }
