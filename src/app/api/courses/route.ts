@@ -8,68 +8,66 @@ const CACHE_TAG = "courses";
 const CACHE_TTL = 3600; // 1 hour
 
 /**
- * Cached data fetcher (request-scoped memoization + cross-request caching)
+ * Fetch courses data (cannot be cached because it uses cookies())
  */
-const getCachedCourses = cache(
-  unstable_cache(
-    async () => {
-      const supabase = await createSupabaseServerClient();
+async function fetchCoursesData() {
+  const supabase = await createSupabaseServerClient();
 
-        // Fetch courses
-        const { data: coursesData, error: coursesError } = await supabase
-          .from("courses")
-          .select("id,name,location,website")
-          .order("name", { ascending: true });
+  // Fetch courses
+  const { data: coursesData, error: coursesError } = await supabase
+    .from("courses")
+    .select("id,name,location,website")
+    .order("name", { ascending: true });
 
-        if (coursesError) {
-          throw new Error(coursesError.message || "Failed to fetch courses.");
-        }
+  if (coursesError) {
+    throw new Error(coursesError.message || "Failed to fetch courses.");
+  }
 
-        if (!coursesData || coursesData.length === 0) {
-          return { ok: true, courses: [] };
-        }
+  if (!coursesData || coursesData.length === 0) {
+    return { ok: true, courses: [] };
+  }
 
-        // Fetch all tees for these courses
-        const courseIds = coursesData.map((c) => c.id);
-        const { data: teesData, error: teesError } = await supabase
-          .from("tees")
-          .select("id,course_id,label,meters,par,slope")
-          .in("course_id", courseIds);
+  // Fetch all tees for these courses
+  const courseIds = coursesData.map((c) => c.id);
+  const { data: teesData, error: teesError } = await supabase
+    .from("tees")
+    .select("id,course_id,label,meters,par,slope")
+    .in("course_id", courseIds);
 
-        if (teesError) {
-          console.warn("Failed to fetch tees:", teesError);
-        }
+  if (teesError) {
+    console.warn("Failed to fetch tees:", teesError);
+  }
 
-        // Combine courses with their tees
-        const courses = coursesData.map((course) => {
-          const tees = (teesData || [])
-            .filter((t) => t.course_id === course.id)
-            .map((t) => ({
-              id: t.id,
-              label: t.label,
-              meters: t.meters,
-              par: t.par,
-              slope: t.slope,
-            }));
+  // Combine courses with their tees
+  const courses = coursesData.map((course) => {
+    const tees = (teesData || [])
+      .filter((t) => t.course_id === course.id)
+      .map((t) => ({
+        id: t.id,
+        label: t.label,
+        meters: t.meters,
+        par: t.par,
+        slope: t.slope,
+      }));
 
-          return {
-            id: course.id,
-            name: course.name,
-            location: course.location || "",
-            website: course.website,
-            tees,
-          };
-        });
+    return {
+      id: course.id,
+      name: course.name,
+      location: course.location || "",
+      website: course.website,
+      tees,
+    };
+  });
 
-        return { ok: true, courses };
-      },
-      ["courses-list"],
-      {
-        tags: [CACHE_TAG],
-        revalidate: CACHE_TTL,
-      }
-    )
-);
+  return { ok: true, courses };
+}
+
+/**
+ * Request-scoped memoization only (no cross-request caching due to cookies() limitation)
+ */
+const getCachedCourses = cache(async () => {
+  return await fetchCoursesData();
+});
 
 /**
  * GET /api/courses

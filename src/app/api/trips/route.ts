@@ -9,11 +9,10 @@ const CACHE_TTL = 10; // 10 seconds (reduced from 30 to help with stale data iss
 
 /**
  * Cached data fetcher (request-scoped memoization + cross-request caching)
+ * Note: We can't use cookies() inside unstable_cache, so we fetch data outside cache
  */
-const getTripsData = cache(
-  unstable_cache(
-    async () => {
-      const supabase = await createSupabaseServerClient();
+async function fetchTripsData() {
+  const supabase = await createSupabaseServerClient();
 
   // Fetch trips (include all trips, even those without legacy_id)
   const { data: tripsData, error: tripsError } = await supabase
@@ -135,14 +134,14 @@ const getTripsData = cache(
 
   console.log("[trips API] Returning", trips.length, "trips");
   return { ok: true, trips };
-    },
-    ["trips-list"],
-    {
-      tags: [CACHE_TAG],
-      revalidate: CACHE_TTL,
-    }
-  )
-);
+}
+
+/**
+ * Request-scoped memoization only (no cross-request caching due to cookies() limitation)
+ */
+const getTripsData = cache(async () => {
+  return await fetchTripsData();
+});
 
 /**
  * GET /api/trips
