@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
 const CACHE_TAG = "trips";
+const SIGNUP_WINDOW_DAYS = 30;
 
 /**
  * POST /api/trips/[id]/join
@@ -34,12 +35,40 @@ export async function POST(
     // Find trip by legacy_id
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
-      .select("id")
+      .select("id,trip_date,status")
       .eq("legacy_id", legacyId)
       .single();
 
     if (tripErr || !trip) {
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+    }
+
+    // Phase 0 enforcement: do not allow joining until 30 days before trip date
+    // Also enforce that only "open" trips can be joined.
+    const tripStatus = String((trip as any).status ?? "").toLowerCase();
+    if (tripStatus !== "open") {
+      return NextResponse.json(
+        { error: "RSVP is closed for this trip." },
+        { status: 403 }
+      );
+    }
+
+    const tripDateStr = String((trip as any).trip_date ?? "");
+    const tripDateUtc = new Date(tripDateStr + "T00:00:00Z").getTime();
+    if (!Number.isFinite(tripDateUtc)) {
+      return NextResponse.json(
+        { error: "Trip date is invalid. Please ask an admin to fix the trip date." },
+        { status: 400 }
+      );
+    }
+
+    const signupOpenUtc = tripDateUtc - SIGNUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    if (Date.now() < signupOpenUtc) {
+      const openDate = new Date(signupOpenUtc).toISOString().slice(0, 10);
+      return NextResponse.json(
+        { error: `Signups open on ${openDate} (30 days before the trip).` },
+        { status: 403 }
+      );
     }
 
     const body = await req.json().catch(() => ({}));

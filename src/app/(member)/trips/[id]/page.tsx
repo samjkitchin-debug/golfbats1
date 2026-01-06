@@ -76,6 +76,21 @@ export default function TripDetailPage() {
     return trips.find((t) => t.id === tripId);
   }, [trips, tripId]);
 
+  // Phase 0: scheduled (open trip, but signups only open within 30 days of trip date)
+  const tripDateUtc = trip ? new Date(trip.date + "T00:00:00Z").getTime() : NaN;
+  const signupOpenUtc = Number.isFinite(tripDateUtc)
+    ? tripDateUtc - 30 * 24 * 60 * 60 * 1000
+    : NaN;
+  const signupOpenDateYmd = Number.isFinite(signupOpenUtc)
+    ? new Date(signupOpenUtc).toISOString().slice(0, 10)
+    : null;
+  const isPhase0 =
+    !!trip &&
+    trip.status === "open" &&
+    !trip.result &&
+    Number.isFinite(signupOpenUtc) &&
+    Date.now() < signupOpenUtc;
+
   const courseText = useMemo(() => {
     if (!trip) return null;
     return getTripCourseText(trip, courses);
@@ -125,6 +140,7 @@ export default function TripDetailPage() {
   // From here down, trip is guaranteed
   const tripIdSafe = trip.id;
   const locked = isTripLocked(trip);
+  const joinDisabled = locked || isPhase0;
 
   async function handleImIn() {
     // Prevent duplicate joins
@@ -263,6 +279,7 @@ export default function TripDetailPage() {
           {formatTripDateLong(trip.date)} · {trip.format}
           {trip.ferry ? ` · Ferry ${trip.ferry}` : ""}
           {locked ? " · Locked" : ""}
+          {isPhase0 && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
         </div>
       </div>
 
@@ -294,15 +311,21 @@ export default function TripDetailPage() {
             // User is not in the trip - show only "I'm in" button in green
             <button
               onClick={handleImIn}
-              disabled={locked}
+              disabled={joinDisabled}
               className={`flex-1 rounded py-2 text-sm text-white ${
-                locked ? "bg-gray-200 text-gray-500" : "bg-green-600 hover:opacity-95"
+                joinDisabled ? "bg-gray-200 text-gray-500" : "bg-green-600 hover:opacity-95"
               }`}
             >
               I’m In
             </button>
           )}
         </div>
+
+        {isPhase0 && signupOpenDateYmd ? (
+          <div className="mt-3 text-sm text-gray-600">
+            Signups open on <span className="font-semibold">{signupOpenDateYmd}</span> (30 days before the trip).
+          </div>
+        ) : null}
 
         <div className="mt-3 text-sm text-gray-700">
           Your status:{" "}

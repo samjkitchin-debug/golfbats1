@@ -116,9 +116,32 @@ export default function HomePage() {
     ? nextTrip.attendees.find((a) => a.name === currentUserName)
     : undefined;
 
+  // Phase 0: scheduled (open trip, but signups only open within 30 days of trip date)
+  const tripDateUtc = new Date(nextTrip.date + "T00:00:00Z").getTime();
+  const signupOpenUtc = Number.isFinite(tripDateUtc)
+    ? tripDateUtc - 30 * 24 * 60 * 60 * 1000
+    : NaN;
+  const signupOpenDateYmd = Number.isFinite(signupOpenUtc)
+    ? new Date(signupOpenUtc).toISOString().slice(0, 10)
+    : null;
+  const isPhase0 =
+    nextTrip.status === "open" &&
+    !nextTrip.result &&
+    Number.isFinite(signupOpenUtc) &&
+    Date.now() < signupOpenUtc;
+  const joinDisabled = isPhase0 || nextTrip.status !== "open";
+
   async function handleImIn() {
     // Prevent duplicate joins
     if (myEntry) return;
+    if (joinDisabled) {
+      if (isPhase0 && signupOpenDateYmd) {
+        alert(`Signups open on ${signupOpenDateYmd} (30 days before the trip).`);
+      } else {
+        alert("RSVP is not open for this trip.");
+      }
+      return;
+    }
 
     try {
       const {
@@ -274,6 +297,7 @@ export default function HomePage() {
               {formatTripDateLong(nextTrip.date)} · {nextTrip.format}
               {nextTrip.ferry ? ` · Ferry ${nextTrip.ferry}` : ""}
               {nextTrip.status === "open" ? " · Open for sign up" : nextTrip.status === "closed" ? " · Closed" : ""}
+              {isPhase0 && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
             </div>
 
             {nextTrip.logistics?.meetingPoint || nextTrip.logistics?.meetTime ? (
@@ -318,7 +342,10 @@ export default function HomePage() {
             // User is not in the trip - show only "I'm in" button in green
             <button
               onClick={handleImIn}
-              className="flex-1 rounded bg-green-600 py-2 text-sm text-white hover:opacity-95"
+              disabled={joinDisabled}
+              className={`flex-1 rounded py-2 text-sm text-white ${
+                joinDisabled ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-green-600 hover:opacity-95"
+              }`}
             >
               I’m In
             </button>

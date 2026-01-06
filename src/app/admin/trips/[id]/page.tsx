@@ -21,18 +21,17 @@ import {
 import { getTripCourseText } from "../../../lib/tripDisplay";
 import { createSupabaseBrowserClient } from "../../../lib/supabaseBrowser";
 
-function toDatetimeLocalValue(isoUtc?: string) {
+function toDateValue(isoUtc?: string) {
   if (!isoUtc) return "";
   const d = new Date(isoUtc);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function fromDatetimeLocalValue(v: string) {
+function fromDateValue(v: string) {
   if (!v) return undefined;
-  const d = new Date(v);
+  // Set to 11:59pm local time on the chosen date
+  const d = new Date(v + "T23:59:00");
   return d.toISOString();
 }
 
@@ -67,8 +66,7 @@ export default function AdminTripPage() {
   const [tripNameInput, setTripNameInput] = useState<string>("");
   const [formatInput, setFormatInput] = useState<string>("");
   const [capacityInput, setCapacityInput] = useState<string>("");
-  const [ferryInput, setFerryInput] = useState<string>("");
-  const [cutoffLocalInput, setCutoffLocalInput] = useState<string>("");
+  const [cutoffDateInput, setCutoffDateInput] = useState<string>("");
   const [meetingPointInput, setMeetingPointInput] = useState<string>("");
   const [meetTimeInput, setMeetTimeInput] = useState<string>("");
   const [ferryDetailsInput, setFerryDetailsInput] = useState<string>("");
@@ -111,8 +109,7 @@ export default function AdminTripPage() {
     setTripNameInput(trip?.name ?? "");
     setFormatInput(trip?.format ?? "");
     setCapacityInput(String(trip?.capacity ?? ""));
-    setFerryInput(trip?.ferry ?? "");
-    setCutoffLocalInput(toDatetimeLocalValue(trip?.cutoffAt));
+    setCutoffDateInput(toDateValue(trip?.cutoffAt));
     setMeetingPointInput(trip?.logistics?.meetingPoint ?? "");
     setMeetTimeInput(trip?.logistics?.meetTime ?? "");
     setFerryDetailsInput(trip?.logistics?.ferryDetails ?? "");
@@ -166,9 +163,14 @@ export default function AdminTripPage() {
   const cutoffDate = tripSafe.cutoffAt ? new Date(tripSafe.cutoffAt).getTime() : null;
   const hasResults = !!tripSafe.result;
   const tripDatePassed = now >= tripDate;
+  const signupOpenAt = tripDate - 30 * 24 * 60 * 60 * 1000;
 
-  // Phase 1: Open for signups (before cutoff or manually still open)
-  const phase1 = tripSafe.status === "open";
+  // Phase 0: Scheduled (trip is open, but signups aren't open until 30 days before trip date)
+  const phase0 =
+    tripSafe.status === "open" && !tripDatePassed && Number.isFinite(signupOpenAt) && now < signupOpenAt;
+  
+  // Phase 1: Open for signups
+  const phase1 = tripSafe.status === "open" && !phase0;
   
   // Phase 2: Closed to new entrants, logistics posted (after cutoff, before trip date)
   const phase2 = tripSafe.status === "closed" && !tripDatePassed;
@@ -225,13 +227,28 @@ export default function AdminTripPage() {
   }
 
   async function onCloseTripAndPostLogistics() {
-    // Close trip to new entrants and enable logistics
+    // Close trip to new entrants and enable logistics (move to Phase 2)
     try {
       const updated = await updateTrip(trips, tripIdSafe, { status: "closed" });
       setTrips(updated);
     } catch (error) {
       console.error("Failed to close trip:", error);
       alert(`Failed to close trip: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function onTripCompletedPostResults() {
+    // Mark trip as completed and ready for results (move to Phase 3)
+    // Set trip date to today if it hasn't passed yet
+    const today = new Date().toISOString().split("T")[0];
+    if (tripSafe.date > today) {
+      try {
+        const updated = await updateTrip(trips, tripIdSafe, { date: today });
+        setTrips(updated);
+      } catch (error) {
+        console.error("Failed to mark trip completed:", error);
+        alert(`Failed to mark trip completed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
@@ -246,26 +263,11 @@ export default function AdminTripPage() {
     }
   }
 
-  async function onEnableResults() {
-    // Manually enable results posting (Phase 3)
-    // We'll use a workaround: set the trip date to today to enable Phase 3
-    // This allows posting results even if the actual trip date hasn't passed
-    const today = new Date().toISOString().split("T")[0];
-    if (tripSafe.date > today) {
-      try {
-        const updated = await updateTrip(trips, tripIdSafe, { date: today });
-        setTrips(updated);
-      } catch (error) {
-        console.error("Failed to enable results:", error);
-        alert(`Failed to enable results: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  }
 
   async function onPublish() {
     const leaderboard = parseLeaderboard(leaderboardText);
     try {
-      // Publish results (this also archives the trip)
+      // Publish results and archive the trip (move to Phase 4)
       const updated = await publishTripResult(trips, tripIdSafe, {
         leaderboard,
         notes: resultNotes || undefined,
@@ -383,7 +385,7 @@ export default function AdminTripPage() {
   return (
     <main className="flex flex-col gap-6">
       <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-3">
           <div className="text-xl font-semibold text-gray-900">
             Trip #{tripSafe.id} • {tripSafe.date} • {tripSafe.format}
           </div>
@@ -393,27 +395,47 @@ export default function AdminTripPage() {
             {courseText.detail ? <span className="text-gray-500"> • {courseText.detail}</span> : null}
           </div>
 
-          <div className="mt-2 flex items-center gap-2">
-            {phase1 && (
-              <div className="inline-flex w-fit rounded-full bg-green-100 px-3 py-1 text-xs text-green-700">
-                Phase 1: Open for signups
-              </div>
-            )}
-            {phase2 && (
-              <div className="inline-flex w-fit rounded-full bg-yellow-100 px-3 py-1 text-xs text-yellow-700">
-                Phase 2: Closed, logistics posted
-              </div>
-            )}
-            {phase3 && (
-              <div className="inline-flex w-fit rounded-full bg-blue-100 px-3 py-1 text-xs text-blue-700">
-                Phase 3: Ready for results
-              </div>
-            )}
-            {phase4 && (
-              <div className="inline-flex w-fit rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700">
-                Archived: Results published
-              </div>
-            )}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              {phase0 && (
+                <div className="inline-flex w-fit rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700">
+                  Phase 0: Scheduled (signups open {new Date(signupOpenAt).toISOString().slice(0, 10)})
+                </div>
+              )}
+              {phase1 && (
+                <div className="inline-flex w-fit rounded-full bg-green-100 px-3 py-1 text-xs text-green-700">
+                  Phase 1: Open for signups
+                </div>
+              )}
+              {phase2 && (
+                <div className="inline-flex w-fit rounded-full bg-yellow-100 px-3 py-1 text-xs text-yellow-700">
+                  Phase 2: Closed, logistics posted
+                </div>
+              )}
+              {phase3 && (
+                <div className="inline-flex w-fit rounded-full bg-blue-100 px-3 py-1 text-xs text-blue-700">
+                  Phase 3: Ready for results
+                </div>
+              )}
+              {phase4 && (
+                <div className="inline-flex w-fit rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700">
+                  Archived: Results published
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Status:</label>
+              <select
+                className="rounded-lg border border-gray-300 px-3 py-1 text-sm"
+                value={tripSafe.status}
+                onChange={(e) => patchTrip({ status: e.target.value as TripStatus })}
+              >
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
           </div>
         </div>
       </section>
@@ -532,44 +554,15 @@ export default function AdminTripPage() {
           </label>
 
           <label className="block">
-            <div className="text-sm font-medium text-gray-800">Ferry</div>
+            <div className="text-sm font-medium text-gray-800">Last day to sign up</div>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={ferryInput}
-              onChange={(e) => setFerryInput(e.target.value)}
+              type="date"
+              value={cutoffDateInput}
+              onChange={(e) => setCutoffDateInput(e.target.value)}
               onBlur={() => {
-                if ((tripSafe.ferry ?? "") !== (ferryInput ?? "")) {
-                  const next = ferryInput?.trim() ?? "";
-                  void patchTrip({ ferry: next ? next : undefined });
-                }
-              }}
-              disabled={locked}
-            />
-          </label>
-
-          <label className="block">
-            <div className="text-sm font-medium text-gray-800">Status</div>
-            <select
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={tripSafe.status}
-              onChange={(e) => patchTrip({ status: e.target.value as TripStatus })}
-            >
-              <option value="open">Open</option>
-              <option value="closed">Closed</option>
-              <option value="archived">Archived</option>
-            </select>
-          </label>
-
-          <label className="block">
-            <div className="text-sm font-medium text-gray-800">Cutoff (local)</div>
-            <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              type="datetime-local"
-              value={cutoffLocalInput}
-              onChange={(e) => setCutoffLocalInput(e.target.value)}
-              onBlur={() => {
-                if (toDatetimeLocalValue(tripSafe.cutoffAt) !== cutoffLocalInput) {
-                  void patchTrip({ cutoffAt: fromDatetimeLocalValue(cutoffLocalInput) });
+                if (toDateValue(tripSafe.cutoffAt) !== cutoffDateInput) {
+                  void patchTrip({ cutoffAt: fromDateValue(cutoffDateInput) });
                 }
               }}
             />
@@ -642,15 +635,13 @@ export default function AdminTripPage() {
 
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
-            <div className="text-sm font-medium text-gray-800">Meeting point</div>
+            <div className="text-sm font-medium text-gray-800">Ferry</div>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={meetingPointInput}
-              onChange={(e) => setMeetingPointInput(e.target.value)}
-              onBlur={() => {
-                if ((tripSafe.logistics?.meetingPoint ?? "") !== (meetingPointInput ?? "")) {
-                  void onSetLogistics({ ...(tripSafe.logistics ?? {}), meetingPoint: meetingPointInput || undefined });
-                }
+              value={tripSafe.ferry ?? ""}
+              onChange={(e) => {
+                const next = e.target.value.trim();
+                void patchTrip({ ferry: next || undefined });
               }}
             />
           </label>
@@ -664,6 +655,20 @@ export default function AdminTripPage() {
               onBlur={() => {
                 if ((tripSafe.logistics?.meetTime ?? "") !== (meetTimeInput ?? "")) {
                   void onSetLogistics({ ...(tripSafe.logistics ?? {}), meetTime: meetTimeInput || undefined });
+                }
+              }}
+            />
+          </label>
+
+          <label className="block md:col-span-2">
+            <div className="text-sm font-medium text-gray-800">Meeting point</div>
+            <input
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={meetingPointInput}
+              onChange={(e) => setMeetingPointInput(e.target.value)}
+              onBlur={() => {
+                if ((tripSafe.logistics?.meetingPoint ?? "") !== (meetingPointInput ?? "")) {
+                  void onSetLogistics({ ...(tripSafe.logistics ?? {}), meetingPoint: meetingPointInput || undefined });
                 }
               }}
             />
@@ -722,7 +727,7 @@ export default function AdminTripPage() {
             </button>
             <button
               className="rounded-lg bg-brand-red px-4 py-2 text-sm font-medium text-white hover:opacity-95"
-              onClick={onEnableResults}
+              onClick={onTripCompletedPostResults}
             >
               Trip Completed - Post Results
             </button>
@@ -764,7 +769,7 @@ export default function AdminTripPage() {
               className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white"
               onClick={onPublish}
             >
-              {hasResults ? "Update Results" : "Publish"}
+              {hasResults ? "Update Results" : "Publish Results"}
             </button>
             <button
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
