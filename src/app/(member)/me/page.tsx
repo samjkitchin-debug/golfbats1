@@ -404,16 +404,17 @@ export default function MePage() {
               setProfilePhotoPath(json.path);
               router.refresh();
               
-              // Reload member data
+              // Reload member data (include status and is_admin to prevent approval banner from showing)
               const { data: { user } } = await supabase.auth.getUser();
               if (user) {
                 const { data } = await supabase
                   .from("members")
-                  .select("id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen")
+                  .select("id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen,status,is_admin")
                   .eq("id", user.id)
                   .maybeSingle();
                 if (data) {
                   setMember(data as MemberRow);
+                  setIsAdmin(!!data.is_admin);
                 }
               }
             } catch (e: any) {
