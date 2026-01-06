@@ -67,6 +67,7 @@ export default function TripsListPage() {
             .eq("id", user.id)
             .maybeSingle();
           const name = memberData?.display_name || memberData?.full_name || null;
+          console.log("[TripsListPage] Loaded current user name:", name);
           setCurrentUserName(name);
         }
       } catch (error) {
@@ -105,6 +106,7 @@ export default function TripsListPage() {
       // Prepare the join action function
       const continueWithHandicap = async (handicapValue: number | null) => {
         try {
+          console.log("[handleJoinTrip] continueWithHandicap called with handicap:", handicapValue);
           const now = new Date().toISOString();
 
           if (memberData) {
@@ -130,20 +132,39 @@ export default function TripsListPage() {
               });
           }
 
+          console.log("[handleJoinTrip] Calling joinTrip API...");
           // Add to trip and save handicap for this trip
           const updated = await joinTrip(trips, tripId, handicapValue);
+          console.log("[handleJoinTrip] joinTrip returned, updating trips state");
           setTrips(updated);
 
-          // Reload trips to get fresh data
+          // Reload trips and current user to get fresh data
           try {
+            console.log("[handleJoinTrip] Waiting 500ms before reload...");
             await new Promise(resolve => setTimeout(resolve, 500));
-            const freshTrips = await loadTrips(true); // Bypass cache
+            console.log("[handleJoinTrip] Reloading trips and user data...");
+            const [freshTrips, freshUserData] = await Promise.all([
+              loadTrips(true), // Bypass cache
+              supabase
+                .from("members")
+                .select("display_name, full_name")
+                .eq("id", user.id)
+                .maybeSingle(),
+            ]);
+            console.log("[handleJoinTrip] Reloaded trips:", freshTrips.length, "trips");
+            console.log("[handleJoinTrip] Fresh user data:", freshUserData);
             setTrips(freshTrips);
+            // Update current user name to match what's in attendees
+            if (freshUserData) {
+              const name = freshUserData.display_name || freshUserData.full_name || null;
+              console.log("[handleJoinTrip] Setting currentUserName to:", name);
+              setCurrentUserName(name);
+            }
           } catch (reloadError) {
-            console.error("Failed to reload trips after join:", reloadError);
+            console.error("[handleJoinTrip] Failed to reload trips after join:", reloadError);
           }
         } catch (error) {
-          console.error("Failed to join trip:", error);
+          console.error("[handleJoinTrip] Failed to join trip:", error);
           alert(
             `Failed to join trip: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
           );
@@ -300,8 +321,17 @@ export default function TripsListPage() {
               const signupOpenDateYmd = isPhase0 ? new Date(signupOpenAt).toISOString().slice(0, 10) : null;
               
               // Check if user is already in the trip
+              // Match against attendee names (which can be display_name or full_name)
               const myEntry = currentUserName
-                ? t.attendees.find((a) => a.name === currentUserName)
+                ? t.attendees.find((a) => {
+                    const attendeeName = a.name?.toLowerCase().trim();
+                    const userName = currentUserName.toLowerCase().trim();
+                    const matches = attendeeName === userName;
+                    if (matches) {
+                      console.log("[TripsListPage] Found myEntry:", a.name, "matches", currentUserName);
+                    }
+                    return matches;
+                  })
                 : undefined;
               const joinDisabled = isPhase0 || t.status !== "open";
 
