@@ -58,8 +58,7 @@ export default function AdminMembersPage() {
 
       const { data: rows, error: membersError } = await supabase
         .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin")
-        .order("created_at", { ascending: false });
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin");
 
       if (membersError) {
         setError(membersError.message);
@@ -67,7 +66,19 @@ export default function AdminMembersPage() {
         return;
       }
 
-      setMembers(rows ?? []);
+      // Sort: admins first, then alphabetically by name
+      const sorted = (rows ?? []).sort((a, b) => {
+        const aIsAdmin = !!a.is_admin;
+        const bIsAdmin = !!b.is_admin;
+        if (aIsAdmin !== bIsAdmin) {
+          return aIsAdmin ? -1 : 1; // Admins first
+        }
+        const aName = (a.display_name || a.full_name || "").toLowerCase();
+        const bName = (b.display_name || b.full_name || "").toLowerCase();
+        return aName.localeCompare(bName);
+      });
+
+      setMembers(sorted);
 
       // Check passport status for all members
       const memberIds = (rows ?? []).map((m) => m.id);
@@ -153,13 +164,23 @@ export default function AdminMembersPage() {
       // Reload members list
       const { data: rows, error: membersError } = await supabase
         .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin")
-        .order("created_at", { ascending: false });
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin");
 
       if (membersError) {
         setError(membersError.message);
       } else {
-        setMembers(rows ?? []);
+        // Sort: admins first, then alphabetically by name
+        const sorted = (rows ?? []).sort((a, b) => {
+          const aIsAdmin = !!a.is_admin;
+          const bIsAdmin = !!b.is_admin;
+          if (aIsAdmin !== bIsAdmin) {
+            return aIsAdmin ? -1 : 1; // Admins first
+          }
+          const aName = (a.display_name || a.full_name || "").toLowerCase();
+          const bName = (b.display_name || b.full_name || "").toLowerCase();
+          return aName.localeCompare(bName);
+        });
+        setMembers(sorted);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to delete member.");
@@ -186,13 +207,23 @@ export default function AdminMembersPage() {
       // Reload members list
       const { data: rows, error: membersError } = await supabase
         .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin")
-        .order("created_at", { ascending: false });
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin");
 
       if (membersError) {
         setError(membersError.message);
       } else {
-        setMembers(rows ?? []);
+        // Sort: admins first, then alphabetically by name
+        const sorted = (rows ?? []).sort((a, b) => {
+          const aIsAdmin = !!a.is_admin;
+          const bIsAdmin = !!b.is_admin;
+          if (aIsAdmin !== bIsAdmin) {
+            return aIsAdmin ? -1 : 1; // Admins first
+          }
+          const aName = (a.display_name || a.full_name || "").toLowerCase();
+          const bName = (b.display_name || b.full_name || "").toLowerCase();
+          return aName.localeCompare(bName);
+        });
+        setMembers(sorted);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to approve member.");
@@ -285,7 +316,6 @@ export default function AdminMembersPage() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Nat.</th>
                 <th className="px-4 py-3">HCP</th>
-                <th className="px-4 py-3">Admin</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Passport</th>
                 <th className="px-4 py-3"></th>
@@ -307,25 +337,6 @@ export default function AdminMembersPage() {
                     <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
                     <td className="px-4 py-3 text-gray-800">
                       {m.declared_handicap ?? "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {isAdmin ? (
-                        <button
-                          onClick={() => handleRemoveAdmin(m.id, name)}
-                          disabled={approvingMemberId === m.id}
-                          className="inline-flex items-center rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 hover:bg-blue-200 disabled:opacity-50"
-                        >
-                          Admin
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleMakeAdmin(m.id, name)}
-                          disabled={approvingMemberId === m.id}
-                          className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-gray-200 disabled:opacity-50"
-                        >
-                          Make admin
-                        </button>
-                      )}
                     </td>
                     <td className="px-4 py-3">
                       {isActive ? (
@@ -354,7 +365,24 @@ export default function AdminMembersPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-end gap-3">
+                        {/* Admin Toggle */}
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isAdmin}
+                            onChange={() => {
+                              if (isAdmin) {
+                                handleRemoveAdmin(m.id, name);
+                              } else {
+                                handleMakeAdmin(m.id, name);
+                              }
+                            }}
+                            disabled={approvingMemberId === m.id}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"></div>
+                        </label>
                         {hasPassport && (
                           <button
                             onClick={() => handleViewPassport(m.id)}
