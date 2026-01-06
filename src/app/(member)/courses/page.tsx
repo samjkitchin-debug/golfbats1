@@ -8,6 +8,10 @@ export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
 
   useEffect(() => {
+    document.title = "GolfBats - Courses";
+  }, []);
+
+  useEffect(() => {
     async function loadCoursesData() {
       try {
         const coursesData = await loadCourses();

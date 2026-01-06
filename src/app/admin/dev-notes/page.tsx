@@ -240,7 +240,9 @@ export default function DevNotesPage() {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
-  const unresolvedCount = notes.filter((n) => !n.resolved).length;
+  const unresolvedBugs = notes.filter((n) => !n.resolved && n.type === "bug").length;
+  const unresolvedNotes = notes.filter((n) => !n.resolved && n.type === "note").length;
+  const unresolvedCount = unresolvedBugs + unresolvedNotes;
 
   return (
     <div className="space-y-4">
@@ -248,7 +250,12 @@ export default function DevNotesPage() {
         <div className="text-xl font-semibold text-brand-black">Dev Notes</div>
         <div className="mt-1 text-sm text-gray-600">
           Track bugs and notes while testing. {unresolvedCount > 0 && (
-            <span className="font-medium">{unresolvedCount} unresolved</span>
+            <span className="font-medium">
+              {unresolvedBugs > 0 && `${unresolvedBugs} bug${unresolvedBugs !== 1 ? "s" : ""}`}
+              {unresolvedBugs > 0 && unresolvedNotes > 0 && ", "}
+              {unresolvedNotes > 0 && `${unresolvedNotes} note${unresolvedNotes !== 1 ? "s" : ""}`}
+              {" unresolved"}
+            </span>
           )}
         </div>
       </div>

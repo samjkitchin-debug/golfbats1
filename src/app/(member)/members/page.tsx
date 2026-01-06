@@ -152,7 +152,7 @@ export default function MembersPage() {
                     </div>
                     {flag && (
                       <div className="mt-0.5 flex items-center gap-1 text-xs text-gray-500">
-                        <span>{flag}</span>
+                        <span className="text-base">{flag}</span>
                       </div>
                     )}
                   </div>

@@ -29,13 +29,13 @@ export default function MainNav() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Open navigation menu"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+        className="inline-flex items-center justify-center text-gray-700 hover:text-gray-900"
       >
         <span className="sr-only">Menu</span>
         <div className="space-y-1">
-          <span className="block h-0.5 w-4 rounded bg-gray-800" />
-          <span className="block h-0.5 w-4 rounded bg-gray-800" />
-          <span className="block h-0.5 w-4 rounded bg-gray-800" />
+          <span className="block h-0.5 w-[1.1rem] rounded bg-gray-800" />
+          <span className="block h-0.5 w-[1.1rem] rounded bg-gray-800" />
+          <span className="block h-0.5 w-[1.1rem] rounded bg-gray-800" />
         </div>
       </button>
 
@@ -65,5 +65,6 @@ export default function MainNav() {
     </div>
   );
 }
+
 
 

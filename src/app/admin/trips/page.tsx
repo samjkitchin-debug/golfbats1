@@ -59,6 +59,10 @@ export default function AdminTripsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    document.title = "GolfBats - Admin Trips";
+  }, []);
+
+  useEffect(() => {
     async function loadData() {
       setLoading(true);
       try {

@@ -1,7 +1,12 @@
 import Image from "next/image";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import LoginClient from "./LoginClient";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
+
+export const metadata: Metadata = {
+  title: "GolfBats - Login",
+};
 
 export default async function LoginPage() {
   const supabase = await createSupabaseServerClient();

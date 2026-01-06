@@ -21,6 +21,10 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    document.title = "GolfBats - Home";
+  }, []);
+
+  useEffect(() => {
     async function loadData() {
       try {
         const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);

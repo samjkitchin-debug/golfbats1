@@ -84,6 +84,10 @@ export default function MePage() {
   const [savingPassport, setSavingPassport] = useState(false);
 
   useEffect(() => {
+    document.title = "GolfBats - Profile";
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function load() {

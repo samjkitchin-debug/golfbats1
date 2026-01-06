@@ -58,6 +58,10 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
+    document.title = "GolfBats - Admin";
+  }, []);
+
+  useEffect(() => {
     (async () => {
       try {
         const supabase = createSupabaseBrowserClient();

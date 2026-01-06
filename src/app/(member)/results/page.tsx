@@ -126,6 +126,10 @@ export default function ResultsPage() {
   const [courses, setCourses] = useState<Course[]>([]);
 
   useEffect(() => {
+    document.title = "GolfBats - Results";
+  }, []);
+
+  useEffect(() => {
     async function loadData() {
       try {
         const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);

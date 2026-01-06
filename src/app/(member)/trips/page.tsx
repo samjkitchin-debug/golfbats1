@@ -11,6 +11,10 @@ export default function TripsListPage() {
   const [courses, setCourses] = useState<Course[]>([]);
 
   useEffect(() => {
+    document.title = "GolfBats - Trips";
+  }, []);
+
+  useEffect(() => {
     async function loadData() {
       try {
         const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
