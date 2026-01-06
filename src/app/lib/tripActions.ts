@@ -156,19 +156,29 @@ export async function loadTrips(bypassCache = false): Promise<Trip[]> {
 
   try {
     const url = bypassCache ? "/api/trips?bypassCache=true" : "/api/trips";
+    console.log("[loadTrips] Fetching from:", url, "bypassCache:", bypassCache);
     const res = await fetch(url);
     const json = await res.json().catch(() => ({}));
 
+    console.log("[loadTrips] Response:", {
+      ok: res.ok,
+      status: res.status,
+      tripsCount: json.trips?.length ?? 0,
+      error: json.error,
+    });
+
     if (!res.ok) {
-      console.error("Failed to load trips:", json?.error);
+      console.error("[loadTrips] API error:", json?.error);
       return [];
     }
 
     const trips = json.trips || [];
-    console.log("loadTrips: received", trips.length, "trips from API");
-    return trips.map(normalizeTrip);
+    console.log("[loadTrips] Received", trips.length, "trips, normalizing...");
+    const normalized = trips.map(normalizeTrip);
+    console.log("[loadTrips] Normalized to", normalized.length, "trips");
+    return normalized;
   } catch (error) {
-    console.error("Failed to load trips:", error);
+    console.error("[loadTrips] Exception:", error);
     return [];
   }
 }

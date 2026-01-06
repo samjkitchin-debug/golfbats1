@@ -21,11 +21,20 @@ const getTripsData = cache(
     .select("*")
     .order("trip_date", { ascending: false });
 
+  // Log for debugging
+  console.log("[trips API] Fetch result:", {
+    tripsCount: tripsData?.length ?? 0,
+    error: tripsError?.message,
+    hasData: !!tripsData,
+  });
+
   if (tripsError) {
+    console.error("[trips API] Error fetching trips:", tripsError);
     throw new Error(tripsError.message || "Failed to fetch trips.");
   }
 
   if (!tripsData || tripsData.length === 0) {
+    console.warn("[trips API] No trips found in database");
     return { ok: true, trips: [] };
   }
 
@@ -124,6 +133,7 @@ const getTripsData = cache(
     };
   });
 
+  console.log("[trips API] Returning", trips.length, "trips");
   return { ok: true, trips };
     },
     ["trips-list"],
@@ -146,6 +156,7 @@ export async function GET(req: Request) {
     
     if (bypassCache) {
       // Bypass cache and fetch fresh data
+      console.log("[trips API] Bypassing cache - fetching fresh data");
       const supabase = await createSupabaseServerClient();
       
       const { data: tripsData, error: tripsError } = await supabase
@@ -153,11 +164,19 @@ export async function GET(req: Request) {
         .select("*")
         .order("trip_date", { ascending: false });
 
+      console.log("[trips API] Bypass cache fetch result:", {
+        tripsCount: tripsData?.length ?? 0,
+        error: tripsError?.message,
+        hasData: !!tripsData,
+      });
+
       if (tripsError) {
+        console.error("[trips API] Bypass cache error:", tripsError);
         throw new Error(tripsError.message || "Failed to fetch trips.");
       }
 
       if (!tripsData || tripsData.length === 0) {
+        console.warn("[trips API] Bypass cache: No trips found in database");
         return NextResponse.json({ ok: true, trips: [] });
       }
 
@@ -244,10 +263,13 @@ export async function GET(req: Request) {
         };
       });
 
+      console.log("[trips API] Bypass cache: Returning", trips.length, "trips");
       return NextResponse.json({ ok: true, trips });
     }
     
+    console.log("[trips API] Using cached data");
     const result = await getTripsData();
+    console.log("[trips API] Cached result:", result.trips?.length ?? 0, "trips");
     return NextResponse.json(result);
   } catch (error) {
     console.error("Get trips error:", error);
