@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { loadCourses, type Course } from "../../lib/courseActions";
@@ -56,7 +56,19 @@ export default function AdminTripsPage() {
   const router = useRouter();
 
   const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
-  const [courses] = useState<Course[]>(() => loadCourses());
+  const [courses, setCourses] = useState<Course[]>([]);
+
+  useEffect(() => {
+    async function loadCoursesData() {
+      try {
+        const coursesData = await loadCourses();
+        setCourses(coursesData);
+      } catch (error) {
+        console.warn("Failed to load courses:", error);
+      }
+    }
+    loadCoursesData();
+  }, []);
 
   const sortedTrips = useMemo(() => sortTripsByDateAsc(trips), [trips]);
 

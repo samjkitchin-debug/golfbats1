@@ -33,7 +33,7 @@ export default function AdminPage() {
   const [currentUser, setCurrentUser] = useState<string>("Admin");
 
   const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
-  const [courses, setCourses] = useState<Course[]>(() => loadCourses());
+  const [courses, setCourses] = useState<Course[]>([]);
 
   const upcomingTrips = useMemo(() => {
     const nowYmd = todayYmd();
@@ -47,7 +47,18 @@ export default function AdminPage() {
 
   useEffect(() => {
     setTrips(loadTrips());
-    setCourses(loadCourses());
+  }, []);
+
+  useEffect(() => {
+    async function loadCoursesData() {
+      try {
+        const coursesData = await loadCourses();
+        setCourses(coursesData);
+      } catch (error) {
+        console.warn("Failed to load courses:", error);
+      }
+    }
+    loadCoursesData();
   }, []);
 
   useEffect(() => {

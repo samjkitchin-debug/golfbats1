@@ -29,85 +29,41 @@ function cleanNullableString(v: unknown): string | null {
   return s ? s : null;
 }
 
-export function loadCourses(): Course[] {
+/**
+ * Load courses from database API
+ * No longer uses localStorage - always fetches from server
+ */
+export async function loadCourses(): Promise<Course[]> {
   if (typeof window === "undefined") return [];
+  
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as Course[]) : [];
-  } catch {
+    const res = await fetch("/api/courses");
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.warn("Failed to load courses:", json?.error);
+      return [];
+    }
+
+    return json.courses || [];
+  } catch (error) {
+    console.warn("Failed to load courses:", error);
     return [];
   }
 }
 
+/**
+ * @deprecated Courses are now loaded from database. This function does nothing.
+ */
 export function saveCourses(courses: Course[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(LS_KEY, JSON.stringify(courses));
+  // No-op: courses are stored in database, not localStorage
 }
 
 /**
- * DB -> localStorage sync (optional helper used by pages)
+ * @deprecated Use loadCourses() instead - it now always fetches from database
  */
 export async function refreshCoursesFromDb(): Promise<Course[]> {
-  if (!isSupabaseConfigured()) return loadCourses();
-
-  const supabase = getSupabase();
-  const clubSlug = getClubSlug();
-  const clubId = await getClubId(supabase);
-
-  // Fetch courses
-  let query = supabase.from("courses").select("id,name,location,website");
-  
-  if (clubId) {
-    query = query.eq("club_id", clubId);
-  } else {
-    // If club_id lookup fails, return empty array rather than querying non-existent 'club' column
-    console.warn("Club ID not found for slug:", clubSlug, "- returning empty courses list");
-    return loadCourses();
-  }
-
-  const { data: coursesData, error: coursesError } = await query.order("name", { ascending: true });
-
-  if (coursesError || !coursesData) {
-    return loadCourses();
-  }
-
-  // Fetch all tees for these courses
-  const courseIds = coursesData.map((c) => c.id);
-  const { data: teesData, error: teesError } = await supabase
-    .from("tees")
-    .select("id,course_id,label,meters,par,slope")
-    .in("course_id", courseIds);
-
-  if (teesError) {
-    // If tees fetch fails, continue with empty tees arrays
-    console.warn("Failed to fetch tees:", teesError);
-  }
-
-  // Combine courses with their tees
-  const courses: Course[] = coursesData.map((course) => {
-    const tees = (teesData ?? [])
-      .filter((t) => t.course_id === course.id)
-      .map((t) => ({
-        id: t.id,
-        label: t.label,
-        meters: t.meters,
-        par: t.par,
-        slope: t.slope,
-      }));
-
-    return {
-      id: course.id,
-      name: course.name,
-      location: course.location || "",
-      website: course.website,
-      tees,
-    };
-  });
-
-  saveCourses(courses);
-  return courses;
+  return loadCourses();
 }
 
 async function getClubId(supabase: ReturnType<typeof getSupabase>): Promise<string | null> {
@@ -157,7 +113,7 @@ export async function createCourse(input: {
     throw new Error(`Failed to create course: ${courseError.message || JSON.stringify(courseError)}`);
   }
 
-  // Create course object for localStorage (with empty tees array for now)
+  // Return course object (tees will be loaded separately)
   const course: Course = {
     id: courseId,
     name: input.name.trim(),
@@ -166,51 +122,44 @@ export async function createCourse(input: {
     tees: [],
   };
 
-  const courses = loadCourses();
-  saveCourses([...courses, course]);
   return course;
 }
 
 export async function updateCourse(courseId: string, patch: Partial<Omit<Course, "id">>) {
   if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
 
-  const courses = loadCourses();
-  const idx = courses.findIndex((c) => c.id === courseId);
-  if (idx === -1) throw new Error("Course not found");
-
-  const current = courses[idx];
-
-  const updated: Course = {
-    ...current,
-    ...patch,
-    id: current.id,
-    name: (patch.name ?? current.name).trim(),
-    location: (patch.location ?? current.location).trim(),
-    website:
-      patch.website !== undefined ? cleanNullableString(patch.website) : cleanNullableString(current.website),
-    tees: patch.tees ?? current.tees,
-  };
-
   const supabase = getSupabase();
 
   // Update course by ID only (more reliable than using club filter)
+  const updateData: any = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (patch.name !== undefined) {
+    updateData.name = patch.name.trim();
+  }
+  if (patch.location !== undefined) {
+    updateData.location = patch.location.trim();
+  }
+  if (patch.website !== undefined) {
+    updateData.website = cleanNullableString(patch.website);
+  }
+
   const { error } = await supabase
     .from("courses")
-    .update({
-      name: updated.name,
-      location: updated.location,
-      website: updated.website,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updateData)
     .eq("id", courseId);
 
   if (error) {
     throw new Error(`Failed to update course: ${error.message || JSON.stringify(error)}`);
   }
 
-  const next = [...courses];
-  next[idx] = updated;
-  saveCourses(next);
+  // Return updated course (will be reloaded from DB by caller)
+  const courses = await loadCourses();
+  const updated = courses.find((c) => c.id === courseId);
+  if (!updated) {
+    throw new Error("Course not found after update");
+  }
   return updated;
 }
 
@@ -240,14 +189,13 @@ export async function deleteCourse(courseId: string) {
     throw new Error(`Failed to delete course: ${error.message || JSON.stringify(error)}`);
   }
 
-  const courses = loadCourses().filter((c) => c.id !== courseId);
-  saveCourses(courses);
+  // Course deleted from database - no need to update localStorage
 }
 
 export async function addTee(courseId: string, teeInput: Omit<Tee, "id">) {
   if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
 
-  const courses = loadCourses();
+  const courses = await loadCourses();
   const idx = courses.findIndex((c) => c.id === courseId);
   if (idx === -1) throw new Error("Course not found");
 
@@ -274,45 +222,24 @@ export async function addTee(courseId: string, teeInput: Omit<Tee, "id">) {
     slope: Number(teeInput.slope),
   };
 
-  const updatedCourse: Course = { ...courses[idx], tees: [...courses[idx].tees, tee] };
-
-  const next = [...courses];
-  next[idx] = updatedCourse;
-  saveCourses(next);
-
+  // Tee saved to database - no need to update localStorage
   return tee;
 }
 
 export async function updateTee(courseId: string, teeId: string, patch: Partial<Omit<Tee, "id">>) {
   if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
 
-  const courses = loadCourses();
-  const idx = courses.findIndex((c) => c.id === courseId);
-  if (idx === -1) throw new Error("Course not found");
-
-  const course = courses[idx];
-  const teeIdx = course.tees.findIndex((t) => t.id === teeId);
-  if (teeIdx === -1) throw new Error("Tee not found");
-
-  const existing = course.tees[teeIdx];
-  const updatedTee: Tee = {
-    ...existing,
-    ...patch,
-    label: (patch.label ?? existing.label).trim(),
-    meters: patch.meters ?? existing.meters,
-    par: patch.par ?? existing.par,
-    slope: patch.slope ?? existing.slope,
-  };
-
   const supabase = getSupabase();
 
   // Update tee in the tees table (not in courses table)
-  const updateData: any = {};
-  if (patch.label !== undefined) updateData.label = updatedTee.label;
-  if (patch.meters !== undefined) updateData.meters = updatedTee.meters;
-  if (patch.par !== undefined) updateData.par = updatedTee.par;
-  if (patch.slope !== undefined) updateData.slope = updatedTee.slope;
-  updateData.updated_at = new Date().toISOString();
+  const updateData: any = {
+    updated_at: new Date().toISOString(),
+  };
+  
+  if (patch.label !== undefined) updateData.label = patch.label.trim();
+  if (patch.meters !== undefined) updateData.meters = Number(patch.meters);
+  if (patch.par !== undefined) updateData.par = Number(patch.par);
+  if (patch.slope !== undefined) updateData.slope = Number(patch.slope);
 
   const { error } = await supabase
     .from("tees")
@@ -324,30 +251,21 @@ export async function updateTee(courseId: string, teeId: string, patch: Partial<
     throw new Error(`Failed to update tee: ${error.message || JSON.stringify(error)}`);
   }
 
-  // Update localStorage
-  const nextTees = [...course.tees];
-  nextTees[teeIdx] = updatedTee;
-
-  const updatedCourse: Course = {
-    ...course,
-    tees: nextTees,
-  };
-
-  const nextCourses = [...courses];
-  nextCourses[idx] = updatedCourse;
-  saveCourses(nextCourses);
-
+  // Return updated tee (will be reloaded from DB by caller)
+  const courses = await loadCourses();
+  const course = courses.find((c) => c.id === courseId);
+  if (!course) {
+    throw new Error("Course not found");
+  }
+  const updatedTee = course.tees.find((t) => t.id === teeId);
+  if (!updatedTee) {
+    throw new Error("Tee not found after update");
+  }
   return updatedTee;
 }
 
 export async function deleteTee(courseId: string, teeId: string) {
   if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
-
-  const courses = loadCourses();
-  const idx = courses.findIndex((c) => c.id === courseId);
-  if (idx === -1) throw new Error("Course not found");
-
-  const course = courses[idx];
 
   const supabase = getSupabase();
 
@@ -362,13 +280,5 @@ export async function deleteTee(courseId: string, teeId: string) {
     throw new Error(`Failed to delete tee: ${error.message || JSON.stringify(error)}`);
   }
 
-  // Update localStorage
-  const updatedCourse: Course = {
-    ...course,
-    tees: course.tees.filter((t) => t.id !== teeId),
-  };
-
-  const next = [...courses];
-  next[idx] = updatedCourse;
-  saveCourses(next);
+  // Tee deleted from database - no need to update localStorage
 }

@@ -60,7 +60,7 @@ export default function AdminTripPage() {
   const tripId = Number(params?.id);
 
   const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
-  const [courses, setCourses] = useState<Course[]>(() => loadCourses());
+  const [courses, setCourses] = useState<Course[]>([]);
 
   const [leaderboardText, setLeaderboardText] = useState<string>("");
   const [resultNotes, setResultNotes] = useState<string>("");
@@ -76,7 +76,18 @@ export default function AdminTripPage() {
 
   useEffect(() => {
     setTrips(loadTrips());
-    setCourses(loadCourses());
+  }, []);
+
+  useEffect(() => {
+    async function loadCoursesData() {
+      try {
+        const coursesData = await loadCourses();
+        setCourses(coursesData);
+      } catch (error) {
+        console.warn("Failed to load courses:", error);
+      }
+    }
+    loadCoursesData();
   }, []);
 
   const trip = useMemo(() => {

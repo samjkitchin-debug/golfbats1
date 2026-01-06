@@ -5,19 +5,18 @@ import { useEffect, useMemo, useState } from "react";
 import { loadCourses, type Course } from "../../lib/courseActions";
 
 export default function CoursesPage() {
-  const [courses, setCourses] = useState<Course[]>(() => loadCourses());
+  const [courses, setCourses] = useState<Course[]>([]);
 
   useEffect(() => {
-    function sync() {
-      setCourses(loadCourses());
+    async function loadCoursesData() {
+      try {
+        const coursesData = await loadCourses();
+        setCourses(coursesData);
+      } catch (error) {
+        console.warn("Failed to load courses:", error);
+      }
     }
-    sync();
-    window.addEventListener("storage", sync);
-    window.addEventListener("focus", sync);
-    return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener("focus", sync);
-    };
+    loadCoursesData();
   }, []);
 
   const sorted = useMemo(() => {

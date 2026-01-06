@@ -28,7 +28,7 @@ export default function TripDetailPage() {
   const tripId = useMemo(() => toTripId(params?.id), [params?.id]);
 
   const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
-  const [courses, setCourses] = useState<Course[]>(() => loadCourses());
+  const [courses, setCourses] = useState<Course[]>([]);
 
   const supabase = useMemo(() => {
     return createBrowserClient(
@@ -38,16 +38,27 @@ export default function TripDetailPage() {
   }, []);
 
   useEffect(() => {
-    function syncAll() {
-      setTrips(loadTrips());
-      setCourses(loadCourses());
+    async function loadCoursesData() {
+      try {
+        const coursesData = await loadCourses();
+        setCourses(coursesData);
+      } catch (error) {
+        console.warn("Failed to load courses:", error);
+      }
     }
-    syncAll();
-    window.addEventListener("storage", syncAll);
-    window.addEventListener("focus", syncAll);
+    loadCoursesData();
+  }, []);
+
+  useEffect(() => {
+    function syncTrips() {
+      setTrips(loadTrips());
+    }
+    syncTrips();
+    window.addEventListener("storage", syncTrips);
+    window.addEventListener("focus", syncTrips);
     return () => {
-      window.removeEventListener("storage", syncAll);
-      window.removeEventListener("focus", syncAll);
+      window.removeEventListener("storage", syncTrips);
+      window.removeEventListener("focus", syncTrips);
     };
   }, []);
 

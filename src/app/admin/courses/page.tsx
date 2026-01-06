@@ -20,7 +20,8 @@ function num(v: string, fallback: number) {
 }
 
 export default function AdminCoursesPage() {
-  const [courses, setCourses] = useState<Course[]>(() => loadCourses());
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [newName, setNewName] = useState("");
   const [newLocation, setNewLocation] = useState("");
@@ -31,29 +32,28 @@ export default function AdminCoursesPage() {
   }, [courses]);
 
   async function refresh() {
-    // Try to sync from database first, fallback to localStorage
     try {
-      const synced = await refreshCoursesFromDb();
+      const synced = await loadCourses();
       setCourses(synced);
     } catch (error) {
-      console.warn("Failed to refresh from DB, using localStorage:", error);
-      setCourses(loadCourses());
+      console.warn("Failed to refresh courses:", error);
     }
   }
 
-  // Sync from database on mount
+  // Load courses from database on mount
   useEffect(() => {
-    async function initialSync() {
+    async function load() {
+      setLoading(true);
       try {
-        const synced = await refreshCoursesFromDb();
+        const synced = await loadCourses();
         setCourses(synced);
       } catch (error) {
-        console.warn("Failed to refresh from DB, using localStorage:", error);
-        setCourses(loadCourses());
+        console.warn("Failed to load courses:", error);
+      } finally {
+        setLoading(false);
       }
     }
-    initialSync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    load();
   }, []);
 
   async function handleAddCourse() {
@@ -132,7 +132,11 @@ export default function AdminCoursesPage() {
       </section>
 
       {/* List Courses */}
-      {sorted.length === 0 ? (
+      {loading ? (
+        <div className="rounded-xl border bg-white p-5 text-sm text-gray-600 shadow-sm">
+          Loading courses...
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="rounded-xl border bg-white p-5 text-sm text-gray-600 shadow-sm">
           No courses yet.
         </div>
