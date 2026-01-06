@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { loadTrips, joinTrip, leaveTrip, setMyHandicapForTrip, type Trip } from "../lib/tripActions";
 import { loadCourses, type Course } from "../lib/courseActions";
-import { getTripCourseText } from "../lib/tripDisplay";
+import { getTripCourseText, formatTripDateLong } from "../lib/tripDisplay";
 
 export default function HomePage() {
   const CURRENT_USER = "Sam";
@@ -166,7 +166,7 @@ export default function HomePage() {
             ) : null}
 
             <div className="mt-2 text-sm text-gray-700">
-              {nextTrip.date} · {nextTrip.format}
+              {formatTripDateLong(nextTrip.date)} · {nextTrip.format}
               {nextTrip.ferry ? ` · Ferry ${nextTrip.ferry}` : ""}
               {nextTrip.status === "open" ? " · Open for sign up" : nextTrip.status === "closed" ? " · Closed" : ""}
             </div>

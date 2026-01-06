@@ -74,7 +74,7 @@ export async function GET() {
 
       return {
         id: trip.legacy_id || 0, // Use legacy_id as numeric ID for UI compatibility
-        name: undefined, // Not in schema
+        name: trip.name || undefined,
         date: trip.trip_date,
         format: trip.format,
         course: undefined, // Legacy field
@@ -158,6 +158,7 @@ export async function POST(req: Request) {
       }
 
       const updateData: any = {
+        name: trip.name || null,
         trip_date: trip.date,
         format: trip.format,
         ferry: trip.ferry || null,
@@ -203,6 +204,7 @@ export async function POST(req: Request) {
         id: tripId,
         club_id: clubData.id,
         legacy_id: nextLegacyId,
+        name: trip.name || null,
         trip_date: trip.date || new Date().toISOString().slice(0, 10),
         format: trip.format || "Stableford",
         ferry: trip.ferry || null,

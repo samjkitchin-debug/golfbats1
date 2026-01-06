@@ -13,7 +13,7 @@ import {
   setMyHandicapForTrip,
   type Trip,
 } from "../../../lib/tripActions";
-import { getTripCourseText } from "../../../lib/tripDisplay";
+import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -201,7 +201,7 @@ export default function TripDetailPage() {
     .sort((a, b) => a.joinedAt - b.joinedAt);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24">
       <div>
         <Link href="/trips" className="text-sm text-gray-700 hover:text-brand-black">
           ← Back to Trips
@@ -211,7 +211,7 @@ export default function TripDetailPage() {
         {courseText?.detail ? <div className="mt-1 text-sm text-gray-600">{courseText.detail}</div> : null}
 
         <div className="mt-2 text-sm text-gray-700">
-          {trip.date} · {trip.format}
+          {formatTripDateLong(trip.date)} · {trip.format}
           {trip.ferry ? ` · Ferry ${trip.ferry}` : ""}
           {locked ? " · Locked" : ""}
         </div>

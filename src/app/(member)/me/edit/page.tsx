@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
+import { COUNTRIES } from "@/app/lib/countries";
 
 type MemberRow = {
   id: string;
@@ -265,7 +266,11 @@ export default function MeEditPage() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{profileRequired ? "Create profile" : "Edit profile"}</h1>
-          <p className="mt-1 text-sm">{profileRequired ? "Please complete your profile to continue." : "Update your details for GolfBats."}</p>
+          <p className="mt-1 text-sm">
+            {profileRequired
+              ? "Please complete your basic profile to continue."
+              : "Update your details for GolfBats."}
+          </p>
         </div>
 
         {!profileRequired && (
@@ -283,7 +288,7 @@ export default function MeEditPage() {
           <p className="text-sm font-semibold text-amber-900">Profile Required</p>
           <p className="mt-1 text-sm text-amber-800">
             Please complete your profile before continuing. Your full name, display name, nationality and declared handicap are required.
-            Passport details can be added later, but will be required if you wish to join a trip.
+            Passport details are optional now and can be added later, but you’ll need them before you can join a trip.
           </p>
         </div>
       ) : null}
@@ -311,7 +316,7 @@ export default function MeEditPage() {
                 className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. Samuel Kitchin"
+                placeholder="e.g. John Smith"
                 autoComplete="name"
               />
             </Field>
@@ -326,12 +331,21 @@ export default function MeEditPage() {
             </Field>
 
             <Field label="Nationality">
-              <input
-                className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-                value={nationality}
-                onChange={(e) => setNationality(e.target.value)}
-                placeholder="e.g. British"
-              />
+              <>
+                <input
+                  className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                  value={nationality}
+                  onChange={(e) => setNationality(e.target.value)}
+                  placeholder="Start typing to search…"
+                  list="nationality-list"
+                  autoComplete="country-name"
+                />
+                <datalist id="nationality-list">
+                  {COUNTRIES.map((country) => (
+                    <option key={country} value={country} />
+                  ))}
+                </datalist>
+              </>
             </Field>
 
             <Field label="Declared handicap">

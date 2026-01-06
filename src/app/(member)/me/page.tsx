@@ -6,6 +6,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
 import Cropper from "react-easy-crop";
 import type { Area, Point } from "react-easy-crop";
+import { COUNTRIES } from "@/app/lib/countries";
 
 type MemberStatus = "pending" | "active" | string;
 
@@ -225,6 +226,7 @@ export default function MePage() {
               <p className="text-sm font-semibold text-amber-900">Profile incomplete</p>
               <p className="mt-1 text-sm text-amber-900">
                 Please complete your email, full name, display name, nationality and declared handicap before using the rest of the app.
+                Passport details are optional for now and can be added later, but you’ll need them before you can join a trip.
               </p>
             </div>
           )}
@@ -696,7 +698,7 @@ function ProfileBlock({
               className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="e.g. Samuel Kitchin"
+              placeholder="e.g. John Smith"
             />
           </div>
 
@@ -712,12 +714,21 @@ function ProfileBlock({
 
           <div>
             <div className="text-xs font-semibold">Nationality</div>
-            <input
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-              value={nationality}
-              onChange={(e) => setNationality(e.target.value)}
-              placeholder="e.g. British"
-            />
+            <>
+              <input
+                className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                value={nationality}
+                onChange={(e) => setNationality(e.target.value)}
+                placeholder="Start typing to search…"
+                list="nationality-list"
+                autoComplete="country-name"
+              />
+              <datalist id="nationality-list">
+                {COUNTRIES.map((country) => (
+                  <option key={country} value={country} />
+                ))}
+              </datalist>
+            </>
           </div>
 
           <div>
@@ -943,15 +954,6 @@ function PassportBlock({
 
           <div>
             <div className="text-xs font-semibold">Passport photo (optional)</div>
-            {passportPhotoUrl && (
-              <div className="mt-2">
-                <img
-                  src={passportPhotoUrl}
-                  alt="Passport"
-                  className="max-h-40 w-full rounded-lg border border-gray-300 object-contain"
-                />
-              </div>
-            )}
             <div className="mt-1">
               <input
                 id="passport-photo-input"
@@ -978,9 +980,9 @@ function PassportBlock({
                 type="button"
                 onClick={() => document.getElementById("passport-photo-input")?.click()}
                 disabled={uploadingPhoto}
-                className="w-full rounded-xl border border-black bg-white px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-60"
+                className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
-                {passportPhotoPath ? "Change photo" : "Add photo"}
+                {passportPhotoPath ? "Change photo" : "Add passport photo"}
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
@@ -1018,15 +1020,6 @@ function PassportBlock({
                 : "—"
             }
           />
-          {passportPhotoUrl && (
-            <div className="mt-3 flex justify-center">
-              <img
-                src={passportPhotoUrl}
-                alt="Passport"
-                className="max-h-48 rounded-lg border border-gray-300 object-contain"
-              />
-            </div>
-          )}
         </div>
       )}
 

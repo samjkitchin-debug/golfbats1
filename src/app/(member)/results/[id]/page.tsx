@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { loadCourses, type Course } from "../../../lib/courseActions";
-import { getTripCourseText } from "../../../lib/tripDisplay";
+import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay";
 import { loadTrips, type Trip } from "../../../lib/tripActions";
 
 function toTripId(raw: string): number | null {
@@ -80,7 +80,7 @@ export default function ResultDetailPage() {
           <div className="text-lg font-semibold text-brand-black">
             {courseText?.title ?? "Trip"} — Results
           </div>
-          <div className="mt-1 text-sm text-gray-600">{trip.date}</div>
+          <div className="mt-1 text-sm text-gray-600">{formatTripDateLong(trip.date)}</div>
           <div className="mt-3 text-sm text-gray-700">Results have not been published yet.</div>
           <div className="mt-4">
             <Link
@@ -109,7 +109,7 @@ export default function ResultDetailPage() {
           {courseText?.title ?? "Trip"} — Results
         </div>
         {courseText?.detail ? <div className="mt-1 text-sm text-gray-600">{courseText.detail}</div> : null}
-        <div className="mt-2 text-sm text-gray-700">{trip.date}</div>
+        <div className="mt-2 text-sm text-gray-700">{formatTripDateLong(trip.date)}</div>
       </div>
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">

@@ -15,6 +15,24 @@ type MemberRow = {
   last_seen: string | null;
 };
 
+function getFlagForNationality(nationality: string | null): string | null {
+  if (!nationality) return null;
+  const n = nationality.toLowerCase();
+
+  if (n.includes("australia")) return "🇦🇺";
+  if (n.includes("british") || n === "uk" || n.includes("united kingdom")) return "🇬🇧";
+  if (n.includes("english") || n === "england") return "🏴";
+  if (n.includes("scotland") || n.includes("scottish")) return "🏴";
+  if (n.includes("wales") || n.includes("welsh")) return "🏴";
+  if (n.includes("singapore")) return "🇸🇬";
+  if (n.includes("ireland") || n.includes("irish")) return "🇮🇪";
+  if (n.includes("usa") || n.includes("united states") || n.includes("american")) return "🇺🇸";
+  if (n.includes("canada") || n.includes("canadian")) return "🇨🇦";
+  if (n.includes("new zealand") || n.includes("kiwi")) return "🇳🇿";
+
+  return null;
+}
+
 export default function MembersPage() {
   const supabase = useMemo(() => {
     return createBrowserClient(
@@ -78,9 +96,6 @@ export default function MembersPage() {
     <div className="pb-24">
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-gray-900">Members</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Check handicaps and connect with fellow members
-        </p>
       </div>
 
       {/* Search */}
@@ -111,32 +126,46 @@ export default function MembersPage() {
             const photoUrl = member.profile_photo_path
               ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${member.profile_photo_path}`
               : null;
+            const flag = getFlagForNationality(member.nationality);
 
             return (
               <div
                 key={member.id}
-                className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3"
+                className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3"
               >
-                {/* Profile Photo */}
-                {photoUrl ? (
-                  <img
-                    src={photoUrl}
-                    alt={displayName}
-                    className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-gray-300"
-                  />
-                ) : (
-                  <div className="h-12 w-12 flex-shrink-0 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-sm font-medium text-gray-600">
-                    {displayName.charAt(0).toUpperCase()}
+                {/* Photo + Name */}
+                <div className="flex items-center gap-3 min-w-0">
+                  {photoUrl ? (
+                    <img
+                      src={photoUrl}
+                      alt={displayName}
+                      className="h-14 w-14 flex-shrink-0 rounded-full object-cover border border-gray-300"
+                    />
+                  ) : (
+                    <div className="h-14 w-14 flex-shrink-0 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-sm font-medium text-gray-600">
+                      {displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 truncate">
+                      {displayName}
+                    </div>
+                    {member.nationality && (
+                      <div className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 truncate">
+                        {flag && <span>{flag}</span>}
+                        <span className="truncate">{member.nationality}</span>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
 
-                {/* Name and Handicap */}
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-gray-900 truncate">
-                    {displayName}
+                {/* Handicap on the right */}
+                <div className="ml-3 flex-shrink-0 text-right">
+                  <div className="text-[11px] uppercase tracking-wide text-gray-500">
+                    Handicap
                   </div>
-                  <div className="text-xs text-gray-600 mt-0.5">
-                    Handicap: {handicap !== null && handicap !== undefined ? handicap : "TBC"}
+                  <div className="mt-0.5 text-sm font-semibold text-gray-900">
+                    {handicap !== null && handicap !== undefined ? handicap : "TBC"}
                   </div>
                 </div>
               </div>

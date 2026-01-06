@@ -22,5 +22,17 @@ export function getTripCourseText(trip: Trip, courses: Course[]) {
     course && tee ? `${tee.meters}m · Par ${tee.par} · Slope ${tee.slope}` : null;
 
   return { title, detail };
-  
+}
+
+export function formatTripDateLong(dateStr: string): string {
+  try {
+    const date = new Date(dateStr + "T00:00:00");
+    return new Intl.DateTimeFormat("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(date);
+  } catch {
+    return dateStr;
+  }
 }

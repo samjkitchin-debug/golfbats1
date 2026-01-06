@@ -71,6 +71,7 @@
 | trip_results          | updated_at                | timestamp with time zone | NO          |
 | trips                 | id                        | uuid                     | NO          |
 | trips                 | club_id                   | uuid                     | NO          |
+| trips                 | name                      | text                     | YES         |
 | trips                 | trip_date                 | date                     | NO          |
 | trips                 | format                    | text                     | NO          |
 | trips                 | ferry                     | text                     | YES         |
