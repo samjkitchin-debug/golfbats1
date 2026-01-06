@@ -30,7 +30,7 @@ export function formatTripDateLong(dateStr: string): string {
     return new Intl.DateTimeFormat("en-GB", {
       weekday: "long",
       day: "numeric",
-      month: "long",
+      month: "short",
     }).format(date);
   } catch {
     return dateStr;

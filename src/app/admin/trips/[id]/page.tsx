@@ -440,13 +440,15 @@ export default function AdminTripPage() {
         </div>
       </section>
 
-      {/* Attendees Section */}
-      {tripSafe.attendees.filter((a) => a.status === "confirmed").length > 0 && (
+      {/* Attendees Section - Show in all phases, but especially in Phase 1 */}
+      {(phase0 || phase1 || phase2 || phase3 || phase4 || tripSafe.attendees.filter((a) => a.status === "confirmed").length > 0) && (
         <section className="rounded-xl border bg-white p-5 shadow-sm">
           <h2 className="mb-3 text-lg font-semibold text-gray-900">Attendees</h2>
           
           {loadingAttendees ? (
             <div className="text-sm text-gray-600">Loading attendees…</div>
+          ) : attendeesData.length === 0 ? (
+            <div className="text-sm text-gray-600">No confirmed attendees yet.</div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
               {attendeesData.map((attendee, idx) => {

@@ -30,9 +30,8 @@ function Medal({ index }: { index: number }) {
 function formatDate(dateStr: string): string {
   try {
     const date = new Date(dateStr + "T00:00:00");
-    const formatter = new Intl.DateTimeFormat("en-SG", {
-      timeZone: "Asia/Singapore",
-      weekday: "short",
+    const formatter = new Intl.DateTimeFormat("en-GB", {
+      weekday: "long",
       day: "numeric",
       month: "short",
     });

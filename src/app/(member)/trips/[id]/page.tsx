@@ -240,6 +240,8 @@ export default function TripDetailPage() {
                 },
                 onCancel: () => {
                   setPromptModal({ ...promptModal, isOpen: false });
+                  // Join with existing handicap even if they cancel the prompt
+                  void continueWithHandicap(existingHandicap);
                 },
               });
             },

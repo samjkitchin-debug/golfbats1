@@ -276,6 +276,8 @@ export default function HomePage() {
                 },
                 onCancel: () => {
                   setPromptModal({ ...promptModal, isOpen: false });
+                  // Join with existing handicap even if they cancel the prompt
+                  void continueWithHandicap(existingHandicap);
                 },
               });
             },
@@ -349,55 +351,67 @@ export default function HomePage() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-sm text-gray-500">Next trip</div>
-            <div className="mt-1 text-lg font-semibold text-gray-900">
-              {nextTrip.name || courseText.title}
-            </div>
-            {nextTrip.name && (
-              <div className="mt-0.5 text-sm text-gray-600">{courseText.title}</div>
-            )}
-            {courseText.detail ? (
-              <div className="mt-0.5 text-xs text-gray-500">{courseText.detail}</div>
-            ) : null}
-
-            <div className="mt-2 text-sm text-gray-700">
-              {formatTripDateLong(nextTrip.date)} · {nextTrip.format}
-              {nextTrip.ferry ? ` · Ferry ${nextTrip.ferry}` : ""}
-              {nextTrip.status === "open" && !isPhase0 ? " · Open for sign up" : nextTrip.status === "closed" ? " · Closed" : ""}
-              {isPhase0 && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
-            </div>
-
-            {isPhase0 && (
-              <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200 p-3">
-                <div className="text-sm text-blue-900">
-                  <span className="font-semibold">Scheduled trip</span> — Date and course shown for planning. Signups will open 30 days before the trip date.
-                </div>
-              </div>
-            )}
-
-            {nextTrip.logistics?.meetingPoint || nextTrip.logistics?.meetTime ? (
-              <div className="mt-2 text-sm text-gray-600">
-                {nextTrip.logistics.meetingPoint && (
-                  <div>📍 {nextTrip.logistics.meetingPoint}</div>
-                )}
-                {nextTrip.logistics.meetTime && (
-                  <div>🕐 {nextTrip.logistics.meetTime}</div>
-                )}
-              </div>
-            ) : null}
-          </div>
-
+        {/* Header: Next trip label + Details button */}
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="text-sm text-gray-500">Next trip</div>
           <Link
             href={`/trips/${nextTrip.id}`}
-            className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
           >
             Details
           </Link>
         </div>
 
-        <div className="mt-4 flex gap-2">
+        {/* Trip name (bold) */}
+        <div className="text-lg font-semibold text-gray-900 mb-1">
+          {nextTrip.name || courseText.title}
+        </div>
+
+        {/* Course + tee on one line */}
+        {nextTrip.name && courseText.title && (
+          <div className="text-sm text-gray-600 mb-1">
+            {courseText.title}
+          </div>
+        )}
+
+        {/* Metrics on one muted line */}
+        {courseText.detail && (
+          <div className="text-xs text-gray-500 mb-2">
+            {courseText.detail}
+          </div>
+        )}
+
+        {/* Date + format + status on ONE line */}
+        <div className="text-sm text-gray-700 mb-2">
+          {formatTripDateLong(nextTrip.date)}
+          {nextTrip.format && ` · ${nextTrip.format}`}
+          {nextTrip.ferry && ` · Ferry ${nextTrip.ferry}`}
+          {nextTrip.status === "open" && !isPhase0 ? " · Open for sign up" : nextTrip.status === "closed" ? " · Closed" : ""}
+          {isPhase0 && signupOpenDateYmd ? ` · Signups open ${formatTripDateLong(signupOpenDateYmd)}` : ""}
+        </div>
+
+        {/* Phase 0 info box */}
+        {isPhase0 && (
+          <div className="mb-2 rounded-lg bg-blue-50 border border-blue-200 p-3">
+            <div className="text-sm text-blue-900">
+              <span className="font-semibold">Scheduled trip</span> — Date and course shown for planning. Signups will open 30 days before the trip date.
+            </div>
+          </div>
+        )}
+
+        {/* Logistics */}
+        {nextTrip.logistics?.meetingPoint || nextTrip.logistics?.meetTime ? (
+          <div className="text-sm text-gray-600 mb-2">
+            {nextTrip.logistics.meetingPoint && (
+              <div>📍 {nextTrip.logistics.meetingPoint}</div>
+            )}
+            {nextTrip.logistics.meetTime && (
+              <div>🕐 {nextTrip.logistics.meetTime}</div>
+            )}
+          </div>
+        ) : null}
+
+        <div className="mt-3 flex gap-2">
           {myEntry ? (
             // User is already in the trip - show disabled "I'm in" and enabled "I'm out"
             <>

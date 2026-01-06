@@ -4,13 +4,31 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../lib/courseActions";
-import { getTripCourseText } from "../../lib/tripDisplay";
+import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
 import { loadTrips, joinTrip, leaveTrip, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
+import { ConfirmModal } from "../../components/ConfirmModal";
+import { PromptModal } from "../../components/PromptModal";
 
 export default function TripsListPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+    onCancel: () => {},
+  });
+  const [promptModal, setPromptModal] = useState<{ isOpen: boolean; title: string; message: string; defaultValue: string; placeholder: string; onConfirm: (value: string) => void; onCancel: () => void }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    defaultValue: "",
+    placeholder: "",
+    onConfirm: () => {},
+    onCancel: () => {},
+  });
 
   const supabase = useMemo(() => {
     return createBrowserClient(
@@ -59,36 +77,188 @@ export default function TripsListPage() {
   }, [supabase]);
 
   async function handleJoinTrip(tripId: number, trip: Trip) {
+    console.log("[handleJoinTrip] Called for trip", tripId);
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user) {
-        const { data: memberData } = await supabase
-          .from("members")
-          .select("declared_handicap")
-          .eq("id", user.id)
-          .maybeSingle();
+      if (!user) {
+        alert("You must be signed in to join a trip.");
+        return;
+      }
 
-        const handicapValue = memberData?.declared_handicap ?? null;
-        const updated = await joinTrip(trips, tripId, handicapValue);
-        setTrips(updated);
+      console.log("[handleJoinTrip] User authenticated, loading member data...");
+
+      // Look up existing member to get current handicap
+      const { data: memberData } = await supabase
+        .from("members")
+        .select("full_name,display_name,nationality,declared_handicap")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const existingHandicap =
+        memberData && typeof memberData.declared_handicap === "number"
+          ? memberData.declared_handicap
+          : null;
+
+      // Prepare the join action function
+      const continueWithHandicap = async (handicapValue: number | null) => {
+        try {
+          const now = new Date().toISOString();
+
+          if (memberData) {
+            await supabase
+              .from("members")
+              .update({
+                declared_handicap: handicapValue,
+                last_seen: now,
+                full_name: memberData.full_name ?? null,
+                display_name: memberData.display_name ?? null,
+                nationality: memberData.nationality ?? null,
+              })
+              .eq("id", user.id);
+          } else {
+            await supabase
+              .from("members")
+              .insert({
+                id: user.id,
+                email: user.email || "",
+                declared_handicap: handicapValue,
+                last_seen: now,
+                created_at: now,
+              });
+          }
+
+          // Add to trip and save handicap for this trip
+          const updated = await joinTrip(trips, tripId, handicapValue);
+          setTrips(updated);
+
+          // Reload trips to get fresh data
+          try {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const freshTrips = await loadTrips(true); // Bypass cache
+            setTrips(freshTrips);
+          } catch (reloadError) {
+            console.error("Failed to reload trips after join:", reloadError);
+          }
+        } catch (error) {
+          console.error("Failed to join trip:", error);
+          alert(
+            `Failed to join trip: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
+          );
+        }
+      };
+
+      // Ask if they want to edit their current handicap
+      if (existingHandicap !== null) {
+        // Show confirm modal to ask if they want to edit
+        setConfirmModal({
+          isOpen: true,
+          title: "Edit Handicap?",
+          message: `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`,
+          onConfirm: () => {
+            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            // Show prompt modal for editing handicap
+            setPromptModal({
+              isOpen: true,
+              title: "Enter Handicap",
+              message: "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
+              defaultValue: String(existingHandicap),
+              placeholder: "0–36",
+              onConfirm: (input: string) => {
+                setPromptModal(prev => ({ ...prev, isOpen: false }));
+                const trimmed = input.trim();
+                let handicapValue: number | null = existingHandicap;
+                if (trimmed === "") {
+                  handicapValue = existingHandicap;
+                } else {
+                  const parsed = Number(trimmed);
+                  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
+                    alert("Handicap must be a number between 0 and 36.");
+                    return;
+                  }
+                  handicapValue = parsed;
+                }
+                void continueWithHandicap(handicapValue);
+              },
+              onCancel: () => {
+                setPromptModal(prev => ({ ...prev, isOpen: false }));
+                // Join with existing handicap even if they cancel the prompt
+                void continueWithHandicap(existingHandicap);
+              },
+            });
+          },
+          onCancel: () => {
+            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            // Join with existing handicap without editing
+            void continueWithHandicap(existingHandicap);
+          },
+        });
+      } else {
+        // Show prompt modal for new handicap
+        setPromptModal({
+          isOpen: true,
+          title: "Enter Handicap",
+          message: "Please enter your current handicap (0–36), or leave blank if you are not sure yet:",
+          defaultValue: "",
+          placeholder: "0–36",
+          onConfirm: (input: string) => {
+            setPromptModal(prev => ({ ...prev, isOpen: false }));
+            const trimmed = input.trim();
+            let handicapValue: number | null = null;
+            if (trimmed !== "") {
+              const parsed = Number(trimmed);
+              if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
+                alert("Handicap must be a number between 0 and 36.");
+                return;
+              }
+              handicapValue = parsed;
+            }
+            void continueWithHandicap(handicapValue);
+          },
+          onCancel: () => {
+            setPromptModal(prev => ({ ...prev, isOpen: false }));
+            // Join without handicap
+            void continueWithHandicap(null);
+          },
+        });
       }
     } catch (error) {
-      console.error("Failed to join trip:", error);
-      alert(`Failed to join trip: ${error instanceof Error ? error.message : String(error)}`);
+      console.error("Failed to start join process:", error);
+      alert(
+        `Failed to start join process: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
+      );
     }
   }
 
   async function handleLeaveTrip(tripId: number) {
-    try {
-      const updated = await leaveTrip(trips, tripId);
-      setTrips(updated);
-    } catch (error) {
-      console.error("Failed to leave trip:", error);
-      alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: "Leave Trip?",
+      message: "Are you sure you want to leave this trip?",
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          const updated = await leaveTrip(trips, tripId);
+          setTrips(updated);
+          // Reload trips to get fresh data
+          try {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const freshTrips = await loadTrips(true); // Bypass cache
+            setTrips(freshTrips);
+          } catch (reloadError) {
+            console.error("Failed to reload trips after leave:", reloadError);
+          }
+        } catch (error) {
+          console.error("Failed to leave trip:", error);
+          alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      },
+      onCancel: () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      },
+    });
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -136,94 +306,82 @@ export default function TripsListPage() {
               const joinDisabled = isPhase0 || t.status !== "open";
 
               return (
-                <li key={t.id} className="py-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      {/* Trip Name - Priority 1 */}
-                      <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
-                      
-                      {/* Course - Priority 2 */}
-                      <div className="mt-1.5">
-                        <div className="text-base font-medium text-gray-800">{title || "Course TBD"}</div>
-                        {detail && (
-                          <div className="mt-0.5 text-sm text-gray-600">{detail}</div>
-                        )}
-                      </div>
-                      
-                      {/* Date - Priority 3 */}
-                      <div className="mt-2 text-base text-gray-900 font-medium">
-                        {t.date}
-                      </div>
-                      
-                      {/* Secondary Info */}
-                      <div className="mt-2 text-sm text-gray-600">
-                        {t.format && <span>{t.format}</span>}
-                        {t.format && t.ferry && " · "}
-                        {t.ferry && <span>Ferry {t.ferry}</span>}
-                      </div>
-                      
-                      {/* Status */}
-                      <div className="mt-1.5 text-sm">
-                        {t.status?.toLowerCase() === "closed" ? (
-                          <span className="text-orange-600 font-medium">Closed</span>
-                        ) : isPhase0 && signupOpenDateYmd ? (
-                          <span className="text-blue-600 font-medium">Signups open {signupOpenDateYmd}</span>
-                        ) : t.status?.toLowerCase() === "open" ? (
-                          <span className="text-green-600 font-medium">Open for sign up</span>
-                        ) : null}
-                      </div>
-                      
-                      {/* Phase 0 Info Box */}
-                      {isPhase0 && (
-                        <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200 p-2">
-                          <div className="text-xs text-blue-900">
-                            <span className="font-semibold">Scheduled</span> — Date and course shown for planning. Signups open 30 days before trip date.
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Logistics */}
-                      {t.logistics?.meetingPoint || t.logistics?.meetTime ? (
-                        <div className="mt-2 text-xs text-gray-600">
-                          {t.logistics.meetingPoint && <div>📍 {t.logistics.meetingPoint}</div>}
-                          {t.logistics.meetTime && <div>🕐 {t.logistics.meetTime}</div>}
-                        </div>
-                      ) : null}
-                      
-                      {/* Confirmed Count */}
-                      <div className="mt-2 text-xs text-gray-500">
-                        {confirmedCount(t)} confirmed
-                      </div>
-                      
-                      {/* I'm in / I'm out Button */}
-                      {t.status === "open" && !isPhase0 && (
-                        <div className="mt-3">
-                          {myEntry ? (
-                            <button
-                              onClick={() => void handleLeaveTrip(t.id)}
-                              className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:opacity-95"
-                            >
-                              I'm Out
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => void handleJoinTrip(t.id, t)}
-                              className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:opacity-95"
-                            >
-                              Join Trip
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
+                <li key={t.id} className="py-3">
+                  {/* Trip Name + Details Button */}
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
                     <Link
                       href={`/trips/${t.id}`}
-                      className="shrink-0 rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
                     >
                       Details
                     </Link>
                   </div>
+
+                  {/* Course Name */}
+                  <div className="text-base font-medium text-gray-800 mb-1">
+                    {title || "Course TBD"}
+                  </div>
+
+                  {/* Yardage / Par / Slope - Single Muted Line */}
+                  {detail && (
+                    <div className="text-sm text-gray-500 mb-2">
+                      {detail}
+                    </div>
+                  )}
+
+                  {/* Date + Format Together */}
+                  <div className="text-sm text-gray-900 mb-1.5">
+                    {formatTripDateLong(t.date)}
+                    {t.format && <span className="text-gray-600"> · {t.format}</span>}
+                    {t.ferry && <span className="text-gray-600"> · Ferry {t.ferry}</span>}
+                  </div>
+
+                  {/* Status + Confirmed Count Together */}
+                  <div className="flex items-center gap-2 text-sm mb-2">
+                    {t.status?.toLowerCase() === "closed" ? (
+                      <span className="text-orange-600 font-medium">Closed</span>
+                    ) : isPhase0 && signupOpenDateYmd ? (
+                      <span className="text-blue-600 font-medium">Signups open {formatTripDateLong(signupOpenDateYmd)}</span>
+                    ) : t.status?.toLowerCase() === "open" ? (
+                      <span className="text-green-600 font-medium">Open for sign up</span>
+                    ) : null}
+                    <span className="text-gray-500">·</span>
+                    <span className="text-gray-500">{confirmedCount(t)} confirmed</span>
+                  </div>
+
+                  {/* Logistics */}
+                  {t.logistics?.meetingPoint || t.logistics?.meetTime ? (
+                    <div className="text-xs text-gray-600 mb-2">
+                      {t.logistics.meetingPoint && <div>📍 {t.logistics.meetingPoint}</div>}
+                      {t.logistics.meetTime && <div>🕐 {t.logistics.meetTime}</div>}
+                    </div>
+                  ) : null}
+
+                  {/* Join Trip Button - Primary CTA */}
+                  {t.status === "open" && !isPhase0 && (
+                    <div className="mt-2">
+                      {myEntry ? (
+                        <button
+                          onClick={() => void handleLeaveTrip(t.id)}
+                          className="w-full rounded bg-red-600 px-4 py-2 text-sm text-white hover:opacity-95"
+                        >
+                          I'm Out
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void handleJoinTrip(t.id, t);
+                          }}
+                          className="w-full rounded bg-green-600 px-4 py-2 text-sm text-white hover:opacity-95"
+                        >
+                          Join Trip
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -259,7 +417,7 @@ export default function TripsListPage() {
                       
                       {/* Date - Priority 3 */}
                       <div className="mt-2 text-base text-gray-900 font-medium">
-                        {t.date}
+                        {formatTripDateLong(t.date)}
                       </div>
                       
                       {/* Secondary Info */}
@@ -305,6 +463,28 @@ export default function TripsListPage() {
           </ul>
         )}
       </section>
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmLabel="Yes"
+        cancelLabel="No"
+        onConfirm={confirmModal.onConfirm}
+        onCancel={confirmModal.onCancel}
+      />
+
+      <PromptModal
+        isOpen={promptModal.isOpen}
+        title={promptModal.title}
+        message={promptModal.message}
+        defaultValue={promptModal.defaultValue}
+        placeholder={promptModal.placeholder}
+        confirmLabel="OK"
+        cancelLabel="Cancel"
+        onConfirm={promptModal.onConfirm}
+        onCancel={promptModal.onCancel}
+      />
     </div>
   );
 }
