@@ -373,6 +373,15 @@ export default function AdminMembersPage() {
               Admins
             </div>
             <table className="w-full text-left text-sm">
+              <colgroup>
+                <col className="w-[22%]" /> {/* Name */}
+                <col className="w-[24%]" /> {/* Email */}
+                <col className="w-[10%]" /> {/* Nat. */}
+                <col className="w-[10%]" /> {/* HCP */}
+                <col className="w-[14%]" /> {/* Status */}
+                <col className="w-[10%]" /> {/* Passport */}
+                <col className="w-[10%]" /> {/* Actions */}
+              </colgroup>
               <thead className="border-b bg-white">
                 <tr className="text-gray-700">
                   <th className="px-4 py-3">Name</th>
@@ -476,6 +485,15 @@ export default function AdminMembersPage() {
               Members
             </div>
             <table className="w-full text-left text-sm">
+              <colgroup>
+                <col className="w-[22%]" /> {/* Name */}
+                <col className="w-[24%]" /> {/* Email */}
+                <col className="w-[10%]" /> {/* Nat. */}
+                <col className="w-[10%]" /> {/* HCP */}
+                <col className="w-[14%]" /> {/* Status */}
+                <col className="w-[10%]" /> {/* Passport */}
+                <col className="w-[10%]" /> {/* Actions */}
+              </colgroup>
               <thead className="border-b bg-white">
                 <tr className="text-gray-700">
                   <th className="px-4 py-3">Name</th>

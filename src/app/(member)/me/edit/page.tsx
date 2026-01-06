@@ -331,21 +331,20 @@ export default function MeEditPage() {
             </Field>
 
             <Field label="Nationality">
-              <>
-                <input
-                  className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-                  value={nationality}
-                  onChange={(e) => setNationality(e.target.value)}
-                  placeholder="Start typing to search…"
-                  list="nationality-list"
-                  autoComplete="country-name"
-                />
-                <datalist id="nationality-list">
-                  {COUNTRIES.map((country) => (
-                    <option key={country} value={country} />
-                  ))}
-                </datalist>
-              </>
+              <select
+                className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none bg-white"
+                value={nationality || ""}
+                onChange={(e) => setNationality(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select nationality…
+                </option>
+                {COUNTRIES.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
             </Field>
 
             <Field label="Declared handicap">

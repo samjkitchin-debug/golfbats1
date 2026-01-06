@@ -700,21 +700,20 @@ function ProfileBlock({
 
           <div>
             <div className="text-xs font-semibold">Nationality</div>
-            <>
-              <input
-                className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-                value={nationality}
-                onChange={(e) => setNationality(e.target.value)}
-                placeholder="Start typing to search…"
-                list="nationality-list"
-                autoComplete="country-name"
-              />
-              <datalist id="nationality-list">
-                {COUNTRIES.map((country) => (
-                  <option key={country} value={country} />
-                ))}
-              </datalist>
-            </>
+            <select
+              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none bg-white"
+              value={nationality || ""}
+              onChange={(e) => setNationality(e.target.value)}
+            >
+              <option value="" disabled>
+                Select nationality…
+              </option>
+              {COUNTRIES.map((country) => (
+                <option key={country} value={country}>
+                  {country}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
