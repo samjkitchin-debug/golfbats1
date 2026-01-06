@@ -79,7 +79,7 @@ export default function TripsListPage() {
                       <div className="mt-1 text-sm text-gray-700">
                         {t.date} · {t.format}
                         {t.ferry ? ` · Ferry ${t.ferry}` : ""}
-                        {t.status === "open" && !isPhase0 ? " · Open for sign up" : t.status === "closed" ? " · Closed" : ""}
+                        {t.status === "closed" ? " · Closed" : isPhase0 ? "" : t.status === "open" ? " · Open for sign up" : ""}
                         {isPhase0 && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
                       </div>
                       {isPhase0 && (
