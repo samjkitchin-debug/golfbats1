@@ -135,6 +135,14 @@ export async function middleware(req: NextRequest) {
   // - /me
   // - /me/edit and related save/upload routes
   if (!isProfileEditPath(pathname) && !isMePath(pathname)) {
+    const adminEmailsRaw = process.env.ADMIN_EMAILS || "";
+    const adminEmails = adminEmailsRaw
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const email = (user.email ?? "").toLowerCase();
+    const isAdmin = adminEmails.includes(email);
+
     const { profileComplete, approved } = await getMemberGateState(supabase, user.id);
 
     if (!profileComplete) {
@@ -144,7 +152,8 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(profileUrl);
     }
 
-    if (!approved) {
+    // Admins are treated as approved for routing, even if their member row is still pending.
+    if (!approved && !isAdmin) {
       const meUrl = req.nextUrl.clone();
       meUrl.pathname = "/me";
       meUrl.searchParams.set("pending", "true");
