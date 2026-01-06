@@ -143,7 +143,7 @@ export default function AdminTripsPage() {
             onClick={createNewTrip}
             type="button"
           >
-            Create trip
+            Create Trip
           </button>
         </div>
       </div>

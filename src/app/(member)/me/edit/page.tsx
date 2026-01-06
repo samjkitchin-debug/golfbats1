@@ -430,7 +430,7 @@ export default function MeEditPage() {
                         disabled={uploadingPhoto}
                         className="inline-flex items-center rounded-full border border-black bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-60"
                       >
-                        {passportPhotoPath ? "Change photo" : "Add photo"}
+                        {passportPhotoPath ? "Change Photo" : "Add Photo"}
                       </button>
                       <p className="mt-2 text-xs text-gray-600">
                         You can use your camera or select an existing file.

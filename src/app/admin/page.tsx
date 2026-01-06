@@ -131,7 +131,7 @@ export default function AdminPage() {
             className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white"
             onClick={createNewTrip}
           >
-            Create trip
+            Create Trip
           </button>
         </div>
 

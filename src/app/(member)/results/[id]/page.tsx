@@ -87,7 +87,7 @@ export default function ResultDetailPage() {
               href={`/trips/${trip.id}`}
               className="inline-flex rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
-              View trip →
+              View Trip →
             </Link>
           </div>
         </div>

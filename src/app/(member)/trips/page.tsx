@@ -59,6 +59,12 @@ export default function TripsListPage() {
           <ul className="divide-y">
             {upcoming.map((t) => {
               const { title, detail } = getTripCourseText(t, courses);
+              const now = Date.now();
+              const tripDate = new Date(t.date + "T00:00:00").getTime();
+              const signupOpenAt = tripDate - 30 * 24 * 60 * 60 * 1000;
+              const isPhase0 = t.status === "open" && !t.result && Number.isFinite(signupOpenAt) && now < signupOpenAt;
+              const signupOpenDateYmd = isPhase0 ? new Date(signupOpenAt).toISOString().slice(0, 10) : null;
+
               return (
                 <li key={t.id} className="py-3">
                   <div className="flex items-start justify-between gap-4">
@@ -73,8 +79,16 @@ export default function TripsListPage() {
                       <div className="mt-1 text-sm text-gray-700">
                         {t.date} · {t.format}
                         {t.ferry ? ` · Ferry ${t.ferry}` : ""}
-                        {t.status === "open" ? " · Open for sign up" : t.status === "closed" ? " · Closed" : ""}
+                        {t.status === "open" && !isPhase0 ? " · Open for sign up" : t.status === "closed" ? " · Closed" : ""}
+                        {isPhase0 && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
                       </div>
+                      {isPhase0 && (
+                        <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200 p-2">
+                          <div className="text-xs text-blue-900">
+                            <span className="font-semibold">Scheduled</span> — Date and course shown for planning. Signups open 30 days before trip date.
+                          </div>
+                        </div>
+                      )}
                       {t.logistics?.meetingPoint || t.logistics?.meetTime ? (
                         <div className="mt-1 text-xs text-gray-600">
                           {t.logistics.meetingPoint && <span>📍 {t.logistics.meetingPoint}</span>}

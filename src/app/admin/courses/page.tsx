@@ -96,7 +96,7 @@ export default function AdminCoursesPage() {
 
       {/* Add Course */}
       <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-sm font-medium text-gray-700">Add course</div>
+        <div className="text-sm font-medium text-gray-700">Add Course</div>
 
         <div className="mt-3 grid gap-2">
           <input
@@ -122,7 +122,7 @@ export default function AdminCoursesPage() {
             onClick={handleAddCourse}
             className="mt-1 rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white hover:opacity-95"
           >
-            Add course
+            Add Course
           </button>
 
           <div className="text-xs text-gray-500">
@@ -321,7 +321,7 @@ function CourseCard({
       {isEditing && (
         <>
           <div className="mt-4 grid gap-2">
-            <div className="text-sm font-medium text-gray-700">Edit course</div>
+            <div className="text-sm font-medium text-gray-700">Edit Course</div>
 
             <input
               value={name}
@@ -442,7 +442,7 @@ function CourseCard({
             )}
 
             <div className="mt-4 rounded-lg border bg-white p-4">
-              <div className="text-sm font-medium text-gray-700">Add tee</div>
+              <div className="text-sm font-medium text-gray-700">Add Tee</div>
 
               <div className="mt-3 grid gap-2 md:grid-cols-4">
                 <input
@@ -478,7 +478,7 @@ function CourseCard({
                 onClick={addNewTeeLine}
                 className="mt-3 rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white hover:opacity-95"
               >
-                Add tee
+                Add Tee
               </button>
 
               <div className="mt-2 text-xs text-gray-500">
@@ -493,7 +493,7 @@ function CourseCard({
               onClick={handleSaveChanges}
               className="rounded-md bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
-              {saved ? "Changes saved" : "Save changes"}
+              {saved ? "Changes Saved" : "Save Changes"}
             </button>
             <button
               onClick={() => setIsEditing(false)}

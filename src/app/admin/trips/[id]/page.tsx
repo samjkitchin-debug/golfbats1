@@ -488,6 +488,91 @@ export default function AdminTripPage() {
         </section>
       )}
 
+      {/* Phase 0: Scheduled - Minimum details (Date and Course) required for members to plan ahead */}
+      {phase0 && (
+        <section className="rounded-xl border bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Phase 0: Scheduled</h2>
+          <p className="mb-4 text-sm text-gray-600">
+            Set the date and course so members can see where the trip is and plan ahead. Signups will open 30 days before the trip date.
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block">
+              <div className="text-sm font-medium text-gray-800">Date <span className="text-red-600">*</span></div>
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                type="date"
+                value={tripSafe.date}
+                onChange={(e) => patchTrip({ date: e.target.value })}
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-sm font-medium text-gray-800">Format</div>
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={formatInput}
+                onChange={(e) => setFormatInput(e.target.value)}
+                onBlur={() => {
+                  if ((tripSafe.format ?? "") !== (formatInput ?? "")) {
+                    void patchTrip({ format: formatInput || "" });
+                  }
+                }}
+              />
+            </label>
+
+            <label className="block md:col-span-2">
+              <div className="text-sm font-medium text-gray-800">Course <span className="text-red-600">*</span></div>
+              <select
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={tripSafe.courseId ?? ""}
+                onChange={(e) => onSetCourse(e.target.value || null)}
+              >
+                <option value="">Select course…</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block md:col-span-2">
+              <div className="text-sm font-medium text-gray-800">Tee</div>
+              <select
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={tripSafe.teeId ?? ""}
+                onChange={(e) => onSetTee(e.target.value || null)}
+                disabled={!tripSafe.courseId}
+              >
+                <option value="">Select tee…</option>
+                {tees.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label} • {t.meters}m • Par {t.par} • Slope {t.slope}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block md:col-span-2">
+              <div className="text-sm font-medium text-gray-800">Trip Name</div>
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                type="text"
+                value={tripNameInput}
+                onChange={(e) => setTripNameInput(e.target.value)}
+                onBlur={(e) => {
+                  const next = e.target.value.trim();
+                  if (next === (tripSafe.name ?? "")) return;
+                  void patchTrip({ name: next || undefined });
+                }}
+                placeholder="e.g. Batam Weekend Getaway"
+              />
+            </label>
+          </div>
+        </section>
+      )}
+
       {/* Phase 1: Basics - Only show when trip is open and before cutoff */}
       {phase1 && (
         <section className="rounded-xl border bg-white p-5 shadow-sm">
@@ -610,7 +695,7 @@ export default function AdminTripPage() {
                 className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                 onClick={onCloseTripAndPostLogistics}
               >
-                Close RSVP & post logistics
+                Close RSVP & Post Logistics
               </button>
             </div>
           )}
@@ -621,7 +706,7 @@ export default function AdminTripPage() {
                 className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                 onClick={onCloseTripAndPostLogistics}
               >
-                Close RSVP & post logistics
+                Close RSVP & Post Logistics
               </button>
             </div>
           )}
@@ -775,7 +860,7 @@ export default function AdminTripPage() {
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
               onClick={onClearResult}
             >
-              Clear results
+              Clear Results
             </button>
             <button
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"

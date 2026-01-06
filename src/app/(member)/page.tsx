@@ -296,9 +296,17 @@ export default function HomePage() {
             <div className="mt-2 text-sm text-gray-700">
               {formatTripDateLong(nextTrip.date)} · {nextTrip.format}
               {nextTrip.ferry ? ` · Ferry ${nextTrip.ferry}` : ""}
-              {nextTrip.status === "open" ? " · Open for sign up" : nextTrip.status === "closed" ? " · Closed" : ""}
+              {nextTrip.status === "open" && !isPhase0 ? " · Open for sign up" : nextTrip.status === "closed" ? " · Closed" : ""}
               {isPhase0 && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
             </div>
+
+            {isPhase0 && (
+              <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200 p-3">
+                <div className="text-sm text-blue-900">
+                  <span className="font-semibold">Scheduled trip</span> — Date and course shown for planning. Signups will open 30 days before the trip date.
+                </div>
+              </div>
+            )}
 
             {nextTrip.logistics?.meetingPoint || nextTrip.logistics?.meetTime ? (
               <div className="mt-2 text-sm text-gray-600">

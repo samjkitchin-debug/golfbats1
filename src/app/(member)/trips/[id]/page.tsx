@@ -281,6 +281,14 @@ export default function TripDetailPage() {
           {locked ? " · Locked" : ""}
           {isPhase0 && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
         </div>
+
+        {isPhase0 && (
+          <div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 p-3">
+            <div className="text-sm text-blue-900">
+              <span className="font-semibold">Scheduled trip</span> — Date and course shown for planning. Signups will open 30 days before the trip date.
+            </div>
+          </div>
+        )}
       </div>
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">
@@ -295,7 +303,7 @@ export default function TripDetailPage() {
                 disabled={true}
                 className="flex-1 rounded bg-gray-200 py-2 text-sm text-gray-500 cursor-not-allowed"
               >
-                I’m In
+                I'm In
               </button>
               <button
                 onClick={handleImOut}
@@ -304,7 +312,7 @@ export default function TripDetailPage() {
                   locked ? "bg-gray-400" : "bg-red-600 hover:opacity-95"
                 }`}
               >
-                I’m Out
+                I'm Out
               </button>
             </>
           ) : (
@@ -316,7 +324,7 @@ export default function TripDetailPage() {
                 joinDisabled ? "bg-gray-200 text-gray-500" : "bg-green-600 hover:opacity-95"
               }`}
             >
-              I’m In
+              I'm In
             </button>
           )}
         </div>
@@ -460,7 +468,7 @@ export default function TripDetailPage() {
               href={`/results/${tripIdSafe}`}
               className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
-              View results →
+              View Results →
             </Link>
           </div>
         ) : (

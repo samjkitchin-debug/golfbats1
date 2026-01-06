@@ -705,7 +705,7 @@ function ProfileBlock({
                   disabled={uploadingProfilePhoto}
                   className="rounded-xl border border-black bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-60"
                 >
-                  {profilePhotoPath ? "Change photo" : "Add photo"}
+                  {profilePhotoPath ? "Change Photo" : "Add Photo"}
                 </button>
                 {uploadingProfilePhoto && (
                   <p className="mt-1 text-xs text-gray-600">Uploading photo…</p>
@@ -1012,7 +1012,7 @@ function PassportBlock({
                   disabled={uploadingPhoto}
                   className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                 >
-                  {passportPhotoPath ? "Change photo" : "Add passport photo"}
+                  {passportPhotoPath ? "Change Photo" : "Add Passport Photo"}
                 </button>
               </div>
 
@@ -1022,7 +1022,7 @@ function PassportBlock({
                   onClick={() => window.open(passportPhotoUrl, "_blank")}
                   className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
                 >
-                  View passport photo
+                  View Passport Photo
                 </button>
               )}
             </div>
