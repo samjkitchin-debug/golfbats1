@@ -539,7 +539,8 @@ export default function AdminTripPage() {
               onChange={(e) => setFerryInput(e.target.value)}
               onBlur={() => {
                 if ((tripSafe.ferry ?? "") !== (ferryInput ?? "")) {
-                  void patchTrip({ ferry: ferryInput || null });
+                  const next = ferryInput?.trim() ?? "";
+                  void patchTrip({ ferry: next ? next : undefined });
                 }
               }}
               disabled={locked}
