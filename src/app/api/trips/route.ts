@@ -5,7 +5,7 @@ import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
 const CACHE_TAG = "trips";
-const CACHE_TTL = 30; // 30 seconds
+const CACHE_TTL = 10; // 10 seconds (reduced from 30 to help with stale data issues)
 
 /**
  * Cached data fetcher (request-scoped memoization + cross-request caching)
@@ -119,9 +119,99 @@ const getTripsData = cache(
 /**
  * GET /api/trips
  * Retrieve all trips with attendees and results (cached)
+ * Query param ?bypassCache=true to force fresh data
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const url = new URL(req.url);
+    const bypassCache = url.searchParams.get("bypassCache") === "true";
+    
+    if (bypassCache) {
+      // Bypass cache and fetch fresh data
+      const supabase = await createSupabaseServerClient();
+      
+      const { data: tripsData, error: tripsError } = await supabase
+        .from("trips")
+        .select("*")
+        .order("trip_date", { ascending: false });
+
+      if (tripsError) {
+        throw new Error(tripsError.message || "Failed to fetch trips.");
+      }
+
+      if (!tripsData || tripsData.length === 0) {
+        return NextResponse.json({ ok: true, trips: [] });
+      }
+
+      const tripIds = tripsData.map((t) => t.id);
+      const { data: attendeesData } = await supabase
+        .from("trip_attendees")
+        .select("*,members(id,display_name,full_name)")
+        .in("trip_id", tripIds);
+
+      const { data: resultsData } = await supabase
+        .from("trip_results")
+        .select("*,result_rows(*)")
+        .in("trip_id", tripIds);
+
+      const trips = tripsData.map((trip) => {
+        const attendees = (attendeesData || [])
+          .filter((a) => a.trip_id === trip.id)
+          .map((a) => {
+            const member = a.members as any;
+            const name = member?.display_name || member?.full_name || "Unknown";
+            return {
+              name,
+              status: a.status as "confirmed" | "waitlist" | "out",
+              joinedAt: new Date(a.joined_at).getTime(),
+              handicapForTrip: a.handicap_snapshot ?? null,
+            };
+          });
+
+        const result = (resultsData || []).find((r) => r.trip_id === trip.id);
+        const resultRows = result?.result_rows || [];
+        const leaderboard = resultRows
+          .filter((r: any) => r.metric_label === "points")
+          .sort((a: any, b: any) => b.position - a.position)
+          .map((r: any) => ({
+            name: r.display_name,
+            points: Number(r.metric_value) || 0,
+          }));
+
+        return {
+          id: trip.legacy_id || 0,
+          name: trip.name || undefined,
+          date: trip.trip_date,
+          format: trip.format,
+          course: undefined,
+          ferry: trip.ferry || undefined,
+          capacity: trip.capacity,
+          status: trip.status as "open" | "closed" | "archived",
+          cutoffAt: trip.cutoff_at ? new Date(trip.cutoff_at).toISOString() : undefined,
+          courseId: trip.course_id,
+          teeId: trip.tee_id,
+          logistics: {
+            meetingPoint: trip.meeting_point || undefined,
+            meetTime: trip.meet_time || undefined,
+            ferryDetails: trip.ferry_details || undefined,
+            notes: trip.notes || undefined,
+          },
+          attendees,
+          result: result && result.published
+            ? {
+                leaderboard,
+                notes: result.notes || undefined,
+                publishedAt: result.published_at || undefined,
+              }
+            : undefined,
+          createdAtUtc: trip.created_at,
+          updatedAtUtc: trip.updated_at,
+        };
+      });
+
+      return NextResponse.json({ ok: true, trips });
+    }
+    
     const result = await getTripsData();
     return NextResponse.json(result);
   } catch (error) {
