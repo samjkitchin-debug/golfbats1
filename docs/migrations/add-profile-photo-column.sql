@@ -7,3 +7,4 @@ ADD COLUMN IF NOT EXISTS profile_photo_path TEXT;
 -- Add comment
 COMMENT ON COLUMN members.profile_photo_path IS 'Path to profile photo in Supabase Storage (e.g., profile-photos/{user_id}/profile.jpg)';
 
+

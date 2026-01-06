@@ -79,3 +79,8 @@
 | trips                 | created_at                | timestamp with time zone | NO          |
 | trips                 | updated_at                | timestamp with time zone | NO          |
 | trips                 | legacy_id                 | integer                  | YES         |
+| dev_notes             | id                        | uuid                     | NO          |
+| dev_notes             | user_id                   | uuid                     | NO          |
+| dev_notes             | note                      | text                     | NO          |
+| dev_notes             | created_at                | timestamp with time zone | NO          |
+| dev_notes             | updated_at                | timestamp with time zone | NO          |

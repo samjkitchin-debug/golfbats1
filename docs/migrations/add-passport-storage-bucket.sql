@@ -220,3 +220,4 @@ CREATE POLICY "Users can delete own passport images"
 -- 6. File paths include user_id prefix to prevent path traversal attacks
 -- 7. File type constraints are enforced at both client and server level
 
+

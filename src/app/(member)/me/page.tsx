@@ -259,8 +259,8 @@ export default function MePage() {
                 ? null
                 : Number(declaredHandicap.trim());
 
-            if (handicapNum !== null && (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 54)) {
-              setError("Declared handicap must be a number between 0 and 54 (or blank).");
+            if (handicapNum !== null && (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 36)) {
+              setError("Declared handicap must be a number between 0 and 36 (or blank).");
               setSavingProfile(false);
               return;
             }

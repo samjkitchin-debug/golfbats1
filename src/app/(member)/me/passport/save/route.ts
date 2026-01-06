@@ -83,14 +83,19 @@ export async function POST(req: Request) {
     } catch (encryptError: any) {
       console.error("Encryption error:", encryptError);
       return NextResponse.json(
-        { error: "Failed to encrypt passport number." },
+        { error: encryptError?.message || "Failed to encrypt passport number." },
         { status: 500 }
       );
     }
 
-    // Convert base64 string to Buffer for bytea column
-    // Supabase JS client accepts Buffer for bytea columns
+    // Convert base64 string to hex format for bytea column
+    // PostgREST/Supabase accepts bytea in hex format: '\x...' 
+    // But when sending via JSON, we need to escape it properly
     const encryptedBuffer = Buffer.from(encrypted_number, "base64");
+    // PostgREST accepts hex-encoded bytea when sent as a string with \x prefix
+    // However, when sent via JSON, we need to double-escape or use a different format
+    // Try using Buffer directly first (Supabase JS client should handle this)
+    const encryptedData = encryptedBuffer;
 
     // Check if passport already exists
     const { data: existing } = await supabase
@@ -115,8 +120,9 @@ export async function POST(req: Request) {
 
       if (updateError) {
         console.error("Update error:", updateError);
+        console.error("Error details:", JSON.stringify(updateError, null, 2));
         return NextResponse.json(
-          { error: `Failed to update passport: ${updateError.message}` },
+          { error: `Failed to update passport: ${updateError.message || JSON.stringify(updateError)}` },
           { status: 500 }
         );
       }
@@ -135,8 +141,9 @@ export async function POST(req: Request) {
 
       if (insertError) {
         console.error("Insert error:", insertError);
+        console.error("Error details:", JSON.stringify(insertError, null, 2));
         return NextResponse.json(
-          { error: `Failed to save passport: ${insertError.message}` },
+          { error: `Failed to save passport: ${insertError.message || JSON.stringify(insertError)}` },
           { status: 500 }
         );
       }

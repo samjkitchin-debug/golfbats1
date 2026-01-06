@@ -110,6 +110,9 @@ export default function TripDetailPage() {
   }
 
   async function handleImIn() {
+    // Prevent duplicate joins
+    if (myEntry) return;
+
     // Prompt for handicap
     const handicapInput = window.prompt("Please enter your current handicap (or leave blank to skip):");
     if (handicapInput === null) return; // User cancelled
@@ -117,8 +120,8 @@ export default function TripDetailPage() {
     let handicapValue: number | null = null;
     if (handicapInput.trim() !== "") {
       const parsed = Number(handicapInput.trim());
-      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 54) {
-        alert("Handicap must be a number between 0 and 54.");
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
+        alert("Handicap must be a number between 0 and 36.");
         return;
       }
       handicapValue = parsed;
@@ -208,25 +211,38 @@ export default function TripDetailPage() {
         <div className="mb-3 text-sm font-medium text-gray-600">RSVP</div>
 
         <div className="flex gap-2">
-          <button
-            onClick={handleImIn}
-            disabled={locked}
-            className={`flex-1 rounded py-2 text-sm ${
-              locked ? "bg-gray-200 text-gray-500" : "bg-brand-red text-white hover:opacity-95"
-            }`}
-          >
-            I’m In
-          </button>
-
-          <button
-            onClick={handleImOut}
-            disabled={locked}
-            className={`flex-1 rounded border py-2 text-sm ${
-              locked ? "bg-gray-50 text-gray-400" : "bg-white text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            I’m Out
-          </button>
+          {myEntry ? (
+            // User is already in the trip - show disabled "I'm in" and enabled "I'm out"
+            <>
+              <button
+                onClick={handleImIn}
+                disabled={true}
+                className="flex-1 rounded bg-gray-200 py-2 text-sm text-gray-500 cursor-not-allowed"
+              >
+                I’m In
+              </button>
+              <button
+                onClick={handleImOut}
+                disabled={locked}
+                className={`flex-1 rounded py-2 text-sm text-white ${
+                  locked ? "bg-gray-400" : "bg-red-600 hover:opacity-95"
+                }`}
+              >
+                I’m Out
+              </button>
+            </>
+          ) : (
+            // User is not in the trip - show only "I'm in" button in green
+            <button
+              onClick={handleImIn}
+              disabled={locked}
+              className={`flex-1 rounded py-2 text-sm text-white ${
+                locked ? "bg-gray-200 text-gray-500" : "bg-green-600 hover:opacity-95"
+              }`}
+            >
+              I’m In
+            </button>
+          )}
         </div>
 
         <div className="mt-3 text-sm text-gray-700">

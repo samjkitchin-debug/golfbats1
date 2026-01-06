@@ -69,27 +69,57 @@ export async function POST(req: Request) {
     const declared_handicap = asNullableNumber(json.declared_handicap);
     if (
       declared_handicap !== null &&
-      (declared_handicap < 0 || declared_handicap > 54)
+      (declared_handicap < 0 || declared_handicap > 36)
     ) {
       return NextResponse.json(
-        { error: "Declared handicap must be between 0 and 54 (or blank)." },
+        { error: "Declared handicap must be between 0 and 36 (or blank)." },
         { status: 400 }
       );
     }
 
-    const { error: upErr } = await supabase
+    // First check if member exists
+    const { data: existingMember } = await supabase
       .from("members")
-      .update({
-        full_name,
-        display_name,
-        nationality,
-        declared_handicap,
-        last_seen: new Date().toISOString(),
-      })
-      .eq("id", user.id);
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    if (upErr) {
-      return NextResponse.json({ error: upErr.message }, { status: 400 });
+    const now = new Date().toISOString();
+
+    if (existingMember) {
+      // Update existing member
+      const { error: upErr } = await supabase
+        .from("members")
+        .update({
+          full_name,
+          display_name,
+          nationality,
+          declared_handicap,
+          last_seen: now,
+        })
+        .eq("id", user.id);
+
+      if (upErr) {
+        return NextResponse.json({ error: upErr.message }, { status: 400 });
+      }
+    } else {
+      // Create new member row
+      const { error: insErr } = await supabase
+        .from("members")
+        .insert({
+          id: user.id,
+          email: user.email || "",
+          full_name,
+          display_name,
+          nationality,
+          declared_handicap,
+          last_seen: now,
+          created_at: now,
+        });
+
+      if (insErr) {
+        return NextResponse.json({ error: insErr.message }, { status: 400 });
+      }
     }
 
     return NextResponse.json({ ok: true });
