@@ -221,3 +221,4 @@ CREATE POLICY "Users can delete own passport images"
 -- 7. File type constraints are enforced at both client and server level
 
 
+

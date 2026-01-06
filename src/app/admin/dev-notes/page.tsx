@@ -11,24 +11,12 @@ type DevNote = {
   resolved?: boolean;
 };
 
-const LS_KEY = "golfbats:dev-notes:v1";
-
-function loadNotes(): DevNote[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(LS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as DevNote[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveNotes(notes: DevNote[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(LS_KEY, JSON.stringify(notes));
-}
+type DbNote = {
+  id: string;
+  note: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export default function DevNotesPage() {
   const [notes, setNotes] = useState<DevNote[]>([]);
@@ -36,71 +24,198 @@ export default function DevNotesPage() {
   const [content, setContent] = useState("");
   const [type, setType] = useState<"bug" | "note">("bug");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Parse JSON note from database into DevNote structure
+  function parseDbNote(dbNote: DbNote): DevNote | null {
+    try {
+      const parsed = JSON.parse(dbNote.note);
+      return {
+        id: dbNote.id,
+        title: parsed.title || "",
+        content: parsed.content || "",
+        type: parsed.type || "note",
+        createdAt: dbNote.created_at,
+        resolved: parsed.resolved || false,
+      };
+    } catch {
+      // Legacy format: if note is plain text, convert it
+      return {
+        id: dbNote.id,
+        title: "Note",
+        content: dbNote.note,
+        type: "note" as const,
+        createdAt: dbNote.created_at,
+        resolved: false,
+      };
+    }
+  }
+
+  // Convert DevNote to JSON string for database
+  function serializeNote(note: Omit<DevNote, "id" | "createdAt">): string {
+    return JSON.stringify({
+      title: note.title,
+      content: note.content,
+      type: note.type,
+      resolved: note.resolved || false,
+    });
+  }
+
+  async function loadNotes() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/dev-notes");
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to load notes.");
+      }
+
+      const dbNotes: DbNote[] = json.notes || [];
+      const parsedNotes = dbNotes.map(parseDbNote).filter((n): n is DevNote => n !== null);
+      setNotes(parsedNotes);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load notes.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    setNotes(loadNotes());
+    loadNotes();
   }, []);
 
-  function refresh() {
-    setNotes(loadNotes());
-  }
-
-  function handleAdd() {
+  async function handleAdd() {
     const trimmedTitle = title.trim();
     const trimmedContent = content.trim();
     if (!trimmedTitle || !trimmedContent) return;
 
-    const newNote: DevNote = {
-      id: crypto.randomUUID(),
-      title: trimmedTitle,
-      content: trimmedContent,
-      type,
-      createdAt: new Date().toISOString(),
-      resolved: false,
-    };
+    setError(null);
+    try {
+      const noteText = serializeNote({
+        title: trimmedTitle,
+        content: trimmedContent,
+        type,
+        resolved: false,
+      });
 
-    const updated = [...notes, newNote];
-    saveNotes(updated);
-    setNotes(updated);
-    setTitle("");
-    setContent("");
+      const res = await fetch("/api/dev-notes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note: noteText }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to save note.");
+      }
+
+      // Reload notes from server
+      await loadNotes();
+      setTitle("");
+      setContent("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save note.");
+    }
   }
 
-  function handleUpdate(id: string) {
+  async function handleUpdate(id: string) {
     const trimmedTitle = title.trim();
     const trimmedContent = content.trim();
     if (!trimmedTitle || !trimmedContent) return;
 
-    const updated = notes.map((n) =>
-      n.id === id
-        ? {
-            ...n,
-            title: trimmedTitle,
-            content: trimmedContent,
-            type,
-          }
-        : n
-    );
-    saveNotes(updated);
-    setNotes(updated);
-    setTitle("");
-    setContent("");
-    setEditingId(null);
+    setError(null);
+    try {
+      const existingNote = notes.find((n) => n.id === id);
+      if (!existingNote) return;
+
+      const noteText = serializeNote({
+        title: trimmedTitle,
+        content: trimmedContent,
+        type,
+        resolved: existingNote.resolved || false,
+      });
+
+      const res = await fetch("/api/dev-notes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note: noteText, id }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to update note.");
+      }
+
+      // Reload notes from server
+      await loadNotes();
+      setTitle("");
+      setContent("");
+      setEditingId(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update note.");
+    }
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     const ok = window.confirm("Delete this note?");
     if (!ok) return;
 
-    const updated = notes.filter((n) => n.id !== id);
-    saveNotes(updated);
-    setNotes(updated);
+    setError(null);
+    try {
+      const res = await fetch("/api/dev-notes", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to delete note.");
+      }
+
+      // Reload notes from server
+      await loadNotes();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to delete note.");
+    }
   }
 
-  function handleToggleResolved(id: string) {
-    const updated = notes.map((n) => (n.id === id ? { ...n, resolved: !n.resolved } : n));
-    saveNotes(updated);
-    setNotes(updated);
+  async function handleToggleResolved(id: string) {
+    setError(null);
+    try {
+      const existingNote = notes.find((n) => n.id === id);
+      if (!existingNote) return;
+
+      const noteText = serializeNote({
+        title: existingNote.title,
+        content: existingNote.content,
+        type: existingNote.type,
+        resolved: !existingNote.resolved,
+      });
+
+      const res = await fetch("/api/dev-notes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note: noteText, id }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to update note.");
+      }
+
+      // Reload notes from server
+      await loadNotes();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update note.");
+    }
   }
 
   function startEdit(note: DevNote) {
@@ -137,6 +252,18 @@ export default function DevNotesPage() {
           )}
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {loading && (
+        <div className="rounded-xl border bg-white p-5 text-sm text-gray-600 shadow-sm">
+          Loading notes...
+        </div>
+      )}
 
       {/* Add/Edit Form */}
       <section className="rounded-xl border bg-white p-5 shadow-sm">
@@ -203,11 +330,11 @@ export default function DevNotesPage() {
       </section>
 
       {/* Notes List */}
-      {sorted.length === 0 ? (
+      {!loading && sorted.length === 0 ? (
         <div className="rounded-xl border bg-white p-5 text-sm text-gray-600 shadow-sm">
           No notes yet.
         </div>
-      ) : (
+      ) : !loading ? (
         <div className="space-y-3">
           {sorted.map((note) => (
             <div
@@ -281,9 +408,10 @@ export default function DevNotesPage() {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
+
 
 
