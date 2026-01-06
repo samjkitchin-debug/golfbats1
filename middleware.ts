@@ -39,19 +39,54 @@ function isPublicPath(pathname: string) {
 }
 
 function isProfileEditPath(pathname: string) {
-  // Allow access to profile editing pages without profile check
-  return pathname === "/me/edit" || pathname === "/me/edit/save" || pathname.startsWith("/me/profile-photo") || pathname.startsWith("/me/passport");
+  // Allow access to profile editing pages without profile/approval check
+  return (
+    pathname === "/me/edit" ||
+    pathname === "/me/edit/save" ||
+    pathname.startsWith("/me/profile-photo") ||
+    pathname.startsWith("/me/passport")
+  );
 }
 
-async function hasCompleteProfile(supabase: ReturnType<typeof createServerClient>, userId: string): Promise<boolean> {
-  const { data } = await supabase
+function isMePath(pathname: string) {
+  return pathname === "/me";
+}
+
+type MemberGateState = {
+  profileComplete: boolean;
+  approved: boolean;
+};
+
+async function getMemberGateState(
+  supabase: ReturnType<typeof createServerClient>,
+  userId: string
+): Promise<MemberGateState> {
+  const { data, error } = await supabase
     .from("members")
-    .select("full_name, display_name")
+    .select("email, full_name, display_name, nationality, declared_handicap, status")
     .eq("id", userId)
     .maybeSingle();
 
-  // Profile is complete if member row exists and has at least full_name or display_name
-  return !!(data && (data.full_name || data.display_name));
+  if (error) {
+    console.error("Error loading member for gate state:", error);
+    return { profileComplete: false, approved: false };
+  }
+
+  if (!data) {
+    return { profileComplete: false, approved: false };
+  }
+
+  const profileComplete =
+    !!data.email &&
+    !!data.full_name &&
+    !!data.display_name &&
+    !!data.nationality &&
+    data.declared_handicap !== null &&
+    data.declared_handicap !== undefined;
+
+  const approved = (data.status as string | null) === "active";
+
+  return { profileComplete, approved };
 }
 
 export async function middleware(req: NextRequest) {
@@ -95,15 +130,25 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Check if profile is complete (unless on profile edit pages)
-  if (!isProfileEditPath(pathname)) {
-    const profileComplete = await hasCompleteProfile(supabase, user.id);
-    
+  // Profile completeness + approval gate
+  // Users without a complete, approved profile may ONLY access:
+  // - /me
+  // - /me/edit and related save/upload routes
+  if (!isProfileEditPath(pathname) && !isMePath(pathname)) {
+    const { profileComplete, approved } = await getMemberGateState(supabase, user.id);
+
     if (!profileComplete) {
       const profileUrl = req.nextUrl.clone();
       profileUrl.pathname = "/me/edit";
       profileUrl.searchParams.set("required", "true");
       return NextResponse.redirect(profileUrl);
+    }
+
+    if (!approved) {
+      const meUrl = req.nextUrl.clone();
+      meUrl.pathname = "/me";
+      meUrl.searchParams.set("pending", "true");
+      return NextResponse.redirect(meUrl);
     }
   }
 

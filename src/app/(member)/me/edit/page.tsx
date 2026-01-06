@@ -170,31 +170,43 @@ export default function MeEditPage() {
     setSaving(true);
     setError(null);
 
-    const handicapNum =
-      declaredHandicap.trim() === ""
-        ? null
-        : Number(declaredHandicap.trim());
+    const trimmedFullName = fullName.trim();
+    const trimmedDisplayName = displayName.trim();
+    const trimmedNationality = nationality.trim();
+    const handicapTrimmed = declaredHandicap.trim();
 
-    if (handicapNum !== null && (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 36)) {
+    const handicapNum =
+      handicapTrimmed === "" ? Number.NaN : Number(handicapTrimmed);
+
+    // Strict client-side validation to match server:
+    if (!trimmedFullName) {
       setSaving(false);
-      setError("Declared handicap must be a number between 0 and 36 (or blank).");
+      setError("Please provide your full name.");
       return;
     }
 
-    const trimmedFullName = fullName.trim();
-    const trimmedDisplayName = displayName.trim();
-
-    // Validate that at least one name is provided
-    if (!trimmedFullName && !trimmedDisplayName) {
+    if (!trimmedDisplayName) {
       setSaving(false);
-      setError("Please provide either a full name or display name.");
+      setError("Please provide a display name.");
+      return;
+    }
+
+    if (!trimmedNationality) {
+      setSaving(false);
+      setError("Please provide your nationality.");
+      return;
+    }
+
+    if (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 36) {
+      setSaving(false);
+      setError("Declared handicap must be a number between 0 and 36.");
       return;
     }
 
     const body: SaveBody = {
       full_name: trimmedFullName,
       display_name: trimmedDisplayName,
-      nationality: nationality.trim(),
+      nationality: trimmedNationality,
       declared_handicap: handicapNum,
     };
 

@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import Cropper from "react-easy-crop";
 import type { Area, Point } from "react-easy-crop";
 
+type MemberStatus = "pending" | "active" | string;
+
 type MemberRow = {
   id: string;
   email: string | null;
@@ -17,6 +19,7 @@ type MemberRow = {
   profile_photo_path: string | null;
   created_at: string;
   last_seen: string | null;
+  status: MemberStatus;
 };
 
 type PassportRow = {
@@ -116,7 +119,7 @@ export default function MePage() {
       const { data, error: memberErr } = await supabase
         .from("members")
         .select(
-          "id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen"
+          "id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen,status"
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -177,6 +180,16 @@ export default function MePage() {
     member?.email?.trim() ||
     "Me";
 
+  const profileComplete =
+    !!member?.email &&
+    !!member?.full_name &&
+    !!member?.display_name &&
+    !!member?.nationality &&
+    member?.declared_handicap !== null &&
+    member?.declared_handicap !== undefined;
+
+  const isApproved = (member?.status ?? "pending") === "active";
+
   return (
     <div className="px-4 pb-24 pt-4">
       <div className="flex items-start justify-between gap-3">
@@ -198,6 +211,28 @@ export default function MePage() {
           )}
         </div>
       </div>
+
+      {/* Profile gate state */}
+      {!loading && !error && (
+        <>
+          {!profileComplete && (
+            <div className="mt-4 rounded-2xl border border-amber-400 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">Profile incomplete</p>
+              <p className="mt-1 text-sm text-amber-900">
+                Please complete your email, full name, display name, nationality and declared handicap before using the rest of the app.
+              </p>
+            </div>
+          )}
+          {profileComplete && !isApproved && (
+            <div className="mt-4 rounded-2xl border border-blue-400 bg-blue-50 p-4">
+              <p className="text-sm font-semibold text-blue-900">Pending approval</p>
+              <p className="mt-1 text-sm text-blue-900">
+                Your profile has been submitted and is awaiting admin approval. You’ll be able to access all features once your membership is approved.
+              </p>
+            </div>
+          )}
+        </>
+      )}
 
       {error ? (
         <div className="mt-4 rounded-2xl border border-black p-4">

@@ -66,21 +66,39 @@ export async function POST(req: Request) {
     const display_name = asTrimmedString(json.display_name);
     const nationality = asTrimmedString(json.nationality);
 
-    // Validate that at least one name is provided
-    if (!full_name && !display_name) {
+    // Strict profile requirements:
+    // - Full name required
+    // - Display name required
+    // - Nationality required
+    if (!full_name) {
       return NextResponse.json(
-        { error: "Please provide either a full name or display name." },
+        { error: "Please provide your full name." },
+        { status: 400 }
+      );
+    }
+
+    if (!display_name) {
+      return NextResponse.json(
+        { error: "Please provide a display name." },
+        { status: 400 }
+      );
+    }
+
+    if (!nationality) {
+      return NextResponse.json(
+        { error: "Please provide your nationality." },
         { status: 400 }
       );
     }
 
     const declared_handicap = asNullableNumber(json.declared_handicap);
     if (
-      declared_handicap !== null &&
-      (declared_handicap < 0 || declared_handicap > 36)
+      declared_handicap === null ||
+      declared_handicap < 0 ||
+      declared_handicap > 36
     ) {
       return NextResponse.json(
-        { error: "Declared handicap must be between 0 and 36 (or blank)." },
+        { error: "Declared handicap must be a number between 0 and 36." },
         { status: 400 }
       );
     }
@@ -111,7 +129,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: upErr.message }, { status: 400 });
       }
     } else {
-      // Create new member row
+      // Create new member row (status defaults to 'pending' for new members)
       const { error: insErr } = await supabase
         .from("members")
         .insert({
@@ -123,6 +141,7 @@ export async function POST(req: Request) {
           declared_handicap,
           last_seen: now,
           created_at: now,
+          status: "pending",
         });
 
       if (insErr) {
