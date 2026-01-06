@@ -2,13 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import SignOutButton from "../components/SignOutButton";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
-
-function parseAdminEmails(raw: string | undefined) {
-  return (raw ?? "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
+import { isEmailAdmin } from "../lib/auth";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
@@ -22,10 +16,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/login?next=/admin");
   }
 
-  // Must be in ADMIN_EMAILS
-  const adminEmails = parseAdminEmails(process.env.ADMIN_EMAILS);
-  const email = (user.email ?? "").toLowerCase();
-  const isAdmin = !!email && adminEmails.includes(email);
+  // Admin if either:
+  // - email is in ADMIN_EMAILS (bootstrap), or
+  // - members row has is_admin = true
+  const emailAdmin = isEmailAdmin(user.email);
+
+  const { data: member } = await supabase
+    .from("members")
+    .select("is_admin")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const isAdmin = emailAdmin || !!member?.is_admin;
 
   if (!isAdmin) {
     // Signed in, but not authorised for admin

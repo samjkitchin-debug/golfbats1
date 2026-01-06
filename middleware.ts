@@ -55,6 +55,7 @@ function isMePath(pathname: string) {
 type MemberGateState = {
   profileComplete: boolean;
   approved: boolean;
+  isAdmin: boolean;
 };
 
 async function getMemberGateState(
@@ -63,17 +64,17 @@ async function getMemberGateState(
 ): Promise<MemberGateState> {
   const { data, error } = await supabase
     .from("members")
-    .select("email, full_name, display_name, nationality, declared_handicap, status")
+    .select("email, full_name, display_name, nationality, declared_handicap, status, is_admin")
     .eq("id", userId)
     .maybeSingle();
 
   if (error) {
     console.error("Error loading member for gate state:", error);
-    return { profileComplete: false, approved: false };
+    return { profileComplete: false, approved: false, isAdmin: false };
   }
 
   if (!data) {
-    return { profileComplete: false, approved: false };
+    return { profileComplete: false, approved: false, isAdmin: false };
   }
 
   const profileComplete =
@@ -85,8 +86,9 @@ async function getMemberGateState(
     data.declared_handicap !== undefined;
 
   const approved = (data.status as string | null) === "active";
+  const isAdmin = !!(data as any).is_admin;
 
-  return { profileComplete, approved };
+  return { profileComplete, approved, isAdmin };
 }
 
 export async function middleware(req: NextRequest) {
@@ -141,9 +143,9 @@ export async function middleware(req: NextRequest) {
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
     const email = (user.email ?? "").toLowerCase();
-    const isAdmin = adminEmails.includes(email);
+    const isEnvAdmin = adminEmails.includes(email);
 
-    const { profileComplete, approved } = await getMemberGateState(supabase, user.id);
+    const { profileComplete, approved, isAdmin } = await getMemberGateState(supabase, user.id);
 
     if (!profileComplete) {
       const profileUrl = req.nextUrl.clone();
@@ -152,8 +154,8 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(profileUrl);
     }
 
-    // Admins are treated as approved for routing, even if their member row is still pending.
-    if (!approved && !isAdmin) {
+    // Admins (from DB is_admin or env) are treated as approved for routing, even if their member row is still pending.
+    if (!approved && !isAdmin && !isEnvAdmin) {
       const meUrl = req.nextUrl.clone();
       meUrl.pathname = "/me";
       meUrl.searchParams.set("pending", "true");

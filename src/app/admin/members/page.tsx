@@ -16,6 +16,7 @@ type MemberRow = {
   created_at: string | null;
   last_seen: string | null;
   status: MemberStatus;
+  is_admin: boolean;
 };
 
 type PassportStatus = {
@@ -57,7 +58,7 @@ export default function AdminMembersPage() {
 
       const { data: rows, error: membersError } = await supabase
         .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin")
         .order("created_at", { ascending: false });
 
       if (membersError) {
@@ -152,7 +153,7 @@ export default function AdminMembersPage() {
       // Reload members list
       const { data: rows, error: membersError } = await supabase
         .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin")
         .order("created_at", { ascending: false });
 
       if (membersError) {
@@ -185,7 +186,7 @@ export default function AdminMembersPage() {
       // Reload members list
       const { data: rows, error: membersError } = await supabase
         .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin")
         .order("created_at", { ascending: false });
 
       if (membersError) {
@@ -195,6 +196,64 @@ export default function AdminMembersPage() {
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to approve member.");
+    } finally {
+      setApprovingMemberId(null);
+    }
+  }
+
+  async function handleMakeAdmin(memberId: string, memberName: string) {
+    setError(null);
+    try {
+      setApprovingMemberId(memberId);
+      const res = await fetch(`/admin/members/${memberId}/make-admin`, {
+        method: "POST",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to make member admin.");
+      }
+
+      const { data: rows, error: membersError } = await supabase
+        .from("members")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin")
+        .order("created_at", { ascending: false });
+
+      if (membersError) {
+        setError(membersError.message);
+      } else {
+        setMembers(rows ?? []);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to make member admin.");
+    } finally {
+      setApprovingMemberId(null);
+    }
+  }
+
+  async function handleRemoveAdmin(memberId: string, memberName: string) {
+    setError(null);
+    try {
+      setApprovingMemberId(memberId);
+      const res = await fetch(`/admin/members/${memberId}/remove-admin`, {
+        method: "POST",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to remove admin status.");
+      }
+
+      const { data: rows, error: membersError } = await supabase
+        .from("members")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,created_at,last_seen,status,is_admin")
+        .order("created_at", { ascending: false });
+
+      if (membersError) {
+        setError(membersError.message);
+      } else {
+        setMembers(rows ?? []);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to remove admin status.");
     } finally {
       setApprovingMemberId(null);
     }
@@ -226,6 +285,7 @@ export default function AdminMembersPage() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Nat.</th>
                 <th className="px-4 py-3">HCP</th>
+                <th className="px-4 py-3">Admin</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Passport</th>
                 <th className="px-4 py-3"></th>
@@ -238,6 +298,7 @@ export default function AdminMembersPage() {
                 const hasCompletePassport = passportStatus?.isComplete ?? false;
                 const hasPassport = passportStatus?.hasPassport ?? false;
                 const isActive = (m.status ?? "pending") === "active";
+                const isAdmin = !!m.is_admin;
 
                 return (
                   <tr key={m.id} className="border-b last:border-b-0">
@@ -246,6 +307,25 @@ export default function AdminMembersPage() {
                     <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
                     <td className="px-4 py-3 text-gray-800">
                       {m.declared_handicap ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {isAdmin ? (
+                        <button
+                          onClick={() => handleRemoveAdmin(m.id, name)}
+                          disabled={approvingMemberId === m.id}
+                          className="inline-flex items-center rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 hover:bg-blue-200 disabled:opacity-50"
+                        >
+                          Admin
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleMakeAdmin(m.id, name)}
+                          disabled={approvingMemberId === m.id}
+                          className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-gray-200 disabled:opacity-50"
+                        >
+                          Make admin
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {isActive ? (

@@ -20,6 +20,7 @@ type MemberRow = {
   created_at: string;
   last_seen: string | null;
   status: MemberStatus;
+  is_admin: boolean;
 };
 
 type PassportRow = {
@@ -28,16 +29,6 @@ type PassportRow = {
   passport_expiry_date: string | null;
   passport_photo_path: string | null;
 };
-
-function getAdminEmails(): string[] {
-  // Put this in Vercel/Env later (recommended):
-  // NEXT_PUBLIC_ADMIN_EMAILS="a@x.com,b@y.com"
-  const raw = process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? "";
-  return raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
 
 export default function MePage() {
   const router = useRouter();
@@ -111,15 +102,10 @@ export default function MePage() {
         return;
       }
 
-      const adminEmails = getAdminEmails();
-      const email = (user.email ?? "").toLowerCase();
-      const adminStatus = adminEmails.includes(email);
-      setIsAdmin(adminStatus);
-
       const { data, error: memberErr } = await supabase
         .from("members")
         .select(
-          "id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen,status"
+          "id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen,status,is_admin"
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -132,6 +118,7 @@ export default function MePage() {
       } else {
         const m = (data as MemberRow) ?? null;
         setMember(m);
+        setIsAdmin(!!m?.is_admin);
         setFullName(m?.full_name ?? "");
         setDisplayName(m?.display_name ?? "");
         setNationality(m?.nationality ?? "");
