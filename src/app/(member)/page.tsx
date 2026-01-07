@@ -214,7 +214,39 @@ export default function HomePage() {
 
             // Add to trip and save handicap for this trip
             const updated = await joinTrip(trips, nextTrip.id, handicapValue);
-            setTrips(updated);
+            setTrips(prev => {
+              const base = updated.length ? updated : prev;
+              return base.map(t => {
+                if (t.id !== nextTrip.id) return t;
+
+                const already = t.attendees.find(a => {
+                  if (currentUserId && a.memberId === currentUserId) return true;
+                  if (currentUserName && a.name === currentUserName) return true;
+                  return false;
+                });
+                if (already) return t;
+
+                const name =
+                  currentUserName ||
+                  memberData?.display_name ||
+                  memberData?.full_name ||
+                  "Unknown";
+
+                return {
+                  ...t,
+                  attendees: [
+                    ...t.attendees,
+                    {
+                      name,
+                      status: "confirmed",
+                      joinedAt: Date.now(),
+                      handicapForTrip: handicapValue,
+                      memberId: currentUserId || undefined,
+                    },
+                  ],
+                };
+              });
+            });
             
             // Reload trips to get latest data (with a small delay to let DB catch up)
             try {
