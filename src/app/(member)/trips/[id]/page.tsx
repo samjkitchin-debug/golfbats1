@@ -129,6 +129,17 @@ export default function TripDetailPage() {
     return undefined;
   }, [trip, currentUserId, currentUserName]);
 
+  useEffect(() => {
+    if (!trip) return;
+    console.log("[TripDetail] debug state:", {
+      tripId: trip.id,
+      currentUserId,
+      currentUserName,
+      attendees: trip.attendees,
+      myEntry,
+    });
+  }, [trip, currentUserId, currentUserName, myEntry]);
+
   const [hcp, setHcp] = useState<string>("");
 
   useEffect(() => {
