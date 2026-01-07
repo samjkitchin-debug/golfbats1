@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
 
 const CACHE_TAG = "trips";
 
@@ -14,7 +14,10 @@ export async function POST(
 ) {
   try {
     const params = await Promise.resolve(context.params);
+    // Auth client for current user
     const supabase = await createSupabaseServerClient();
+    // Service-role client for trips + attendees (bypasses RLS)
+    const adminClient = await createSupabaseServiceClient();
 
     const {
       data: { user },
@@ -31,7 +34,7 @@ export async function POST(
     }
 
     // Find trip by legacy_id
-    const { data: trip, error: tripErr } = await supabase
+    const { data: trip, error: tripErr } = await adminClient
       .from("trips")
       .select("id")
       .eq("legacy_id", legacyId)
@@ -41,16 +44,16 @@ export async function POST(
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    // Update attendee status to "out"
-    const { error: updateErr } = await supabase
+    // Remove attendee row for this user + trip
+    const { error: deleteErr } = await adminClient
       .from("trip_attendees")
-      .update({ status: "out" })
+      .delete()
       .eq("trip_id", trip.id)
       .eq("member_id", user.id);
 
-    if (updateErr) {
+    if (deleteErr) {
       return NextResponse.json(
-        { error: updateErr.message || "Failed to leave trip." },
+        { error: deleteErr.message || "Failed to leave trip." },
         { status: 400 }
       );
     }
