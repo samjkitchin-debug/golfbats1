@@ -457,7 +457,7 @@ export default function HomePage() {
                 disabled={true}
                 className="flex-1 rounded bg-green-600 py-2 text-sm text-white cursor-default"
               >
-                Join Trip
+                You're In
               </button>
               <button
                 onClick={handleImOut}
