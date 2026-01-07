@@ -29,6 +29,7 @@ export default function TripDetailPage() {
 
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
@@ -74,6 +75,7 @@ export default function TripDetailPage() {
           data: { user },
         } = await supabase.auth.getUser();
         if (user) {
+          setCurrentUserId(user.id);
           const { data: memberData } = await supabase
             .from("members")
             .select("display_name,full_name")
@@ -115,9 +117,17 @@ export default function TripDetailPage() {
   }, [trip, courses]);
 
   const myEntry = useMemo(() => {
-    if (!trip || !currentUserName) return undefined;
-    return trip.attendees.find((a) => a.name === currentUserName);
-  }, [trip, currentUserName]);
+    if (!trip) return undefined;
+    // Prefer matching by memberId (supabase user id); fall back to name match if needed
+    if (currentUserId) {
+      const byId = trip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
+      if (byId) return byId;
+    }
+    if (currentUserName) {
+      return trip.attendees.find((a) => a.name === currentUserName);
+    }
+    return undefined;
+  }, [trip, currentUserId, currentUserName]);
 
   const [hcp, setHcp] = useState<string>("");
 
@@ -372,7 +382,7 @@ export default function TripDetailPage() {
               <button
                 onClick={handleImIn}
                 disabled={true}
-                className="flex-1 rounded bg-gray-200 py-2 text-sm text-gray-500 cursor-not-allowed"
+                className="flex-1 rounded bg-green-600 py-2 text-sm text-white cursor-default"
               >
                 Join Trip
               </button>
@@ -387,12 +397,12 @@ export default function TripDetailPage() {
               </button>
             </>
           ) : (
-            // User is not in the trip - show only "I'm in" button in green
+            // User is not in the trip - show only "Join Trip" button in black
             <button
               onClick={handleImIn}
               disabled={joinDisabled}
               className={`flex-1 rounded py-2 text-sm text-white ${
-                joinDisabled ? "bg-gray-200 text-gray-500" : "bg-green-600 hover:opacity-95"
+                joinDisabled ? "bg-gray-200 text-gray-500" : "bg-black hover:opacity-95"
               }`}
             >
               Join Trip
