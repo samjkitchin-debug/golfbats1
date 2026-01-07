@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServiceClient } from "@/app/lib/supabaseServer";
 
 const CACHE_TAG = "trips";
 const CACHE_TTL = 10; // 10 seconds (reduced from 30 to help with stale data issues)
@@ -12,7 +12,8 @@ const CACHE_TTL = 10; // 10 seconds (reduced from 30 to help with stale data iss
  * Note: We can't use cookies() inside unstable_cache, so we fetch data outside cache
  */
 async function fetchTripsData() {
-  const supabase = await createSupabaseServerClient();
+  // Use service-role client so trip + attendee data is not filtered by RLS/policies.
+  const supabase = await createSupabaseServiceClient();
 
   // Fetch trips (include all trips, even those without legacy_id)
   const { data: tripsData, error: tripsError } = await supabase
@@ -157,7 +158,7 @@ export async function GET(req: Request) {
     if (bypassCache) {
       // Bypass cache and fetch fresh data
       console.log("[trips API] Bypassing cache - fetching fresh data");
-      const supabase = await createSupabaseServerClient();
+      const supabase = await createSupabaseServiceClient();
       
       const { data: tripsData, error: tripsError } = await supabase
         .from("trips")
@@ -288,7 +289,7 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createSupabaseServiceClient();
     const body = await req.json();
     const { trip, id } = body as { trip: any; id?: number };
 
@@ -432,7 +433,7 @@ export async function POST(req: Request) {
  */
 export async function DELETE(req: Request) {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createSupabaseServiceClient();
     const body = await req.json();
     const { id } = body as { id?: number };
 

@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
 
 const CACHE_TAG = "trips";
 const SIGNUP_WINDOW_DAYS = 30;
 
 // Map a single trip row + related rows into the Trip JSON shape used by /api/trips
-async function buildTripPayload(supabase: any, legacyId: number) {
+async function buildTripPayload(adminClient: any, legacyId: number) {
   // Load the trip row by legacy_id
-  const { data: trip, error: tripError } = await supabase
+  const { data: trip, error: tripError } = await adminClient
     .from("trips")
     .select("*")
     .eq("legacy_id", legacyId)
@@ -23,7 +23,7 @@ async function buildTripPayload(supabase: any, legacyId: number) {
   }
 
   // Load attendees for this trip
-  const { data: attendeesData, error: attendeesError } = await supabase
+  const { data: attendeesData, error: attendeesError } = await adminClient
     .from("trip_attendees")
     .select("*,members(id,display_name,full_name)")
     .eq("trip_id", trip.id);
@@ -33,7 +33,7 @@ async function buildTripPayload(supabase: any, legacyId: number) {
   }
 
   // Load results for this trip
-  const { data: resultsData, error: resultsError } = await supabase
+  const { data: resultsData, error: resultsError } = await adminClient
     .from("trip_results")
     .select("*,result_rows(*)")
     .eq("trip_id", trip.id);
@@ -125,7 +125,10 @@ export async function POST(
 ) {
   try {
     const params = await Promise.resolve(context.params);
+    // Auth client (anon key + cookies)
     const supabase = await createSupabaseServerClient();
+    // Service-role client for trips / attendees (bypasses RLS)
+    const adminClient = await createSupabaseServiceClient();
 
     const {
       data: { user },
@@ -142,7 +145,7 @@ export async function POST(
     }
 
     // Find trip by legacy_id
-    const { data: trip, error: tripErr } = await supabase
+    const { data: trip, error: tripErr } = await adminClient
       .from("trips")
       .select("id,trip_date,status")
       .eq("legacy_id", legacyId)
@@ -184,7 +187,7 @@ export async function POST(
     const handicap = body.handicap !== undefined ? body.handicap : null;
 
     // Check if attendee already exists
-    const { data: existing } = await supabase
+    const { data: existing } = await adminClient
       .from("trip_attendees")
       .select("id")
       .eq("trip_id", trip.id)
@@ -193,7 +196,7 @@ export async function POST(
 
     if (existing) {
       // Update existing attendee
-      const { error: updateErr } = await supabase
+      const { error: updateErr } = await adminClient
         .from("trip_attendees")
         .update({
           status: "confirmed",
@@ -209,7 +212,7 @@ export async function POST(
       }
     } else {
       // Create new attendee
-      const { error: insertErr } = await supabase.from("trip_attendees").insert({
+      const { error: insertErr } = await adminClient.from("trip_attendees").insert({
         trip_id: trip.id,
         member_id: user.id,
         status: "confirmed",
@@ -226,7 +229,7 @@ export async function POST(
     }
 
     // Build fresh trip payload (including attendees) so clients can update state without refetching all trips
-    const tripPayload = await buildTripPayload(supabase, legacyId);
+    const tripPayload = await buildTripPayload(adminClient, legacyId);
 
     // Invalidate trips cache
     try {

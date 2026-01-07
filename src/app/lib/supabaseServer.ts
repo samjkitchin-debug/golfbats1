@@ -2,12 +2,8 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
 /**
- * Next 16: cookies() can be async and cookie writes can throw
- * unless you're in a Route Handler / Server Action.
- *
- * So:
- * - await cookies()
- * - swallow cookieStore.set errors
+ * Authenticated Supabase client (anon key + cookies)
+ * - Used when we care about the current signed-in user.
  */
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
@@ -28,6 +24,30 @@ export async function createSupabaseServerClient() {
           } catch {
             // Not in a Route Handler / Server Action; ignore.
           }
+        },
+      },
+    }
+  );
+}
+
+/**
+ * Service-role Supabase client (no cookies, server-only)
+ * - Used in API routes that need to read/write trips and attendees
+ *   without being restricted by RLS/policies.
+ * - MUST NEVER be exposed to the browser.
+ */
+export async function createSupabaseServiceClient() {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    // Service role key is server-only; ensure it is defined in the environment.
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return [];
+        },
+        setAll() {
+          // No-op – we do not rely on cookies for service-role operations.
         },
       },
     }
