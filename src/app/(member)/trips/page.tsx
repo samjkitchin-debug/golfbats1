@@ -12,6 +12,7 @@ import { PromptModal } from "../../components/PromptModal";
 export default function TripsListPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
@@ -66,6 +67,7 @@ export default function TripsListPage() {
             .select("display_name, full_name")
             .eq("id", user.id)
             .maybeSingle();
+          setCurrentUserId(user.id);
           const name = memberData?.display_name || memberData?.full_name || null;
           console.log("[TripsListPage] Loaded current user name:", name);
           setCurrentUserName(name);
@@ -322,18 +324,27 @@ export default function TripsListPage() {
               const signupOpenDateYmd = isPhase0 ? new Date(signupOpenAt).toISOString().slice(0, 10) : null;
               
               // Check if user is already in the trip
-              // Match against attendee names (which can be display_name or full_name)
-              const myEntry = currentUserName
-                ? t.attendees.find((a) => {
-                    const attendeeName = a.name?.toLowerCase().trim();
-                    const userName = currentUserName.toLowerCase().trim();
-                    const matches = attendeeName === userName;
-                    if (matches) {
-                      console.log("[TripsListPage] Found myEntry:", a.name, "matches", currentUserName);
-                    }
-                    return matches;
-                  })
-                : undefined;
+              // Prefer matching by memberId (supabase user id); fall back to name match if needed
+              const myEntry =
+                currentUserId
+                  ? t.attendees.find((a) => {
+                      if (a.memberId && a.memberId === currentUserId) {
+                        console.log("[TripsListPage] Found myEntry by memberId:", a.memberId);
+                        return true;
+                      }
+                      return false;
+                    })
+                  : currentUserName
+                  ? t.attendees.find((a) => {
+                      const attendeeName = a.name?.toLowerCase().trim();
+                      const userName = currentUserName.toLowerCase().trim();
+                      const matches = attendeeName === userName;
+                      if (matches) {
+                        console.log("[TripsListPage] Found myEntry by name:", a.name, "matches", currentUserName);
+                      }
+                      return matches;
+                    })
+                  : undefined;
               const joinDisabled = isPhase0 || t.status !== "open";
 
               return (
@@ -406,7 +417,7 @@ export default function TripsListPage() {
                             e.stopPropagation();
                             void handleJoinTrip(t.id, t);
                           }}
-                          className="w-full rounded bg-green-600 px-4 py-2 text-sm text-white hover:opacity-95"
+                          className="w-full rounded bg-black px-4 py-2 text-sm text-white hover:opacity-95"
                         >
                           Join Trip
                         </button>

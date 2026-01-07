@@ -70,6 +70,7 @@ async function fetchTripsData() {
           status: a.status as "confirmed" | "waitlist" | "out",
           joinedAt: new Date(a.joined_at).getTime(),
           handicapForTrip: a.handicap_snapshot ?? null,
+          memberId: a.member_id,
         };
       });
 
@@ -201,6 +202,7 @@ export async function GET(req: Request) {
               status: a.status as "confirmed" | "waitlist" | "out",
               joinedAt: new Date(a.joined_at).getTime(),
               handicapForTrip: a.handicap_snapshot ?? null,
+              memberId: a.member_id,
             };
           });
 

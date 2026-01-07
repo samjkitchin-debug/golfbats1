@@ -21,6 +21,8 @@ export type Attendee = {
   status: AttendanceStatus;
   joinedAt: number;
   handicapForTrip?: number | null;
+  /** Optional Supabase member_id (UUID) so we can reliably match the current user */
+  memberId?: string;
 };
 
 export type TripStatus = "open" | "closed" | "archived";
@@ -133,6 +135,7 @@ function normalizeTrip(input: any): Trip {
           status: isAttendanceStatus(a?.status) ? a.status : "out",
           joinedAt: Number(a?.joinedAt ?? Date.now()),
           handicapForTrip: a?.handicapForTrip ?? null,
+          memberId: a?.memberId ? String(a.memberId) : undefined,
         }))
       : [],
 
