@@ -138,39 +138,7 @@ export default function TripsListPage() {
           // Add to trip and save handicap for this trip
           const updated = await joinTrip(trips, tripId, handicapValue);
           console.log("[handleJoinTrip] joinTrip returned, updating trips state");
-          setTrips(prev => {
-            const base = updated.length ? updated : prev;
-            return base.map(t => {
-              if (t.id !== tripId) return t;
-
-              const already = t.attendees.find(a => {
-                if (currentUserId && a.memberId === currentUserId) return true;
-                if (currentUserName && a.name === currentUserName) return true;
-                return false;
-              });
-              if (already) return t;
-
-              const name =
-                currentUserName ||
-                memberData?.display_name ||
-                memberData?.full_name ||
-                "Unknown";
-
-              return {
-                ...t,
-                attendees: [
-                  ...t.attendees,
-                  {
-                    name,
-                    status: "confirmed",
-                    joinedAt: Date.now(),
-                    handicapForTrip: handicapValue,
-                    memberId: currentUserId || undefined,
-                  },
-                ],
-              };
-            });
-          });
+          setTrips(updated);
 
           // Reload trips and current user to get fresh data
           try {

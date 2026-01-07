@@ -223,42 +223,7 @@ export default function TripDetailPage() {
               tripId: tripIdSafe,
               trip: updated.find((t) => t.id === tripIdSafe),
             });
-
-            // Fallback: if the refreshed trips do not yet include this attendee,
-            // inject the attendee locally to keep the UI in sync with the join.
-            setTrips((prev) => {
-              const base = updated.length ? updated : prev;
-              return base.map((t) => {
-                if (t.id !== tripIdSafe) return t;
-
-                const already = t.attendees.find((a) => {
-                  if (currentUserId && a.memberId === currentUserId) return true;
-                  if (currentUserName && a.name === currentUserName) return true;
-                  return false;
-                });
-                if (already) return t;
-
-                const name =
-                  currentUserName ||
-                  memberData?.display_name ||
-                  memberData?.full_name ||
-                  "Unknown";
-
-                return {
-                  ...t,
-                  attendees: [
-                    ...t.attendees,
-                    {
-                      name,
-                      status: "confirmed",
-                      joinedAt: Date.now(),
-                      handicapForTrip: handicapValue,
-                      memberId: currentUserId || undefined,
-                    },
-                  ],
-                };
-              });
-            });
+            setTrips(updated);
           } catch (error) {
             console.error("Failed to join trip:", error);
             alert(

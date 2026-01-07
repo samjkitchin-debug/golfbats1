@@ -447,12 +447,17 @@ export async function joinTrip(trips: Trip[], tripId: number, handicap: number |
       throw new Error(json?.error || "Failed to join trip.");
     }
 
-    // Reload trips from server with cache bypass to ensure we get the updated trip
+    // Prefer the authoritative trip snapshot returned by the API, if present
+    if (json && json.trip) {
+      const snapshot = normalizeTrip(json.trip);
+      console.log("[joinTrip] Using snapshot from API for tripId:", snapshot.id);
+      const remaining = trips.filter((t) => t.id !== snapshot.id);
+      const merged = [...remaining, snapshot];
+      return sortTripsByDateAsc(merged);
+    }
+
+    console.warn("[joinTrip] No trip snapshot in API response, falling back to reload");
     const updated = await loadTrips(true);
-    console.log("[joinTrip] Trips after reload:", {
-      total: updated.length,
-      joinedTrip: updated.find((t) => t.id === tripId),
-    });
     return updated;
   } catch (error) {
     console.error("Failed to join trip:", error);

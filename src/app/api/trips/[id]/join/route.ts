@@ -5,6 +5,115 @@ import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 const CACHE_TAG = "trips";
 const SIGNUP_WINDOW_DAYS = 30;
 
+// Map a single trip row + related rows into the Trip JSON shape used by /api/trips
+async function buildTripPayload(supabase: any, legacyId: number) {
+  // Load the trip row by legacy_id
+  const { data: trip, error: tripError } = await supabase
+    .from("trips")
+    .select("*")
+    .eq("legacy_id", legacyId)
+    .single();
+
+  if (tripError || !trip) {
+    console.error("[join API] buildTripPayload: trip not found after join", {
+      legacyId,
+      error: tripError?.message,
+    });
+    return null;
+  }
+
+  // Load attendees for this trip
+  const { data: attendeesData, error: attendeesError } = await supabase
+    .from("trip_attendees")
+    .select("*,members(id,display_name,full_name)")
+    .eq("trip_id", trip.id);
+
+  if (attendeesError) {
+    console.warn("[join API] buildTripPayload: failed to load attendees", attendeesError);
+  }
+
+  // Load results for this trip
+  const { data: resultsData, error: resultsError } = await supabase
+    .from("trip_results")
+    .select("*,result_rows(*)")
+    .eq("trip_id", trip.id);
+
+  if (resultsError) {
+    console.warn("[join API] buildTripPayload: failed to load results", resultsError);
+  }
+
+  const attendees = (attendeesData || []).map((a: any) => {
+    const member = a.members as any;
+    const name = member?.display_name || member?.full_name || "Unknown";
+    return {
+      name,
+      status: a.status as "confirmed" | "waitlist" | "out",
+      joinedAt: new Date(a.joined_at).getTime(),
+      handicapForTrip: a.handicap_snapshot ?? null,
+      memberId: a.member_id,
+    };
+  });
+
+  const result = (resultsData || [])[0];
+  const resultRows = result?.result_rows || [];
+  const leaderboard = resultRows
+    .filter((r: any) => r.metric_label === "points")
+    .sort((a: any, b: any) => b.position - a.position)
+    .map((r: any) => ({
+      name: r.display_name,
+      points: Number(r.metric_value) || 0,
+    }));
+
+  // Generate numeric ID consistent with /api/trips
+  let numericId: number;
+  if (trip.legacy_id) {
+    numericId = trip.legacy_id;
+  } else {
+    const uuid = trip.id as string;
+    let hash = 0;
+    for (let i = 0; i < uuid.length; i++) {
+      const char = uuid.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    numericId = Math.abs(hash) % 1000000 + 1000000;
+  }
+
+  const payload = {
+    id: numericId,
+    name: trip.name || undefined,
+    date: trip.trip_date,
+    format: trip.format,
+    course: undefined,
+    ferry: trip.ferry || undefined,
+    capacity: trip.capacity,
+    status: trip.status as "open" | "closed" | "archived",
+    cutoffAt: trip.cutoff_at ? new Date(trip.cutoff_at).toISOString() : undefined,
+    courseId: trip.course_id,
+    teeId: trip.tee_id,
+    logistics: {
+      meetingPoint: trip.meeting_point || undefined,
+      meetTime: trip.meet_time || undefined,
+      ferryDetails: trip.ferry_details || undefined,
+      notes: trip.notes || undefined,
+    },
+    attendees,
+    result: result && result.published
+      ? {
+          leaderboard,
+          notes: result.notes || undefined,
+          publishedAt: result.published_at || undefined,
+        }
+      : undefined,
+    createdAtUtc: trip.created_at,
+    updatedAtUtc: trip.updated_at,
+  };
+
+  console.log("[join API] buildTripPayload attendees count:", attendees.length, "for legacyId:", legacyId);
+
+  return payload;
+}
+
 /**
  * POST /api/trips/[id]/join
  * Join a trip (or update status to confirmed)
@@ -116,6 +225,9 @@ export async function POST(
       }
     }
 
+    // Build fresh trip payload (including attendees) so clients can update state without refetching all trips
+    const tripPayload = await buildTripPayload(supabase, legacyId);
+
     // Invalidate trips cache
     try {
       // @ts-expect-error - revalidateTag signature may vary by Next.js version
@@ -124,7 +236,7 @@ export async function POST(
       // Cache will expire via TTL if revalidation fails
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, trip: tripPayload });
   } catch (error) {
     console.error("Join trip error:", error);
     return NextResponse.json(
