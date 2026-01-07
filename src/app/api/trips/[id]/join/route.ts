@@ -186,46 +186,28 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const handicap = body.handicap !== undefined ? body.handicap : null;
 
-    // Check if attendee already exists
-    const { data: existing } = await adminClient
+    // Upsert attendee row for this (trip_id, member_id) pair
+    const { error: upsertErr } = await adminClient
       .from("trip_attendees")
-      .select("id")
-      .eq("trip_id", trip.id)
-      .eq("member_id", user.id)
-      .maybeSingle();
-
-    if (existing) {
-      // Update existing attendee
-      const { error: updateErr } = await adminClient
-        .from("trip_attendees")
-        .update({
+      .upsert(
+        {
+          trip_id: trip.id,
+          member_id: user.id,
           status: "confirmed",
+          joined_at: new Date().toISOString(),
           handicap_snapshot: handicap,
-        })
-        .eq("id", existing.id);
+        },
+        {
+          onConflict: "trip_id,member_id",
+        }
+      );
 
-      if (updateErr) {
-        return NextResponse.json(
-          { error: updateErr.message || "Failed to update attendee." },
-          { status: 400 }
-        );
-      }
-    } else {
-      // Create new attendee
-      const { error: insertErr } = await adminClient.from("trip_attendees").insert({
-        trip_id: trip.id,
-        member_id: user.id,
-        status: "confirmed",
-        joined_at: new Date().toISOString(),
-        handicap_snapshot: handicap,
-      });
-
-      if (insertErr) {
-        return NextResponse.json(
-          { error: insertErr.message || "Failed to join trip." },
-          { status: 400 }
-        );
-      }
+    if (upsertErr) {
+      console.error("[join API] upsert error:", upsertErr);
+      return NextResponse.json(
+        { error: upsertErr.message || "Failed to join trip." },
+        { status: 400 }
+      );
     }
 
     // Build fresh trip payload (including attendees) so clients can update state without refetching all trips
