@@ -9,10 +9,10 @@ const CACHE_TTL = 10; // 10 seconds (reduced from 30 to help with stale data iss
 
 /**
  * Cached data fetcher (request-scoped memoization + cross-request caching)
- * Note: We can't use cookies() inside unstable_cache, so we fetch data outside cache
+ * Uses the service-role client so trip + attendee data is not filtered by RLS/policies.
+ * Keeps the mapping as simple and robust as possible: trips + attendees + members.
  */
 async function fetchTripsData() {
-  // Use service-role client so trip + attendee data is not filtered by RLS/policies.
   const supabase = await createSupabaseServiceClient();
 
   // Fetch trips (include all trips, even those without legacy_id)
@@ -21,7 +21,6 @@ async function fetchTripsData() {
     .select("*")
     .order("trip_date", { ascending: false });
 
-  // Log for debugging
   console.log("[trips API] Fetch result:", {
     tripsCount: tripsData?.length ?? 0,
     error: tripsError?.message,
@@ -38,15 +37,36 @@ async function fetchTripsData() {
     return { ok: true, trips: [] };
   }
 
-  // Fetch attendees for all trips
   const tripIds = tripsData.map((t) => t.id);
+
+  // Fetch attendees for all trips (no joins to avoid silent failures)
   const { data: attendeesData, error: attendeesError } = await supabase
     .from("trip_attendees")
-    .select("*,members(id,display_name,full_name)")
+    .select("trip_id,member_id,status,joined_at,handicap_snapshot")
     .in("trip_id", tripIds);
 
   if (attendeesError) {
-    console.warn("Failed to fetch attendees:", attendeesError);
+    console.warn("[trips API] Failed to fetch attendees:", attendeesError);
+  }
+
+  const attendees = attendeesData || [];
+  const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id))).filter(Boolean);
+
+  // Fetch member display names separately
+  const membersById: Record<string, { display_name: string | null; full_name: string | null }> = {};
+  if (memberIds.length) {
+    const { data: membersData, error: membersError } = await supabase
+      .from("members")
+      .select("id,display_name,full_name")
+      .in("id", memberIds as string[]);
+
+    if (membersError) {
+      console.warn("[trips API] Failed to fetch members for attendees:", membersError);
+    }
+
+    for (const m of membersData || []) {
+      membersById[m.id] = { display_name: m.display_name, full_name: m.full_name };
+    }
   }
 
   // Fetch results for all trips
@@ -56,16 +76,16 @@ async function fetchTripsData() {
     .in("trip_id", tripIds);
 
   if (resultsError) {
-    console.warn("Failed to fetch results:", resultsError);
+    console.warn("[trips API] Failed to fetch results:", resultsError);
   }
 
   // Map database trips to UI Trip format
-  const trips = tripsData.map((trip, index) => {
-    const attendees = (attendeesData || [])
-      .filter((a) => a.trip_id === trip.id)
-      .map((a) => {
-        const member = a.members as any;
-        const name = member?.display_name || member?.full_name || "Unknown";
+  const trips = tripsData.map((trip) => {
+    const tripAttendees = attendees
+      .filter((a: any) => a.trip_id === trip.id)
+      .map((a: any) => {
+        const member = membersById[a.member_id] || {};
+        const name = member.display_name || member.full_name || "Unknown";
         return {
           name,
           status: a.status as "confirmed" | "waitlist" | "out",
@@ -86,20 +106,17 @@ async function fetchTripsData() {
       }));
 
     // Generate unique numeric ID: use legacy_id if available, otherwise use a hash of the UUID
-    // This ensures trips without legacy_id still get unique IDs
     let numericId: number;
     if (trip.legacy_id) {
       numericId = trip.legacy_id;
     } else {
-      // Generate a unique numeric ID from the UUID (simple hash)
       const uuid = trip.id;
       let hash = 0;
       for (let i = 0; i < uuid.length; i++) {
         const char = uuid.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32-bit integer
+        hash = hash & hash;
       }
-      // Use a large negative number to avoid conflicts with positive legacy_ids
       numericId = Math.abs(hash) % 1000000 + 1000000; // Range: 1000000-1999999
     }
 
@@ -108,7 +125,7 @@ async function fetchTripsData() {
       name: trip.name || undefined,
       date: trip.trip_date,
       format: trip.format,
-      course: undefined, // Legacy field
+      course: undefined,
       ferry: trip.ferry || undefined,
       capacity: trip.capacity,
       status: trip.status as "open" | "closed" | "archived",
@@ -121,7 +138,7 @@ async function fetchTripsData() {
         ferryDetails: trip.ferry_details || undefined,
         notes: trip.notes || undefined,
       },
-      attendees,
+      attendees: tripAttendees,
       result: result && result.published
         ? {
             leaderboard,
@@ -134,7 +151,7 @@ async function fetchTripsData() {
     };
   });
 
-  console.log("[trips API] Returning", trips.length, "trips");
+  console.log("[trips API] Returning", trips.length, "trips with attendees");
   return { ok: true, trips };
 }
 
@@ -159,7 +176,7 @@ export async function GET(req: Request) {
       // Bypass cache and fetch fresh data
       console.log("[trips API] Bypassing cache - fetching fresh data");
       const supabase = await createSupabaseServiceClient();
-      
+
       const { data: tripsData, error: tripsError } = await supabase
         .from("trips")
         .select("*")
@@ -182,22 +199,49 @@ export async function GET(req: Request) {
       }
 
       const tripIds = tripsData.map((t) => t.id);
-      const { data: attendeesData } = await supabase
+      const { data: attendeesData, error: attendeesError } = await supabase
         .from("trip_attendees")
-        .select("*,members(id,display_name,full_name)")
+        .select("trip_id,member_id,status,joined_at,handicap_snapshot")
         .in("trip_id", tripIds);
 
-      const { data: resultsData } = await supabase
+      if (attendeesError) {
+        console.warn("[trips API] Bypass cache: Failed to fetch attendees:", attendeesError);
+      }
+
+      const attendees = attendeesData || [];
+      const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id))).filter(Boolean);
+
+      const membersById: Record<string, { display_name: string | null; full_name: string | null }> = {};
+      if (memberIds.length) {
+        const { data: membersData, error: membersError } = await supabase
+          .from("members")
+          .select("id,display_name,full_name")
+          .in("id", memberIds as string[]);
+
+        if (membersError) {
+          console.warn("[trips API] Bypass cache: Failed to fetch members:", membersError);
+        }
+
+        for (const m of membersData || []) {
+          membersById[m.id] = { display_name: m.display_name, full_name: m.full_name };
+        }
+      }
+
+      const { data: resultsData, error: resultsError } = await supabase
         .from("trip_results")
         .select("*,result_rows(*)")
         .in("trip_id", tripIds);
 
+      if (resultsError) {
+        console.warn("[trips API] Bypass cache: Failed to fetch results:", resultsError);
+      }
+
       const trips = tripsData.map((trip) => {
-        const attendees = (attendeesData || [])
-          .filter((a) => a.trip_id === trip.id)
-          .map((a) => {
-            const member = a.members as any;
-            const name = member?.display_name || member?.full_name || "Unknown";
+        const tripAttendees = attendees
+          .filter((a: any) => a.trip_id === trip.id)
+          .map((a: any) => {
+            const member = membersById[a.member_id] || {};
+            const name = member.display_name || member.full_name || "Unknown";
             return {
               name,
               status: a.status as "confirmed" | "waitlist" | "out",
@@ -217,21 +261,18 @@ export async function GET(req: Request) {
             points: Number(r.metric_value) || 0,
           }));
 
-        // Generate unique numeric ID: use legacy_id if available, otherwise use a hash of the UUID
         let numericId: number;
         if (trip.legacy_id) {
           numericId = trip.legacy_id;
         } else {
-          // Generate a unique numeric ID from the UUID (simple hash)
           const uuid = trip.id;
           let hash = 0;
           for (let i = 0; i < uuid.length; i++) {
             const char = uuid.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32-bit integer
+            hash = hash & hash;
           }
-          // Use a large number to avoid conflicts with positive legacy_ids
-          numericId = Math.abs(hash) % 1000000 + 1000000; // Range: 1000000-1999999
+          numericId = Math.abs(hash) % 1000000 + 1000000;
         }
 
         return {
@@ -252,7 +293,7 @@ export async function GET(req: Request) {
             ferryDetails: trip.ferry_details || undefined,
             notes: trip.notes || undefined,
           },
-          attendees,
+          attendees: tripAttendees,
           result: result && result.published
             ? {
                 leaderboard,
@@ -265,7 +306,7 @@ export async function GET(req: Request) {
         };
       });
 
-      console.log("[trips API] Bypass cache: Returning", trips.length, "trips");
+      console.log("[trips API] Bypass cache: Returning", trips.length, "trips with attendees");
       return NextResponse.json({ ok: true, trips });
     }
     
