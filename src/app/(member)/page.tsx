@@ -109,13 +109,25 @@ export default function HomePage() {
   const today = new Date().toISOString().slice(0, 10);
 
   const nextTrip = useMemo(() => {
+    // Upcoming trips: Scheduled, Open for Signups, Signups Closed, Game Day (before trip date or trip date passed but no results yet)
     const upcoming = [...trips]
-      .filter((t) => t.status !== "archived" && t.date >= today && !t.result)
+      .filter((t) => t.date >= today && !t.result)
       .sort((a, b) => a.date.localeCompare(b.date));
     return upcoming[0] ?? null;
   }, [trips, today]);
+  
+  // Current trip: Game Day (trip date passed, no results yet)
+  const currentTrip = useMemo(() => {
+    const current = [...trips]
+      .filter((t) => t.date < today && !t.result)
+      .sort((a, b) => b.date.localeCompare(a.date)); // Most recent first
+    return current[0] ?? null;
+  }, [trips, today]);
 
-  if (!nextTrip) {
+  // Show current trip (Game Day) if no upcoming trip
+  const displayTrip = nextTrip || currentTrip;
+  
+  if (!displayTrip) {
     return (
       <div className="rounded-xl border bg-white p-5 shadow-sm">
         <div className="text-lg font-semibold text-gray-900">No upcoming trips</div>
@@ -130,38 +142,56 @@ export default function HomePage() {
       </div>
     );
   }
+  
+  const isCurrentTrip = displayTrip === currentTrip;
 
-  const courseText = getTripCourseText(nextTrip, courses);
+  const courseText = getTripCourseText(displayTrip, courses);
   const myEntry =
     currentUserId
-      ? nextTrip.attendees.find((a) => a.memberId && a.memberId === currentUserId)
+      ? displayTrip.attendees.find((a) => a.memberId && a.memberId === currentUserId)
       : currentUserName
-      ? nextTrip.attendees.find((a) => a.name === currentUserName)
+      ? displayTrip.attendees.find((a) => a.name === currentUserName)
       : undefined;
 
-  // Phase 0: scheduled (open trip, but signups only open within 30 days of trip date)
-  const tripDateUtc = new Date(nextTrip.date + "T00:00:00Z").getTime();
+  // Scheduled: open trip, but signups only open within 30 days of trip date
+  const tripDateUtc = new Date(displayTrip.date + "T00:00:00Z").getTime();
   const signupOpenUtc = Number.isFinite(tripDateUtc)
     ? tripDateUtc - 30 * 24 * 60 * 60 * 1000
     : NaN;
   const signupOpenDateYmd = Number.isFinite(signupOpenUtc)
     ? new Date(signupOpenUtc).toISOString().slice(0, 10)
     : null;
-  const isPhase0 =
-    nextTrip.status === "open" &&
-    !nextTrip.result &&
+  const isScheduled =
+    displayTrip.status === "open" &&
+    !displayTrip.result &&
     Number.isFinite(signupOpenUtc) &&
     Date.now() < signupOpenUtc;
-  const joinDisabled = isPhase0 || nextTrip.status !== "open";
+  
+  // Check if cutoff has passed (11:59pm SGT)
+  const cutoffPassed = displayTrip.cutoffAt ? (() => {
+    const cutoff = new Date(displayTrip.cutoffAt);
+    const now = new Date();
+    const sgtOffset = 8 * 60 * 60 * 1000;
+    const nowSGT = new Date(now.getTime() + sgtOffset);
+    return nowSGT > cutoff;
+  })() : false;
+  
+  const joinDisabled = isScheduled || displayTrip.status !== "open" || cutoffPassed || isCurrentTrip;
 
   async function handleImIn() {
     // Prevent duplicate joins
     if (myEntry) return;
     if (joinDisabled) {
-      if (isPhase0 && signupOpenDateYmd) {
+      if (isScheduled && signupOpenDateYmd) {
         alert(`Signups open on ${signupOpenDateYmd} (30 days before the trip).`);
+      } else if (displayTrip.status === "cancelled") {
+        alert("This trip has been cancelled.");
+      } else if (isCurrentTrip) {
+        alert("This trip is in progress. Signups are closed.");
+      } else if (cutoffPassed) {
+        alert("Signups have closed (cutoff date has passed).");
       } else {
-        alert("RSVP is not open for this trip.");
+        alert("Signups are not open for this trip.");
       }
       return;
     }
@@ -213,7 +243,7 @@ export default function HomePage() {
             }
 
             // Add to trip and save handicap for this trip
-            const updated = await joinTrip(trips, nextTrip.id, handicapValue);
+            const updated = await joinTrip(trips, displayTrip.id, handicapValue);
             setTrips(updated);
             
             // Reload trips to get latest data (with a small delay to let DB catch up)
@@ -224,9 +254,9 @@ export default function HomePage() {
               
               // Silently verify - only log warnings, don't show errors to user
               // The join likely succeeded even if verification fails due to timing/name matching
-              const freshNextTrip = freshTrips.find(t => t.id === nextTrip.id);
-              if (freshNextTrip && currentUserName) {
-                const freshMyEntry = freshNextTrip.attendees.find((a) => 
+              const freshDisplayTrip = freshTrips.find(t => t.id === displayTrip.id);
+              if (freshDisplayTrip && currentUserName) {
+                const freshMyEntry = freshDisplayTrip.attendees.find((a) => 
                   a.name === currentUserName || 
                   a.name === memberData?.display_name || 
                   a.name === memberData?.full_name
@@ -340,7 +370,7 @@ export default function HomePage() {
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });
         try {
-          const updated = await leaveTrip(trips, nextTrip.id);
+          const updated = await leaveTrip(trips, displayTrip.id);
           setTrips(updated);
         } catch (error) {
           console.error("Failed to leave trip:", error);
@@ -358,9 +388,9 @@ export default function HomePage() {
       <div className="rounded-xl border bg-white p-5 shadow-sm">
         {/* Header: Next trip label + Details button */}
         <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="text-sm text-gray-500">Next trip</div>
+          <div className="text-sm text-gray-500">{isCurrentTrip ? "Current trip" : "Next trip"}</div>
           <Link
-            href={`/trips/${nextTrip.id}`}
+            href={`/trips/${displayTrip.id}`}
             className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
           >
             Details
@@ -369,11 +399,11 @@ export default function HomePage() {
 
         {/* Trip name (bold) */}
         <div className="text-lg font-semibold text-gray-900 mb-1">
-          {nextTrip.name || courseText.title}
+          {displayTrip.name || courseText.title}
         </div>
 
         {/* Course + tee on one line */}
-        {nextTrip.name && courseText.title && (
+        {displayTrip.name && courseText.title && (
           <div className="text-sm text-gray-600 mb-1">
             {courseText.title}
           </div>
@@ -388,30 +418,48 @@ export default function HomePage() {
 
         {/* Date + format + status on ONE line */}
         <div className="text-sm text-gray-700 mb-2">
-          {formatTripDateLong(nextTrip.date)}
-          {nextTrip.format && ` · ${nextTrip.format}`}
-          {nextTrip.ferry && ` · Ferry ${nextTrip.ferry}`}
-          {nextTrip.status === "open" && !isPhase0 ? " · Open for sign up" : nextTrip.status === "closed" ? " · Closed" : ""}
-          {isPhase0 && signupOpenDateYmd ? ` · Signups open ${formatTripDateLong(signupOpenDateYmd)}` : ""}
+          {formatTripDateLong(displayTrip.date)}
+          {displayTrip.format && ` · ${displayTrip.format}`}
+          {displayTrip.ferry && ` · Ferry ${displayTrip.ferry}`}
+          {isCurrentTrip ? " · Game Day" : displayTrip.status === "open" && !isScheduled ? " · Open for sign up" : displayTrip.status === "closed" ? " · Signups closed" : ""}
+          {isScheduled && signupOpenDateYmd ? ` · Signups open ${formatTripDateLong(signupOpenDateYmd)}` : ""}
         </div>
 
-        {/* Phase 0 info box */}
-        {isPhase0 && (
+        {/* Cancelled info box */}
+        {displayTrip.status === "cancelled" && (
+          <div className="mb-2 rounded-lg bg-red-50 border border-red-200 p-3">
+            <div className="text-sm text-red-900 font-semibold">
+              This trip has been cancelled.
+            </div>
+          </div>
+        )}
+        
+        {/* Scheduled info box */}
+        {displayTrip.status !== "cancelled" && isScheduled && (
           <div className="mb-2 rounded-lg bg-blue-50 border border-blue-200 p-3">
             <div className="text-sm text-blue-900">
               <span className="font-semibold">Scheduled trip</span> — Date and course shown for planning. Signups will open 30 days before the trip date.
             </div>
           </div>
         )}
+        
+        {/* Game Day info box */}
+        {displayTrip.status !== "cancelled" && isCurrentTrip && (
+          <div className="mb-2 rounded-lg bg-orange-50 border border-orange-200 p-3">
+            <div className="text-sm text-orange-900">
+              <span className="font-semibold">Game Day</span> — The round is in progress. Results will be posted after the round.
+            </div>
+          </div>
+        )}
 
         {/* Logistics */}
-        {nextTrip.logistics?.meetingPoint || nextTrip.logistics?.meetTime ? (
+        {displayTrip.logistics?.meetingPoint || displayTrip.logistics?.meetTime ? (
           <div className="text-sm text-gray-600 mb-2">
-            {nextTrip.logistics.meetingPoint && (
-              <div>📍 {nextTrip.logistics.meetingPoint}</div>
+            {displayTrip.logistics.meetingPoint && (
+              <div>📍 {displayTrip.logistics.meetingPoint}</div>
             )}
-            {nextTrip.logistics.meetTime && (
-              <div>🕐 {nextTrip.logistics.meetTime}</div>
+            {displayTrip.logistics.meetTime && (
+              <div>🕐 {displayTrip.logistics.meetTime}</div>
             )}
           </div>
         ) : null}

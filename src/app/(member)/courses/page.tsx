@@ -6,6 +6,7 @@ import { loadCourses, type Course } from "../../lib/courseActions";
 
 export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   useEffect(() => {
     document.title = "GolfBats - Courses";
@@ -24,8 +25,24 @@ export default function CoursesPage() {
   }, []);
 
   const sorted = useMemo(() => {
-    return [...courses].sort((a, b) => a.name.localeCompare(b.name));
-  }, [courses]);
+    let filtered = [...courses];
+    
+    // Apply search filter if query exists
+    const query = searchQuery.toLowerCase().trim();
+    if (query) {
+      filtered = filtered.filter((c) => {
+        const name = (c.name || "").toLowerCase();
+        const location = (c.location || "").toLowerCase();
+        const teeLabels = (c.tees || []).map(t => t.label.toLowerCase()).join(" ");
+        
+        return name.includes(query) ||
+               location.includes(query) ||
+               teeLabels.includes(query);
+      });
+    }
+    
+    return filtered.sort((a, b) => a.name.localeCompare(b.name));
+  }, [courses, searchQuery]);
 
   return (
     <div className="space-y-4">
@@ -41,6 +58,25 @@ export default function CoursesPage() {
         >
           Edit (admin)
         </Link>
+      </div>
+
+      {/* Search Input */}
+      <div className="rounded-xl border bg-white p-4 shadow-sm">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search courses by name, location, or tee..."
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="mt-2 text-xs text-gray-600 hover:text-gray-900 underline"
+          >
+            Clear search
+          </button>
+        )}
       </div>
 
       {sorted.length === 0 ? (

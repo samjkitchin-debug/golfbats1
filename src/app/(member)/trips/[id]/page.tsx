@@ -96,7 +96,7 @@ export default function TripDetailPage() {
     return trips.find((t) => t.id === tripId);
   }, [trips, tripId]);
 
-  // Phase 0: scheduled (open trip, but signups only open within 30 days of trip date)
+  // Scheduled: open trip, but signups only open within 30 days of trip date
   const tripDateUtc = trip ? new Date(trip.date + "T00:00:00Z").getTime() : NaN;
   const signupOpenUtc = Number.isFinite(tripDateUtc)
     ? tripDateUtc - 30 * 24 * 60 * 60 * 1000
@@ -104,7 +104,7 @@ export default function TripDetailPage() {
   const signupOpenDateYmd = Number.isFinite(signupOpenUtc)
     ? new Date(signupOpenUtc).toISOString().slice(0, 10)
     : null;
-  const isPhase0 =
+  const isScheduled =
     !!trip &&
     trip.status === "open" &&
     !trip.result &&
@@ -179,7 +179,7 @@ export default function TripDetailPage() {
   // From here down, trip is guaranteed
   const tripIdSafe = trip.id;
   const locked = isTripLocked(trip);
-  const joinDisabled = locked || isPhase0;
+  const joinDisabled = locked || isScheduled || trip.status === "cancelled";
 
   async function handleImIn() {
     // Prevent duplicate joins
@@ -375,10 +375,18 @@ export default function TripDetailPage() {
           {formatTripDateLong(trip.date)} · {trip.format}
           {trip.ferry ? ` · Ferry ${trip.ferry}` : ""}
           {locked ? " · Locked" : ""}
-          {isPhase0 && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
+          {isScheduled && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
         </div>
 
-        {isPhase0 && (
+        {trip.status === "cancelled" && (
+          <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
+            <div className="text-sm text-red-900 font-semibold">
+              This trip has been cancelled.
+            </div>
+          </div>
+        )}
+        
+        {trip.status !== "cancelled" && isScheduled && (
           <div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 p-3">
             <div className="text-sm text-blue-900">
               <span className="font-semibold">Scheduled trip</span> — Date and course shown for planning. Signups will open 30 days before the trip date.
@@ -425,7 +433,7 @@ export default function TripDetailPage() {
           )}
         </div>
 
-        {isPhase0 && signupOpenDateYmd ? (
+        {isScheduled && signupOpenDateYmd ? (
           <div className="mt-3 text-sm text-gray-600">
             Signups open on <span className="font-semibold">{signupOpenDateYmd}</span> (30 days before the trip).
           </div>

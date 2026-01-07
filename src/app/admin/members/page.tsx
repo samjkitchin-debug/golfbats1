@@ -45,6 +45,7 @@ export default function AdminMembersPage() {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [passportStatuses, setPassportStatuses] = useState<Record<string, PassportStatus>>({});
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [viewingMemberId, setViewingMemberId] = useState<string | null>(null);
   const [passportDetails, setPassportDetails] = useState<PassportDetails | null>(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
@@ -110,6 +111,28 @@ export default function AdminMembersPage() {
 
     load();
   }, [supabase]);
+
+  // Filter members based on search query
+  const filteredMembers = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return members;
+    }
+    
+    const query = searchQuery.toLowerCase().trim();
+    return members.filter((m) => {
+      const name = (m.display_name || m.full_name || "").toLowerCase();
+      const email = (m.email || "").toLowerCase();
+      const nationality = (m.nationality || "").toLowerCase();
+      const handicap = m.declared_handicap?.toString() || "";
+      
+      return (
+        name.includes(query) ||
+        email.includes(query) ||
+        nationality.includes(query) ||
+        handicap.includes(query)
+      );
+    });
+  }, [members, searchQuery]);
 
   async function handleViewPassport(memberId: string) {
     setViewingMemberId(memberId);
@@ -375,6 +398,27 @@ export default function AdminMembersPage() {
         </div>
       ) : (
         <>
+          {/* Search Input */}
+          <section className="mt-4 rounded-xl border bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                placeholder="Search by name, email, nationality, or handicap..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-gray-400 focus:outline-none"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Clear search
+                </button>
+              )}
+            </div>
+          </section>
+
           {/* Admins block */}
           <div className="mt-4 overflow-x-auto rounded-xl border bg-white">
             <div className="border-b px-4 py-3 text-sm font-semibold text-gray-900">
@@ -382,13 +426,7 @@ export default function AdminMembersPage() {
             </div>
             <table className="w-full min-w-[880px] text-left text-sm">
               <colgroup>
-                <col className="w-[22%]" /> {/* Name */}
-                <col className="w-[24%]" /> {/* Email */}
-                <col className="w-[10%]" /> {/* Nat. */}
-                <col className="w-[10%]" /> {/* HCP */}
-                <col className="w-[14%]" /> {/* Status */}
-                <col className="w-[10%]" /> {/* Passport */}
-                <col className="w-[10%]" /> {/* Actions */}
+                <col className="w-[22%]" /><col className="w-[24%]" /><col className="w-[10%]" /><col className="w-[10%]" /><col className="w-[14%]" /><col className="w-[10%]" /><col className="w-[10%]" />
               </colgroup>
               <thead className="border-b bg-white">
                 <tr className="text-gray-700">
@@ -402,7 +440,7 @@ export default function AdminMembersPage() {
                 </tr>
               </thead>
               <tbody>
-                {members
+                {filteredMembers
                   .filter((m) => m.is_admin)
                   .map((m) => {
                     const name = m.display_name || m.full_name || "—";
@@ -485,6 +523,11 @@ export default function AdminMembersPage() {
                   })}
               </tbody>
             </table>
+            {filteredMembers.filter((m) => m.is_admin).length === 0 && (
+              <div className="px-4 py-6 text-sm text-gray-700">
+                {searchQuery ? "No admins match your search." : "No admins found."}
+              </div>
+            )}
           </div>
 
           {/* Non-admin members block */}
@@ -494,13 +537,7 @@ export default function AdminMembersPage() {
             </div>
             <table className="w-full min-w-[880px] text-left text-sm">
               <colgroup>
-                <col className="w-[22%]" /> {/* Name */}
-                <col className="w-[24%]" /> {/* Email */}
-                <col className="w-[10%]" /> {/* Nat. */}
-                <col className="w-[10%]" /> {/* HCP */}
-                <col className="w-[14%]" /> {/* Status */}
-                <col className="w-[10%]" /> {/* Passport */}
-                <col className="w-[10%]" /> {/* Actions */}
+                <col className="w-[22%]" /><col className="w-[24%]" /><col className="w-[10%]" /><col className="w-[10%]" /><col className="w-[14%]" /><col className="w-[10%]" /><col className="w-[10%]" />
               </colgroup>
               <thead className="border-b bg-white">
                 <tr className="text-gray-700">
@@ -514,7 +551,7 @@ export default function AdminMembersPage() {
                 </tr>
               </thead>
               <tbody>
-              {members
+              {filteredMembers
                 .filter((m) => !m.is_admin)
                 .map((m) => {
                   const name = m.display_name || m.full_name || "—";
@@ -598,8 +635,10 @@ export default function AdminMembersPage() {
               </tbody>
             </table>
 
-            {members.filter((m) => !m.is_admin).length === 0 ? (
-              <div className="px-4 py-6 text-sm text-gray-700">No members found.</div>
+            {filteredMembers.filter((m) => !m.is_admin).length === 0 ? (
+              <div className="px-4 py-6 text-sm text-gray-700">
+                {searchQuery ? "No members match your search." : "No members found."}
+              </div>
             ) : null}
           </div>
         </>

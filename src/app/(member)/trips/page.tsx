@@ -14,6 +14,7 @@ export default function TripsListPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -287,15 +288,46 @@ export default function TripsListPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const { upcoming, past } = useMemo(() => {
-    const visible = trips.filter((t) => t.status !== "archived" || t.result); // Include archived if they have results
+  const { upcoming, current, past } = useMemo(() => {
+    // Filter out archived trips (has results)
+    const visible = trips.filter((t) => !t.result); // Scheduled, Open for Signups, Signups Closed, Game Day only
     const sorted = sortTripsByDateAsc(visible);
 
+    // Upcoming trips: Scheduled, Open for Signups, Signups Closed (before trip date, no results)
     const upcomingTrips = sorted.filter((t) => t.date >= today && !t.result);
-    const pastTrips = sorted.filter((t) => t.date < today || t.status === "archived" || t.result).reverse();
+    
+    // Current trips: Game Day (trip date passed, no results yet)
+    const currentTrips = sorted.filter((t) => t.date < today && !t.result);
+    
+    // Past trips: Archived (has results)
+    const pastTrips = trips.filter((t) => t.result).reverse();
 
-    return { upcoming: upcomingTrips, past: pastTrips };
-  }, [trips, today]);
+    // Apply search filter if query exists
+    const query = searchQuery.toLowerCase().trim();
+    if (query) {
+      const filterTrip = (t: Trip) => {
+        const tripName = (t.name || "").toLowerCase();
+        const courseName = courses.find(c => c.id === t.courseId)?.name?.toLowerCase() || "";
+        const format = (t.format || "").toLowerCase();
+        const date = t.date.toLowerCase();
+        const ferry = (t.ferry || "").toLowerCase();
+        
+        return tripName.includes(query) ||
+               courseName.includes(query) ||
+               format.includes(query) ||
+               date.includes(query) ||
+               ferry.includes(query);
+      };
+      
+      return {
+        upcoming: upcomingTrips.filter(filterTrip),
+        current: currentTrips.filter(filterTrip),
+        past: pastTrips.filter(filterTrip),
+      };
+    }
+
+    return { upcoming: upcomingTrips, current: currentTrips, past: pastTrips };
+  }, [trips, today, searchQuery, courses]);
 
   function confirmedCount(t: Trip) {
     return t.attendees.filter((a) => a.status === "confirmed").length;
@@ -306,6 +338,25 @@ export default function TripsListPage() {
       <div>
         <div className="text-xl font-semibold text-gray-900">Trips</div>
         <div className="text-sm text-gray-600">Upcoming and past outings</div>
+      </div>
+
+      {/* Search Input */}
+      <div className="rounded-xl border bg-white p-4 shadow-sm">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search trips by name, course, date, format..."
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="mt-2 text-xs text-gray-600 hover:text-gray-900 underline"
+          >
+            Clear search
+          </button>
+        )}
       </div>
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">
@@ -320,8 +371,8 @@ export default function TripsListPage() {
               const now = Date.now();
               const tripDate = new Date(t.date + "T00:00:00").getTime();
               const signupOpenAt = tripDate - 30 * 24 * 60 * 60 * 1000;
-              const isPhase0 = t.status === "open" && !t.result && Number.isFinite(signupOpenAt) && now < signupOpenAt;
-              const signupOpenDateYmd = isPhase0 ? new Date(signupOpenAt).toISOString().slice(0, 10) : null;
+              const isScheduled = t.status === "open" && !t.result && Number.isFinite(signupOpenAt) && now < signupOpenAt;
+              const signupOpenDateYmd = isScheduled ? new Date(signupOpenAt).toISOString().slice(0, 10) : null;
               
               // Check if user is already in the trip
               // Prefer matching by memberId (supabase user id); fall back to name match if needed
@@ -345,7 +396,7 @@ export default function TripsListPage() {
                       return matches;
                     })
                   : undefined;
-              const joinDisabled = isPhase0 || t.status !== "open";
+              const joinDisabled = isScheduled || t.status !== "open";
 
               return (
                 <li key={t.id} className="py-3">
@@ -381,16 +432,29 @@ export default function TripsListPage() {
 
                   {/* Status + Confirmed Count Together */}
                   <div className="flex items-center gap-2 text-sm mb-2">
-                    {t.status?.toLowerCase() === "closed" ? (
+                    {t.status?.toLowerCase() === "cancelled" ? (
+                      <span className="text-red-600 font-medium">Cancelled</span>
+                    ) : t.status?.toLowerCase() === "closed" ? (
                       <span className="text-orange-600 font-medium">Closed</span>
-                    ) : isPhase0 && signupOpenDateYmd ? (
+                    ) : isScheduled && signupOpenDateYmd ? (
                       <span className="text-blue-600 font-medium">Signups open {formatTripDateLong(signupOpenDateYmd)}</span>
                     ) : t.status?.toLowerCase() === "open" ? (
                       <span className="text-green-600 font-medium">Open for sign up</span>
                     ) : null}
-                    <span className="text-gray-500">·</span>
-                    <span className="text-gray-500">{confirmedCount(t)} confirmed</span>
+                    {t.status?.toLowerCase() !== "cancelled" && (
+                      <>
+                        <span className="text-gray-500">·</span>
+                        <span className="text-gray-500">{confirmedCount(t)} confirmed</span>
+                      </>
+                    )}
                   </div>
+                  
+                  {/* Cancelled message */}
+                  {t.status?.toLowerCase() === "cancelled" && (
+                    <div className="mb-2 rounded-lg bg-red-50 border border-red-200 p-3">
+                      <div className="text-sm text-red-900 font-medium">This trip has been cancelled.</div>
+                    </div>
+                  )}
 
                   {/* Logistics */}
                   {t.logistics?.meetingPoint || t.logistics?.meetTime ? (
@@ -401,7 +465,7 @@ export default function TripsListPage() {
                   ) : null}
 
                   {/* Join Trip Button - Primary CTA */}
-                  {t.status === "open" && !isPhase0 && (
+                  {t.status === "open" && !isScheduled && (
                     <div className="mt-2">
                       {myEntry ? (
                         <button
@@ -430,6 +494,30 @@ export default function TripsListPage() {
           </ul>
         )}
       </section>
+
+      {/* Current Trip (Game Day: trip date passed, round in progress) */}
+      {current.length > 0 && (
+        <section className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="mb-3 text-sm font-medium text-gray-600">Game Day</div>
+
+          {current.map((t) => {
+            const { title, detail } = getTripCourseText(t, courses);
+            
+            return (
+              <div key={t.id} className="py-4 space-y-2">
+                <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
+                <div className="text-base font-medium text-gray-800">{title || "Course TBD"}</div>
+                {detail && <div className="text-sm text-gray-600">{detail}</div>}
+                <div className="text-sm text-gray-600">
+                  {formatTripDateLong(t.date)}
+                  {t.format && <span> · {t.format}</span>}
+                </div>
+                <div className="text-sm text-gray-500">Round in progress</div>
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">
         <div className="mb-3 text-sm font-medium text-gray-600">Past</div>

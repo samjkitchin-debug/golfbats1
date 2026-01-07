@@ -25,7 +25,7 @@ export type Attendee = {
   memberId?: string;
 };
 
-export type TripStatus = "open" | "closed" | "archived";
+export type TripStatus = "open" | "closed" | "archived" | "cancelled";
 
 export type TripLogistics = {
   meetingPoint?: string;
@@ -202,12 +202,25 @@ export function sortTripsByDateAsc(trips: Trip[]) {
   return [...trips].sort((a, b) => a.date.localeCompare(b.date));
 }
 
+// Get current time in SGT (UTC+8)
+function nowInSGT(): Date {
+  const now = new Date();
+  // SGT is UTC+8, so add 8 hours to UTC
+  const sgtOffset = 8 * 60 * 60 * 1000;
+  return new Date(now.getTime() + sgtOffset);
+}
+
+// Check if cutoff has passed (11:59pm SGT on cutoff date)
+function isCutoffPassed(cutoffAt: string | undefined): boolean {
+  if (!cutoffAt) return false;
+  const cutoff = new Date(cutoffAt);
+  const now = nowInSGT();
+  return now > cutoff;
+}
+
 export function isTripLocked(trip: Trip) {
   if (trip.status !== "open") return true;
-  if (trip.cutoffAt) {
-    const cutoff = new Date(trip.cutoffAt).getTime();
-    if (!Number.isNaN(cutoff) && Date.now() > cutoff) return true;
-  }
+  if (isCutoffPassed(trip.cutoffAt)) return true;
   return false;
 }
 

@@ -54,8 +54,22 @@
 | tees                  | meters                    | integer                  | NO          |
 | tees                  | par                       | integer                  | NO          |
 | tees                  | slope                     | integer                  | NO          |
+| tees                  | rating                    | numeric                  | YES         |
 | tees                  | created_at                | timestamp with time zone | NO          |
 | tees                  | updated_at                | timestamp with time zone | NO          |
+| tee_holes             | id                        | uuid                     | NO          |
+| tee_holes             | tee_id                    | uuid                     | NO          |
+| tee_holes             | hole_number               | integer                  | NO          |
+| tee_holes             | par                       | integer                  | YES         |
+| tee_holes             | meters                    | integer                  | YES         |
+| tee_holes             | stroke_index              | integer                  | YES         |
+| tee_holes             | created_at                | timestamp with time zone | NO          |
+| provider_course_map   | id                        | uuid                     | NO          |
+| provider_course_map   | provider                  | text                     | NO          |
+| provider_course_map   | provider_course_id         | text                     | NO          |
+| provider_course_map   | course_id                 | uuid                     | NO          |
+| provider_course_map   | created_at                | timestamp with time zone | NO          |
+| provider_course_map   | updated_at                | timestamp with time zone | NO          |
 | trip_attendees        | id                        | uuid                     | NO          |
 | trip_attendees        | trip_id                   | uuid                     | NO          |
 | trip_attendees        | member_id                 | uuid                     | NO          |
