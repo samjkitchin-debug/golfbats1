@@ -428,6 +428,7 @@ export async function clearTripResult(trips: Trip[], tripId: number): Promise<Tr
 
 export async function joinTrip(trips: Trip[], tripId: number, handicap: number | null = null): Promise<Trip[]> {
   try {
+    console.log("[joinTrip] Starting join for tripId:", tripId, "handicap:", handicap);
     const res = await fetch(`/api/trips/${tripId}/join`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -436,12 +437,23 @@ export async function joinTrip(trips: Trip[], tripId: number, handicap: number |
 
     const json = await res.json().catch(() => ({}));
 
+    console.log("[joinTrip] API response:", {
+      ok: res.ok,
+      status: res.status,
+      body: json,
+    });
+
     if (!res.ok) {
       throw new Error(json?.error || "Failed to join trip.");
     }
 
     // Reload trips from server with cache bypass to ensure we get the updated trip
-    return await loadTrips(true);
+    const updated = await loadTrips(true);
+    console.log("[joinTrip] Trips after reload:", {
+      total: updated.length,
+      joinedTrip: updated.find((t) => t.id === tripId),
+    });
+    return updated;
   } catch (error) {
     console.error("Failed to join trip:", error);
     throw error;

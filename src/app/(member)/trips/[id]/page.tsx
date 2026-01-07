@@ -175,6 +175,7 @@ export default function TripDetailPage() {
     if (myEntry) return;
 
     try {
+      console.log("[TripDetail] handleImIn called for tripId:", tripIdSafe);
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -191,11 +192,10 @@ export default function TripDetailPage() {
             ? memberData.declared_handicap
             : null;
 
-        let handicapValue: number | null = existingHandicap;
-
         // Prepare the join action function
         const continueWithHandicap = async (handicapValue: number | null) => {
           try {
+            console.log("[TripDetail] continueWithHandicap with value:", handicapValue);
             await supabase
               .from("members")
               .update({
@@ -208,6 +208,10 @@ export default function TripDetailPage() {
               .eq("id", user.id);
 
             const updated = await joinTrip(trips, tripIdSafe, handicapValue);
+            console.log("[TripDetail] joinTrip returned, updating trips state. Joined trip snapshot:", {
+              tripId: tripIdSafe,
+              trip: updated.find((t) => t.id === tripIdSafe),
+            });
             setTrips(updated);
           } catch (error) {
             console.error("Failed to join trip:", error);
