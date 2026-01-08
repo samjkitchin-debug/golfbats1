@@ -403,12 +403,12 @@ export default function TripsListPage() {
                   {/* Trip Name + Details Button */}
                   <div className="flex items-center justify-between gap-3 mb-2">
                     <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
-                    <Link
-                      href={`/trips/${t.id}`}
+                      <Link
+                        href={`/trips/${t.id}`}
                       className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                    >
+                      >
                       Details
-                    </Link>
+                      </Link>
                   </div>
 
                   {/* Course Name */}
@@ -440,15 +440,15 @@ export default function TripsListPage() {
                       <span className="text-blue-600 font-medium">Signups open {formatTripDateLong(signupOpenDateYmd)}</span>
                     ) : t.status?.toLowerCase() === "open" ? (
                       <span className="text-green-600 font-medium">Open for sign up</span>
-                    ) : null}
+                      ) : null}
                     {t.status?.toLowerCase() !== "cancelled" && (
                       <>
                         <span className="text-gray-500">·</span>
                         <span className="text-gray-500">{confirmedCount(t)} confirmed</span>
                       </>
                     )}
-                  </div>
-                  
+                    </div>
+
                   {/* Cancelled message */}
                   {t.status?.toLowerCase() === "cancelled" && (
                     <div className="mb-2 rounded-lg bg-red-50 border border-red-200 p-3">
@@ -472,7 +472,7 @@ export default function TripsListPage() {
                           onClick={() => void handleLeaveTrip(t.id)}
                           className="w-full rounded bg-red-600 px-4 py-2 text-sm text-white hover:opacity-95"
                         >
-                          I'm Out
+                          I'm out
                         </button>
                       ) : (
                         <button
@@ -483,10 +483,10 @@ export default function TripsListPage() {
                           }}
                           className="w-full rounded bg-black px-4 py-2 text-sm text-white hover:opacity-95"
                         >
-                          Join Trip
+                          Join trip
                         </button>
                       )}
-                    </div>
+                  </div>
                   )}
                 </li>
               );
@@ -498,7 +498,7 @@ export default function TripsListPage() {
       {/* Current Trip (Game Day: trip date passed, round in progress) */}
       {current.length > 0 && (
         <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="mb-3 text-sm font-medium text-gray-600">Game Day</div>
+          <div className="mb-3 text-sm font-medium text-gray-600">Game day</div>
 
           {current.map((t) => {
             const { title, detail } = getTripCourseText(t, courses);

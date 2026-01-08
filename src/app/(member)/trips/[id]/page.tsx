@@ -236,14 +236,14 @@ export default function TripDetailPage() {
           // Show confirm modal to ask if they want to edit
           setConfirmModal({
             isOpen: true,
-            title: "Edit Handicap?",
+            title: "Edit handicap?",
             message: `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`,
             onConfirm: () => {
               setConfirmModal({ ...confirmModal, isOpen: false });
               // Show prompt modal for editing handicap
               setPromptModal({
                 isOpen: true,
-                title: "Enter Handicap",
+                title: "Enter handicap",
                 message: "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
                 defaultValue: String(existingHandicap),
                 placeholder: "0–36",
@@ -280,7 +280,7 @@ export default function TripDetailPage() {
           // Show prompt modal for new handicap
           setPromptModal({
             isOpen: true,
-            title: "Enter Handicap",
+            title: "Enter handicap",
             message: "Please enter your current handicap (0–36), or leave blank if you are not sure yet:",
             defaultValue: "",
             placeholder: "0–36",
@@ -318,7 +318,7 @@ export default function TripDetailPage() {
   async function handleImOut() {
     setConfirmModal({
       isOpen: true,
-      title: "Leave Trip?",
+      title: "Leave trip?",
       message: "Are you sure you want to leave this trip?",
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });

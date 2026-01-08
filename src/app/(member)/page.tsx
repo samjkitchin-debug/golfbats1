@@ -282,14 +282,14 @@ export default function HomePage() {
           // Show confirm modal to ask if they want to edit
           setConfirmModal({
             isOpen: true,
-            title: "Edit Handicap?",
+            title: "Edit handicap?",
             message: `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`,
             onConfirm: () => {
               setConfirmModal({ ...confirmModal, isOpen: false });
               // Show prompt modal for editing handicap
               setPromptModal({
                 isOpen: true,
-                title: "Enter Handicap",
+                title: "Enter handicap",
                 message: "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
                 defaultValue: String(existingHandicap),
                 placeholder: "0–36",
@@ -326,8 +326,8 @@ export default function HomePage() {
           // Show prompt modal for new handicap
           setPromptModal({
             isOpen: true,
-            title: "Enter Handicap",
-            message: "Please enter your current handicap (0–36), or leave blank if you are not sure yet:",
+                title: "Enter handicap",
+                message: "Please enter your current handicap (0–36), or leave blank if you are not sure yet:",
             defaultValue: "",
             placeholder: "0–36",
             onConfirm: (input: string) => {
@@ -421,7 +421,7 @@ export default function HomePage() {
           {formatTripDateLong(displayTrip.date)}
           {displayTrip.format && ` · ${displayTrip.format}`}
           {displayTrip.ferry && ` · Ferry ${displayTrip.ferry}`}
-          {isCurrentTrip ? " · Game Day" : displayTrip.status === "open" && !isScheduled ? " · Open for sign up" : displayTrip.status === "closed" ? " · Signups closed" : ""}
+          {isCurrentTrip ? " · Game day" : displayTrip.status === "open" && !isScheduled ? " · Open for sign up" : displayTrip.status === "closed" ? " · Signups closed" : ""}
           {isScheduled && signupOpenDateYmd ? ` · Signups open ${formatTripDateLong(signupOpenDateYmd)}` : ""}
         </div>
 
@@ -447,7 +447,7 @@ export default function HomePage() {
         {displayTrip.status !== "cancelled" && isCurrentTrip && (
           <div className="mb-2 rounded-lg bg-orange-50 border border-orange-200 p-3">
             <div className="text-sm text-orange-900">
-              <span className="font-semibold">Game Day</span> — The round is in progress. Results will be posted after the round.
+              <span className="font-semibold">Game day</span> — The round is in progress. Results will be posted after the round.
             </div>
           </div>
         )}
@@ -473,13 +473,13 @@ export default function HomePage() {
                 disabled={true}
                 className="flex-1 rounded bg-green-600 py-2 text-sm text-white cursor-default"
               >
-                You're In
+                You're in
               </button>
               <button
                 onClick={handleImOut}
                 className="flex-1 rounded bg-red-600 py-2 text-sm text-white hover:opacity-95"
               >
-                I’m Out
+                I'm out
               </button>
             </>
           ) : (
@@ -491,7 +491,7 @@ export default function HomePage() {
                 joinDisabled ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-black hover:opacity-95"
               }`}
             >
-              Join Trip
+              Join trip
             </button>
           )}
         </div>

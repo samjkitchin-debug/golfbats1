@@ -132,7 +132,7 @@ export default function AdminCoursesPage() {
 
       {/* Add Course */}
       <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-sm font-medium text-gray-700">Add Course</div>
+        <div className="text-sm font-medium text-gray-700">Add course</div>
 
         <div className="mt-3 grid gap-2">
           <input
@@ -158,7 +158,7 @@ export default function AdminCoursesPage() {
             onClick={handleAddCourse}
             className="mt-1 rounded-md bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
           >
-            Add Course
+            Add course
           </button>
 
           <div className="text-xs text-gray-500">

@@ -126,12 +126,12 @@ export default function AdminPage() {
     <main>
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-gray-900">Admin Dashboard</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Admin dashboard</h1>
           <button
             className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white"
             onClick={createNewTrip}
           >
-            Create Trip
+            Create trip
           </button>
         </div>
 

@@ -170,7 +170,7 @@ export default function AdminTripPage() {
   const [attendeesSearchQuery, setAttendeesSearchQuery] = useState<string>("");
   
   // Manual phase navigation (allows viewing any phase regardless of trip state)
-  const [selectedPhase, setSelectedPhase] = useState<0 | 1 | 2 | 3 | 4 | null>(null);
+  const [selectedPhase, setSelectedPhase] = useState<0 | 1 | 2 | 3 | 4 | 5 | null>(null);
 
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
@@ -247,7 +247,7 @@ export default function AdminTripPage() {
       });
       setPhase0Posted(false);
     }
-  }, [trip?.id, trip?.date, trip?.courseId, trip?.teeId, trip?.name, trip?.format, trip?.cutoffAt, phase0FormDirty, phase0Editing, phase0Posted]);
+  }, [trip?.id, trip?.date, trip?.courseId, trip?.teeId, trip?.name, trip?.format, trip?.cutoffAt, phase0FormDirty, phase0Editing]);
   
   // Initialize Open for Signups form from trip data
   useEffect(() => {
@@ -559,13 +559,17 @@ export default function AdminTripPage() {
   const courseText = getTripCourseText(tripSafe, courses);
   
   // Use manually selected phase if set, otherwise use actual phase
-  // Phase numbers: 0=Scheduled, 1=OpenForSignups, 2=SignupsClosed, 3=GameDay, 4=Results (same as Archived for now)
+  // Phase numbers: 0=Scheduled, 1=OpenForSignups, 2=SignupsClosed, 3=GameDay, 4=Results, 5=Archived
+  // Auto mode shows the actual current phase based on trip state
+  // Manual mode allows navigation to any phase for editing/correction
   const showScheduled = selectedPhase === 0 || (selectedPhase === null && isScheduled);
   const showOpenForSignups = selectedPhase === 1 || (selectedPhase === null && isOpenForSignups);
   const showSignupsClosed = selectedPhase === 2 || (selectedPhase === null && isSignupsClosed);
   const showGameDay = selectedPhase === 3 || (selectedPhase === null && isGameDay);
-  const showResults = selectedPhase === 4; // Results form only shows when manually selected
-  const showArchived = selectedPhase === null && isArchived; // Archived shows in auto mode when results exist
+  // Results shows when results exist (editable state) - auto mode shows Results for editing
+  // Archived is read-only view - only accessible via manual navigation or after publishing
+  const showResults = selectedPhase === 4 || (selectedPhase === null && isResults);
+  const showArchived = selectedPhase === 5; // Archived only via manual navigation
 
   async function commit(next: Trip[]) {
     setTrips(next);
@@ -642,18 +646,18 @@ export default function AdminTripPage() {
     }
     
     try {
-      // Save all Scheduled fields at once
-      await Promise.all([
-        patchTrip({ date: phase0Form.date }),
-        patchTrip({ cutoffAt: fromDateValue(phase0Form.cutoffDate) }),
-        patchTrip({ format: phase0Form.format || undefined }),
-        patchTrip({ name: phase0Form.tripName || undefined }),
-        setTripCourse(trips, tripIdSafe, phase0Form.courseId, phase0Form.teeId),
-      ]);
+      // Save all Scheduled fields in a single update to avoid race conditions
+      const updated = await updateTrip(trips, tripIdSafe, {
+        date: phase0Form.date,
+        cutoffAt: fromDateValue(phase0Form.cutoffDate),
+        format: phase0Form.format || undefined,
+        name: phase0Form.tripName || undefined,
+        courseId: phase0Form.courseId,
+        teeId: phase0Form.teeId,
+      });
       
-      // Reload trips to get fresh data
-      const freshTrips = await loadTrips(true);
-      setTrips(freshTrips);
+      // Update state with the fresh data from server
+      setTrips(updated);
       setPhase0FormDirty(false);
       setPhase0Posted(true);
       setPhase0Editing(false);
@@ -682,18 +686,18 @@ export default function AdminTripPage() {
     }
     
     try {
-      // Save all Scheduled fields at once
-      await Promise.all([
-        patchTrip({ date: phase0Form.date }),
-        patchTrip({ cutoffAt: fromDateValue(phase0Form.cutoffDate) }),
-        patchTrip({ format: phase0Form.format || undefined }),
-        patchTrip({ name: phase0Form.tripName || undefined }),
-        setTripCourse(trips, tripIdSafe, phase0Form.courseId, phase0Form.teeId),
-      ]);
+      // Save all Scheduled fields in a single update to avoid race conditions
+      const updated = await updateTrip(trips, tripIdSafe, {
+        date: phase0Form.date,
+        cutoffAt: fromDateValue(phase0Form.cutoffDate),
+        format: phase0Form.format || undefined,
+        name: phase0Form.tripName || undefined,
+        courseId: phase0Form.courseId,
+        teeId: phase0Form.teeId,
+      });
       
-      // Reload trips to get fresh data
-      const freshTrips = await loadTrips(true);
-      setTrips(freshTrips);
+      // Update state with the fresh data from server
+      setTrips(updated);
       setPhase0FormDirty(false);
       setPhase0Editing(false);
       
@@ -763,26 +767,6 @@ export default function AdminTripPage() {
     }
   }
   
-  async function onCloseRSVPAndPostLogistics() {
-    // Close signups (move to Signups Closed) and save Phase 1 form if dirty
-    if (phase1FormDirty) {
-      await onSavePhase1Trip();
-    }
-    
-    try {
-      const updated = await updateTrip(trips, tripIdSafe, { status: "closed" });
-      setTrips(updated);
-      
-      // Reload trips to get fresh data
-      const freshTrips = await loadTrips(true);
-      setTrips(freshTrips);
-      
-      alert("Signups closed. You can now post logistics.");
-    } catch (error) {
-      console.error("Failed to close RSVP:", error);
-      alert(`Failed to close RSVP: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
   
   // Phase 2 form handlers
   function updatePhase2Form(field: keyof typeof phase2Form, value: string) {
@@ -844,6 +828,9 @@ export default function AdminTripPage() {
       // Update form state
       setPhase3FormDirty(false);
       
+      // Navigate to Archived view
+      setSelectedPhase(5);
+      
       alert("Results published and trip archived!");
     } catch (error) {
       console.error("Failed to publish results:", error);
@@ -872,60 +859,6 @@ export default function AdminTripPage() {
     }
   }
 
-  async function onRoundComplete() {
-    // Move from Game Day to Results (ready for score entry)
-    // Results phase is determined by having results, so we need to create empty result
-    // For now, this is a placeholder - in future this might trigger scorecard completion
-    try {
-      // Reload trips to get fresh data
-      const freshTrips = await loadTrips(true);
-      setTrips(freshTrips);
-    } catch (error) {
-      console.error("Failed to complete round:", error);
-      alert(`Failed to complete round: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  async function onTripCompletedPostResults() {
-    // Move from Signups Closed to Game Day (round is starting)
-    // Set trip date to today if it hasn't passed yet
-    const today = new Date().toISOString().split("T")[0];
-    if (tripSafe.date > today) {
-      try {
-        const updated = await updateTrip(trips, tripIdSafe, { date: today });
-        setTrips(updated);
-      } catch (error) {
-        console.error("Failed to mark trip completed:", error);
-        alert(`Failed to mark trip completed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  }
-
-  async function onReopenTrip() {
-    // Reopen trip to allow more attendees (go back to Open for Signups)
-    try {
-      const updated = await updateTrip(trips, tripIdSafe, { status: "open" });
-      setTrips(updated);
-    } catch (error) {
-      console.error("Failed to reopen trip:", error);
-      alert(`Failed to reopen trip: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  
-  async function onReturnToSignupsClosed() {
-    // Return to Signups Closed (close the trip again and reload)
-    try {
-      const updated = await updateTrip(trips, tripIdSafe, { status: "closed" });
-      setTrips(updated);
-      
-      // Reload trips to get fresh data and recalculate phases
-      const freshTrips = await loadTrips(true);
-      setTrips(freshTrips);
-    } catch (error) {
-      console.error("Failed to return to Signups Closed:", error);
-      alert(`Failed to return to Signups Closed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
 
 
 
@@ -979,8 +912,88 @@ export default function AdminTripPage() {
     }
   }
   
-  function navigateToPhase(phase: 0 | 1 | 2 | 3 | 4 | null) {
+  function navigateToPhase(phase: 0 | 1 | 2 | 3 | 4 | 5 | null) {
     setSelectedPhase(phase);
+  }
+  
+  // Phase navigation helpers - move forward/backward through phases
+  async function moveToOpenForSignups() {
+    // Manually open signups (move from Scheduled to Open for Signups)
+    // This happens automatically 30 days before, but can be done manually
+    try {
+      // Ensure trip is open (should already be, but ensure it)
+      const updated = await updateTrip(trips, tripIdSafe, { status: "open" });
+      setTrips(updated);
+      setSelectedPhase(1); // Navigate to Open for Signups
+    } catch (error) {
+      console.error("Failed to open signups:", error);
+      alert(`Failed to open signups: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  async function moveToSignupsClosed() {
+    // Manually close signups (move from Open for Signups to Signups Closed)
+    try {
+      const updated = await updateTrip(trips, tripIdSafe, { status: "closed" });
+      setTrips(updated);
+      setSelectedPhase(2); // Navigate to Signups Closed
+    } catch (error) {
+      console.error("Failed to close signups:", error);
+      alert(`Failed to close signups: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  async function moveToGameDay() {
+    // Manually start round (move from Signups Closed to Game Day)
+    // Set trip date to today if it hasn't passed yet
+    const today = new Date().toISOString().split("T")[0];
+    try {
+      if (tripSafe.date > today) {
+        const updated = await updateTrip(trips, tripIdSafe, { date: today });
+        setTrips(updated);
+      }
+      // Ensure status is closed for Game Day
+      if (tripSafe.status !== "closed") {
+        const updated = await updateTrip(trips, tripIdSafe, { status: "closed" });
+        setTrips(updated);
+      }
+      setSelectedPhase(3); // Navigate to Game Day
+    } catch (error) {
+      console.error("Failed to start round:", error);
+      alert(`Failed to start round: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  async function moveToResults() {
+    // Move from Game Day to Results (ready for score entry)
+    setSelectedPhase(4); // Navigate to Results
+  }
+  
+  async function moveToArchived() {
+    // Move from Results to Archived (results published)
+    // This is handled by onPublishResults, but we can navigate to view archived
+    setSelectedPhase(5);
+  }
+  
+  // Back navigation helpers
+  function goBackToScheduled() {
+    setSelectedPhase(0);
+  }
+  
+  function goBackToOpenForSignups() {
+    setSelectedPhase(1);
+  }
+  
+  function goBackToSignupsClosed() {
+    setSelectedPhase(2);
+  }
+  
+  function goBackToGameDay() {
+    setSelectedPhase(3);
+  }
+  
+  function goBackToResults() {
+    setSelectedPhase(4);
   }
 
   async function onExportTravelAgentCsv() {
@@ -1101,13 +1114,13 @@ export default function AdminTripPage() {
                 onClick={onCancelTrip}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:border-gray-300"
               >
-                Cancel Trip
+                Cancel trip
               </button>
               <button
                 onClick={onDeleteTrip}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:border-gray-300 hover:text-red-600"
               >
-                Delete Trip
+                Delete trip
               </button>
             </div>
           </div>
@@ -1186,9 +1199,23 @@ export default function AdminTripPage() {
                 <button
                   onClick={() => navigateToPhase(3)}
                   className={`px-1.5 py-0.5 rounded ${selectedPhase === 3 ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
-                  title="View Phase 3"
+                  title="View Game Day"
                 >
                   3
+                </button>
+                <button
+                  onClick={() => navigateToPhase(4)}
+                  className={`px-1.5 py-0.5 rounded ${selectedPhase === 4 ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
+                  title="View Results"
+                >
+                  4
+                </button>
+                <button
+                  onClick={() => navigateToPhase(5)}
+                  className={`px-1.5 py-0.5 rounded ${selectedPhase === 5 ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
+                  title="View Archived"
+                >
+                  5
                 </button>
                 <button
                   onClick={() => navigateToPhase(null)}
@@ -1223,10 +1250,19 @@ export default function AdminTripPage() {
       {/* Scheduled - Form-based, no auto-save */}
       {showScheduled && (
         <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-gray-900">Scheduled</h2>
-          <p className="mb-4 text-sm text-gray-600">
-            Fill in the trip details below, then click "Post Trip" to save. Signups will automatically open 30 days before the trip date.
-          </p>
+          <div className="mb-3 flex items-center gap-3">
+            {/* No back button on first phase */}
+            <h2 className="text-lg font-semibold text-gray-900">Scheduled</h2>
+          </div>
+          {!phase0Posted ? (
+            <p className="mb-4 text-sm text-gray-600">
+              Fill in the trip details below, then click "Post trip" to save. Signups will automatically open 30 days before the trip date.
+            </p>
+          ) : (
+            <p className="mb-4 text-sm text-gray-600">
+              Trip details are set. Signups will automatically open 30 days before the trip date, or you can manually open signups below.
+            </p>
+          )}
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block md:col-span-2">
@@ -1247,7 +1283,7 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Trip Date <span className="text-red-600">*</span></div>
+              <div className="text-sm font-medium text-gray-800">Trip date <span className="text-red-600">*</span></div>
               {phase0Posted && !phase0Editing ? (
                 <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
                   {phase0Form.date ? formatDateForDisplay(phase0Form.date) : "—"}
@@ -1364,7 +1400,7 @@ export default function AdminTripPage() {
                     disabled={!phase0Form.date || !phase0Form.courseId}
                     className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Post Trip
+                    Post trip
                   </button>
                 )}
                 {phase0Posted && !phase0Editing && (
@@ -1372,7 +1408,7 @@ export default function AdminTripPage() {
                     disabled
                     className="rounded-lg bg-gray-400 px-4 py-2 text-sm font-medium text-white cursor-not-allowed"
                   >
-                    Trip Posted
+                    Trip posted
                   </button>
                 )}
                 {phase0FormDirty && !phase0Posted && (
@@ -1387,12 +1423,20 @@ export default function AdminTripPage() {
             </div>
             <div className="flex gap-2">
               {phase0Posted && !phase0Editing && (
-                <button
-                  onClick={onEditPhase0}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Edit
-                </button>
+                <>
+                  <button
+                    onClick={onEditPhase0}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={moveToOpenForSignups}
+                    className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                  >
+                    Open signups →
+                  </button>
+                </>
               )}
               {phase0Posted && phase0Editing && (
                 <>
@@ -1407,7 +1451,7 @@ export default function AdminTripPage() {
                     disabled={!phase0Form.date || !phase0Form.courseId}
                     className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Save Changes
+                    Save changes
                   </button>
                 </>
               )}
@@ -1419,7 +1463,15 @@ export default function AdminTripPage() {
       {/* Open for Signups - Read-only view */}
       {showOpenForSignups && (
         <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-gray-900">Open for Signups</h2>
+          <div className="mb-3 flex items-center gap-3">
+            <button
+              onClick={goBackToScheduled}
+              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+            >
+              ← Back
+            </button>
+            <h2 className="text-lg font-semibold text-gray-900">Open for Signups</h2>
+          </div>
           <p className="mb-4 text-sm text-gray-600">
             Trip details are set. Signups will automatically close at 11:59pm SGT on the cutoff date, or you can manually close it below.
           </p>
@@ -1433,7 +1485,7 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Trip Date</div>
+              <div className="text-sm font-medium text-gray-800">Trip date</div>
               <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
                 {phase1Form.date ? formatDateForDisplay(phase1Form.date) : "—"}
               </div>
@@ -1480,10 +1532,10 @@ export default function AdminTripPage() {
           
           <div className="mt-6 flex justify-end">
             <button
-              onClick={onCloseRSVPAndPostLogistics}
-              className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              onClick={moveToSignupsClosed}
+              className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
-              Manually Close Signups
+              Close signups →
             </button>
           </div>
         </section>
@@ -1492,7 +1544,15 @@ export default function AdminTripPage() {
       {/* Signups Closed - Form-based, no auto-save */}
       {showSignupsClosed && (
         <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-gray-900">Signups Closed</h2>
+          <div className="mb-3 flex items-center gap-3">
+            <button
+              onClick={goBackToOpenForSignups}
+              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+            >
+              ← Back
+            </button>
+            <h2 className="text-lg font-semibold text-gray-900">Signups Closed</h2>
+          </div>
           <p className="mb-4 text-sm text-gray-600">
             Add logistics information that will be displayed on the trip details page for attendees.
           </p>
@@ -1554,22 +1614,16 @@ export default function AdminTripPage() {
           <div className="mt-6 flex gap-3 justify-between">
             <div className="flex gap-3">
               <button
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                onClick={onReopenTrip}
-              >
-                Manually Reopen Trip & Return to Open for Signups
-              </button>
-              <button
                 onClick={onPostLogistics}
                 className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
               >
-                Post Logistics
+                Post logistics
               </button>
               <button
                 className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                 onClick={onExportTravelAgentCsv}
               >
-                Export for Travel Agent (CSV)
+                Export for travel agent (CSV)
               </button>
               {phase2FormDirty && (
                 <span className="flex items-center text-sm text-gray-500">Unsaved changes</span>
@@ -1577,10 +1631,10 @@ export default function AdminTripPage() {
             </div>
             <div className="flex gap-2">
               <button
-                className="rounded-lg bg-brand-red px-4 py-2 text-sm font-medium text-white hover:opacity-95"
-                onClick={onTripCompletedPostResults}
+                className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                onClick={moveToGameDay}
               >
-                Round Starting - Move to Game Day
+                Start round →
               </button>
             </div>
           </div>
@@ -1590,16 +1644,24 @@ export default function AdminTripPage() {
       {/* Game Day - Placeholder for future scorecard/live scoring */}
       {showGameDay && (
         <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-gray-900">Game Day</h2>
+          <div className="mb-3 flex items-center gap-3">
+            <button
+              onClick={goBackToSignupsClosed}
+              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+            >
+              ← Back
+            </button>
+            <h2 className="text-lg font-semibold text-gray-900">Game Day</h2>
+          </div>
           <p className="mb-4 text-sm text-gray-600">
             The round is in progress. Scorecard and live scoring will be available here.
           </p>
-          <div className="mt-6 flex gap-3 justify-between">
+          <div className="mt-6 flex justify-end">
             <button
-              onClick={onRoundComplete}
+              onClick={moveToResults}
               className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
-              Round Complete
+              Round complete →
             </button>
           </div>
         </section>
@@ -1608,7 +1670,15 @@ export default function AdminTripPage() {
       {/* Results - Form-based, no auto-save */}
       {showResults && (
         <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-gray-900">Results</h2>
+          <div className="mb-3 flex items-center gap-3">
+            <button
+              onClick={goBackToGameDay}
+              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+            >
+              ← Back
+            </button>
+            <h2 className="text-lg font-semibold text-gray-900">Results</h2>
+          </div>
           <p className="mb-4 text-sm text-gray-600">
             Enter the leaderboard and notes. Once published, the trip will be archived.
           </p>
@@ -1641,16 +1711,18 @@ export default function AdminTripPage() {
           
           <div className="mt-6 flex gap-3 justify-between">
             <div className="flex gap-3">
+              {phase3FormDirty && (
+                <span className="flex items-center text-sm text-gray-500">Unsaved changes</span>
+              )}
+            </div>
+            <div className="flex gap-2">
               <button
                 onClick={onPublishResults}
                 disabled={!phase3Form.leaderboard.trim()}
                 className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Publish Results & Archive
+                Publish & archive →
               </button>
-              {phase3FormDirty && (
-                <span className="flex items-center text-sm text-gray-500">Unsaved changes</span>
-              )}
             </div>
           </div>
         </section>
@@ -1659,7 +1731,15 @@ export default function AdminTripPage() {
       {/* Archived - Show archived trip with results */}
       {showArchived && (
         <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-gray-900">Archived</h2>
+          <div className="mb-3 flex items-center gap-3">
+            <button
+              onClick={goBackToResults}
+              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+            >
+              ← Back
+            </button>
+            <h2 className="text-lg font-semibold text-gray-900">Archived</h2>
+          </div>
           <p className="mb-4 text-sm text-gray-600">
             This trip has been archived. Results are published and visible to members.
           </p>
@@ -1776,7 +1856,7 @@ export default function AdminTripPage() {
       {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={showDeleteModal}
-        title="Delete Trip"
+        title="Delete trip"
         message="Are you sure you want to delete this trip? This action cannot be undone."
         confirmLabel="Delete"
         cancelLabel="Cancel"
@@ -1788,9 +1868,9 @@ export default function AdminTripPage() {
       {/* Cancel Confirmation Modal */}
       <ConfirmModal
         isOpen={showCancelModal}
-        title="Cancel Trip"
+        title="Cancel trip"
         message="Are you sure you want to cancel this trip? Members will still see it, but it will be marked as cancelled."
-        confirmLabel="Cancel Trip"
+        confirmLabel="Cancel trip"
         cancelLabel="Keep Active"
         onConfirm={confirmCancelTrip}
         onCancel={() => setShowCancelModal(false)}
