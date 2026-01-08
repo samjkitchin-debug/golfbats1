@@ -22,7 +22,7 @@
   --color-surface: #ffffff;   /* cards stay white */
 
   /* Fonts — universal */
-  --font-sans: "Aptos", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
+  --font-sans: var(--font-aptos), "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
     BlinkMacSystemFont, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;

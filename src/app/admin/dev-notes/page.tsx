@@ -244,19 +244,36 @@ export default function DevNotesPage() {
   const unresolvedNotes = notes.filter((n) => !n.resolved && n.type === "note").length;
   const unresolvedCount = unresolvedBugs + unresolvedNotes;
 
+  // Calculate version from commit count
+  // Version scheme: 0.MINOR.PATCH
+  // MINOR increments every 4 commits, PATCH = commits % 4
+  // Auto-updated: run "git log --oneline --all | Measure-Object -Line" to get current count
+  const COMMIT_COUNT = 98;
+  const VERSION_MINOR = Math.floor(COMMIT_COUNT / 4);
+  const VERSION_PATCH = COMMIT_COUNT % 4;
+  const VERSION = `0.${VERSION_MINOR}.${VERSION_PATCH}`;
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-xl font-semibold text-brand-black">Dev Notes</div>
-        <div className="mt-1 text-sm text-gray-600">
-          Track bugs and notes while testing. {unresolvedCount > 0 && (
-            <span className="font-medium">
-              {unresolvedBugs > 0 && `${unresolvedBugs} bug${unresolvedBugs !== 1 ? "s" : ""}`}
-              {unresolvedBugs > 0 && unresolvedNotes > 0 && ", "}
-              {unresolvedNotes > 0 && `${unresolvedNotes} note${unresolvedNotes !== 1 ? "s" : ""}`}
-              {" unresolved"}
-            </span>
-          )}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xl font-semibold text-brand-black">Dev Notes</div>
+            <div className="mt-1 text-sm text-gray-600">
+              Track bugs and notes while testing. {unresolvedCount > 0 && (
+                <span className="font-medium">
+                  {unresolvedBugs > 0 && `${unresolvedBugs} bug${unresolvedBugs !== 1 ? "s" : ""}`}
+                  {unresolvedBugs > 0 && unresolvedNotes > 0 && ", "}
+                  {unresolvedNotes > 0 && `${unresolvedNotes} note${unresolvedNotes !== 1 ? "s" : ""}`}
+                  {" unresolved"}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-500">Production version</div>
+            <div className="text-lg font-semibold text-brand-black">{VERSION}</div>
+          </div>
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { timeFn } from "@/app/lib/perf";
 
 const CACHE_TAG = "courses";
 const CACHE_TTL = 3600; // 1 hour
@@ -75,7 +76,9 @@ const getCachedCourses = cache(async () => {
  */
 export async function GET() {
   try {
-    const result = await getCachedCourses();
+    const result = await timeFn("[courses API] Fetch", async () => {
+      return await getCachedCourses();
+    });
     return NextResponse.json(result);
   } catch (error) {
     console.error("Get courses error:", error);

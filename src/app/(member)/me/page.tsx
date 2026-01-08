@@ -963,12 +963,20 @@ function PassportBlock({
 
           <div>
             <div className="text-xs font-semibold">Passport country</div>
-            <input
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-              value={passportCountry}
+            <select
+              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none bg-white"
+              value={passportCountry || ""}
               onChange={(e) => setPassportCountry(e.target.value)}
-              placeholder="e.g. United Kingdom"
-            />
+            >
+              <option value="" disabled>
+                Select passport country…
+              </option>
+              {COUNTRIES.map((country) => (
+                <option key={country} value={country}>
+                  {country}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>

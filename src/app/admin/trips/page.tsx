@@ -157,6 +157,7 @@ export default function AdminTripsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b">
               <tr className="text-gray-700">
+                <th className="px-4 py-3">Trip name</th>
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Course</th>
                 <th className="px-4 py-3">Format</th>
@@ -168,7 +169,8 @@ export default function AdminTripsPage() {
             <tbody>
               {sortedTrips.map((t) => (
                 <tr key={t.id} className="border-b last:border-b-0">
-                  <td className="px-4 py-3 font-medium text-gray-900">{t.date}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{t.name || "Untitled Trip"}</td>
+                  <td className="px-4 py-3 text-gray-800">{t.date}</td>
                   <td className="px-4 py-3 text-gray-800">{courseName(t)}</td>
                   <td className="px-4 py-3 text-gray-800">{t.format}</td>
                   <td className="px-4 py-3 text-gray-800">{t.capacity}</td>

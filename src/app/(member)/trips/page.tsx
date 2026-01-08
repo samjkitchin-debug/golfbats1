@@ -9,6 +9,113 @@ import { loadTrips, joinTrip, leaveTrip, type Trip, sortTripsByDateAsc } from ".
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
 
+// Helper function to check if cutoff has passed (11:59pm SGT on cutoff date)
+function isCutoffPassed(cutoffAt: string | undefined): boolean {
+  if (!cutoffAt) return false;
+  const cutoff = new Date(cutoffAt);
+  const now = new Date();
+  // SGT is UTC+8, so add 8 hours to UTC
+  const sgtOffset = 8 * 60 * 60 * 1000;
+  const nowSGT = new Date(now.getTime() + sgtOffset);
+  return nowSGT > cutoff;
+}
+
+// Helper function to determine trip phase
+type TripPhase = "scheduled" | "openForSignups" | "signupsClosed" | "gameDay" | "results" | "archived";
+
+function getTripPhase(trip: Trip): TripPhase {
+  const now = Date.now();
+  const tripDate = new Date(trip.date + "T00:00:00").getTime();
+  const hasResults = !!trip.result;
+  const tripDatePassed = now >= tripDate;
+  const signupOpenAt = tripDate - 30 * 24 * 60 * 60 * 1000;
+  const cutoffPassed = isCutoffPassed(trip.cutoffAt);
+
+  // Archived (results published)
+  if (hasResults) {
+    return "archived";
+  }
+
+  // Results (scores entered but not yet archived)
+  // Note: Currently Results and Archived are the same (has results)
+  if (hasResults) {
+    return "results";
+  }
+
+  // Scheduled (trip is open, but signups aren't open until 30 days before trip date)
+  // Also show Scheduled if trip doesn't have a course yet (new trip being set up)
+  const isScheduled = !trip.courseId && trip.status === "open";
+  if (isScheduled) {
+    return "scheduled";
+  }
+
+  // Open for Signups (trip is open, within 30 days of trip date, before cutoff)
+  // OR trip has been posted (has courseId) and status is "open" (allows manual opening)
+  const isOpenForSignups = trip.status === "open" && !tripDatePassed && !cutoffPassed && (
+    (Number.isFinite(signupOpenAt) && now >= signupOpenAt) || // Automatic: within 30 days
+    (trip.courseId && trip.date) // Manual: trip has been posted
+  );
+  if (isOpenForSignups) {
+    return "openForSignups";
+  }
+
+  // Signups Closed (trip is closed, before trip date, after cutoff, or after trip date but no results)
+  const isSignupsClosed = trip.status === "closed" && !hasResults;
+  if (isSignupsClosed && !tripDatePassed) {
+    return "signupsClosed";
+  }
+
+  // Game Day (trip date passed, no results yet, trip is closed - represents the round being played)
+  if (tripDatePassed && !hasResults && trip.status === "closed") {
+    return "gameDay";
+  }
+
+  // Fallback
+  return "scheduled";
+}
+
+// Helper function to determine if logistics highlight band should be shown
+function shouldShowLogistics(trip: Trip): boolean {
+  const phase = getTripPhase(trip);
+  
+  // Show logistics band for Signups Closed or Game Day phases
+  if (phase !== "signupsClosed" && phase !== "gameDay") {
+    return false;
+  }
+
+  // Check if at least one logistics field exists
+  const hasLogistics = !!(
+    trip.ferry ||
+    trip.logistics?.meetTime ||
+    trip.logistics?.meetingPoint
+  );
+
+  return hasLogistics;
+}
+
+// Helper function to get logistics lines for display
+function getLogisticsLines(trip: Trip): {
+  meetTime: string | null;
+  meetingPoint: string | null;
+  ferryName: string | null;
+  ferryDetailsShort: string | null;
+} {
+  return {
+    meetTime: trip.logistics?.meetTime?.trim() || null,
+    meetingPoint: trip.logistics?.meetingPoint?.trim() || null,
+    ferryName: trip.ferry?.trim() || null,
+    ferryDetailsShort: (() => {
+      const details = trip.logistics?.ferryDetails?.trim();
+      if (!details) return null;
+      // Only include if short (max 80 chars), otherwise leave for details page
+      if (details.length <= 80) {
+        return details;
+      }
+      return null;
+    })(),
+  };
+}
+
 export default function TripsListPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -398,6 +505,10 @@ export default function TripsListPage() {
                   : undefined;
               const joinDisabled = isScheduled || t.status !== "open";
 
+              const tripPhase = getTripPhase(t);
+              const showLogisticsBand = shouldShowLogistics(t);
+              const logisticsLines = showLogisticsBand ? getLogisticsLines(t) : null;
+
               return (
                 <li key={t.id} className="py-3">
                   {/* Trip Name + Details Button */}
@@ -410,6 +521,46 @@ export default function TripsListPage() {
                       Details
                       </Link>
                   </div>
+
+                  {/* Logistics Highlight Band - Only for Signups Closed or Game Day with logistics */}
+                  {showLogisticsBand && (
+                    <div className="mb-3 rounded-lg border-l-4 border-blue-500 bg-slate-50 px-4 py-3 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <svg className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="text-sm font-semibold text-gray-900">Logistics</span>
+                      </div>
+                      {logisticsLines && (
+                        <div className="space-y-1 text-sm text-gray-800">
+                          {/* First emphasis line: Meet time (highest priority) */}
+                          {logisticsLines.meetTime && (
+                            <div className="font-medium text-gray-900">Meet {logisticsLines.meetTime}</div>
+                          )}
+                          {/* Second line: Meeting point */}
+                          {logisticsLines.meetingPoint && (
+                            <div>{logisticsLines.meetingPoint}</div>
+                          )}
+                          {/* Third line: Ferry name */}
+                          {logisticsLines.ferryName && (
+                            <div>Ferry: {logisticsLines.ferryName}</div>
+                          )}
+                          {/* Optional: Short ferry details snippet */}
+                          {logisticsLines.ferryDetailsShort && (
+                            <div className="mt-1 text-xs text-gray-600">{logisticsLines.ferryDetailsShort}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Logistics placeholder for Signups Closed/Game Day without logistics */}
+                  {!showLogisticsBand && (tripPhase === "signupsClosed" || tripPhase === "gameDay") && (
+                    <div className="mb-3 rounded-lg bg-slate-50 px-4 py-3 border border-gray-200">
+                      <div className="text-xs text-gray-500">Logistics coming soon</div>
+                    </div>
+                  )}
 
                   {/* Course Name */}
                   <div className="text-base font-medium text-gray-800 mb-1">
@@ -427,7 +578,6 @@ export default function TripsListPage() {
                   <div className="text-sm text-gray-900 mb-1.5">
                     {formatTripDateLong(t.date)}
                     {t.format && <span className="text-gray-600"> · {t.format}</span>}
-                    {t.ferry && <span className="text-gray-600"> · Ferry {t.ferry}</span>}
                   </div>
 
                   {/* Status + Confirmed Count Together */}
@@ -456,8 +606,8 @@ export default function TripsListPage() {
                     </div>
                   )}
 
-                  {/* Logistics */}
-                  {t.logistics?.meetingPoint || t.logistics?.meetTime ? (
+                  {/* Logistics - Only show for phases other than Signups Closed/Game Day (not using highlight band) */}
+                  {!showLogisticsBand && (t.logistics?.meetingPoint || t.logistics?.meetTime) ? (
                     <div className="text-xs text-gray-600 mb-2">
                       {t.logistics.meetingPoint && <div>📍 {t.logistics.meetingPoint}</div>}
                       {t.logistics.meetTime && <div>🕐 {t.logistics.meetTime}</div>}
@@ -502,10 +652,49 @@ export default function TripsListPage() {
 
           {current.map((t) => {
             const { title, detail } = getTripCourseText(t, courses);
+            const showLogisticsBand = shouldShowLogistics(t);
+            const logisticsLines = showLogisticsBand ? getLogisticsLines(t) : null;
             
             return (
               <div key={t.id} className="py-4 space-y-2">
                 <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
+
+                {/* Logistics Highlight Band - Only for Game Day with logistics */}
+                {showLogisticsBand && (
+                  <div className="rounded-lg border-l-4 border-blue-500 bg-slate-50 px-4 py-3 border border-gray-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="text-sm font-semibold text-gray-900">Logistics</span>
+                    </div>
+                    {logisticsLines && (
+                      <div className="space-y-1 text-sm text-gray-800">
+                        {logisticsLines.meetTime && (
+                          <div className="font-medium text-gray-900">Meet {logisticsLines.meetTime}</div>
+                        )}
+                        {logisticsLines.meetingPoint && (
+                          <div>{logisticsLines.meetingPoint}</div>
+                        )}
+                        {logisticsLines.ferryName && (
+                          <div>Ferry: {logisticsLines.ferryName}</div>
+                        )}
+                        {logisticsLines.ferryDetailsShort && (
+                          <div className="mt-1 text-xs text-gray-600">{logisticsLines.ferryDetailsShort}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Logistics placeholder for Game Day without logistics */}
+                {!showLogisticsBand && (
+                  <div className="rounded-lg bg-slate-50 px-4 py-3 border border-gray-200">
+                    <div className="text-xs text-gray-500">Logistics coming soon</div>
+                  </div>
+                )}
+
                 <div className="text-base font-medium text-gray-800">{title || "Course TBD"}</div>
                 {detail && <div className="text-sm text-gray-600">{detail}</div>}
                 <div className="text-sm text-gray-600">

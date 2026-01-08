@@ -1,6 +1,74 @@
 import type { Metadata } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import localFont from "next/font/local";
 import "./globals.css";
+
+const aptos = localFont({
+  src: [
+    {
+      path: "./fonts/Aptos-Light.ttf",
+      weight: "300",
+      style: "normal",
+    },
+    {
+      path: "./fonts/Aptos-Light-Italic.ttf",
+      weight: "300",
+      style: "italic",
+    },
+    {
+      path: "./fonts/Aptos.ttf",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "./fonts/Aptos-Italic.ttf",
+      weight: "400",
+      style: "italic",
+    },
+    {
+      path: "./fonts/Aptos-SemiBold.ttf",
+      weight: "600",
+      style: "normal",
+    },
+    {
+      path: "./fonts/Aptos-SemiBold-Italic.ttf",
+      weight: "600",
+      style: "italic",
+    },
+    {
+      path: "./fonts/Aptos-Bold.ttf",
+      weight: "700",
+      style: "normal",
+    },
+    {
+      path: "./fonts/Aptos-Bold-Italic.ttf",
+      weight: "700",
+      style: "italic",
+    },
+    {
+      path: "./fonts/Aptos-ExtraBold.ttf",
+      weight: "800",
+      style: "normal",
+    },
+    {
+      path: "./fonts/Aptos-ExtraBold-Italic.ttf",
+      weight: "800",
+      style: "italic",
+    },
+    {
+      path: "./fonts/Aptos-Black.ttf",
+      weight: "900",
+      style: "normal",
+    },
+    {
+      path: "./fonts/Aptos-Black-Italic.ttf",
+      weight: "900",
+      style: "italic",
+    },
+  ],
+  variable: "--font-aptos",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "GolfBats",
@@ -13,8 +81,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">
+    <html lang="en" className={aptos.variable}>
+      <body className={`${aptos.className} antialiased`}>
         {children}
         <SpeedInsights />
       </body>

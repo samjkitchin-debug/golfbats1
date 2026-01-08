@@ -3,29 +3,26 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { revalidateTag } from "next/cache";
 import { createSupabaseServiceClient } from "@/app/lib/supabaseServer";
+import { timeFn } from "@/app/lib/perf";
 
 const CACHE_TAG = "trips";
-const CACHE_TTL = 10; // 10 seconds (reduced from 30 to help with stale data issues)
+const CACHE_TTL = 30; // 30 seconds - balanced between freshness and performance
 
 /**
  * Cached data fetcher (request-scoped memoization + cross-request caching)
  * Uses the service-role client so trip + attendee data is not filtered by RLS/policies.
- * Keeps the mapping as simple and robust as possible: trips + attendees + members.
+ * Optimized to fetch only required columns instead of all columns.
  */
-async function fetchTripsData() {
+async function fetchTripsData(_bypassCache = false) {
   const supabase = await createSupabaseServiceClient();
 
-  // Fetch trips (include all trips, even those without legacy_id)
+  // Fetch trips - only select columns we actually use (performance optimization)
   const { data: tripsData, error: tripsError } = await supabase
     .from("trips")
-    .select("*")
+    .select(
+      "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at"
+    )
     .order("trip_date", { ascending: false });
-
-  console.log("[trips API] Fetch result:", {
-    tripsCount: tripsData?.length ?? 0,
-    error: tripsError?.message,
-    hasData: !!tripsData,
-  });
 
   if (tripsError) {
     console.error("[trips API] Error fetching trips:", tripsError);
@@ -33,54 +30,56 @@ async function fetchTripsData() {
   }
 
   if (!tripsData || tripsData.length === 0) {
-    console.warn("[trips API] No trips found in database");
     return { ok: true, trips: [] };
   }
 
   const tripIds = tripsData.map((t) => t.id);
 
-  // Fetch attendees for all trips (no joins to avoid silent failures)
-  const { data: attendeesData, error: attendeesError } = await supabase
-    .from("trip_attendees")
-    .select("trip_id,member_id,status,joined_at,handicap_snapshot")
-    .in("trip_id", tripIds);
+  // Fetch attendees for all trips in parallel with results
+  const [attendeesResult, resultsResult] = await Promise.all([
+    supabase
+      .from("trip_attendees")
+      .select("trip_id,member_id,status,joined_at,handicap_snapshot")
+      .in("trip_id", tripIds),
+    supabase
+      .from("trip_results")
+      .select("id,trip_id,published,published_at,notes,result_rows(id,position,display_name,metric_label,metric_value)")
+      .in("trip_id", tripIds),
+  ]);
+
+  const { data: attendeesData, error: attendeesError } = attendeesResult;
+  const { data: resultsData, error: resultsError } = resultsResult;
 
   if (attendeesError) {
     console.warn("[trips API] Failed to fetch attendees:", attendeesError);
   }
-
-  const attendees = attendeesData || [];
-  const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id))).filter(Boolean);
-
-  // Fetch member display names separately
-  const membersById: Record<string, { display_name: string | null; full_name: string | null }> = {};
-  if (memberIds.length) {
-    const { data: membersData, error: membersError } = await supabase
-      .from("members")
-      .select("id,display_name,full_name")
-      .in("id", memberIds as string[]);
-
-    if (membersError) {
-      console.warn("[trips API] Failed to fetch members for attendees:", membersError);
-    }
-
-    for (const m of membersData || []) {
-      membersById[m.id] = { display_name: m.display_name, full_name: m.full_name };
-    }
-  }
-
-  // Fetch results for all trips
-  const { data: resultsData, error: resultsError } = await supabase
-    .from("trip_results")
-    .select("*,result_rows(*)")
-    .in("trip_id", tripIds);
-
   if (resultsError) {
     console.warn("[trips API] Failed to fetch results:", resultsError);
   }
 
+  const attendees = attendeesData || [];
+  const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id).filter(Boolean)));
+
+  // Fetch member display names only if we have attendees
+  const membersById: Record<string, { display_name: string | null; full_name: string | null }> = {};
+  if (memberIds.length > 0) {
+    const { data: membersData, error: membersError } = await supabase
+      .from("members")
+      .select("id,display_name,full_name")
+      .in("id", memberIds);
+
+    if (membersError) {
+      console.warn("[trips API] Failed to fetch members for attendees:", membersError);
+    } else if (membersData) {
+      for (const m of membersData) {
+        membersById[m.id] = { display_name: m.display_name, full_name: m.full_name };
+      }
+    }
+  }
+
   // Map database trips to UI Trip format
   const trips = tripsData.map((trip) => {
+    // Filter attendees for this trip (more efficient than nested loops)
     const tripAttendees = attendees
       .filter((a: any) => a.trip_id === trip.id)
       .map((a: any) => {
@@ -95,21 +94,33 @@ async function fetchTripsData() {
         };
       });
 
-    const result = (resultsData || []).find((r) => r.trip_id === trip.id);
-    const resultRows = result?.result_rows || [];
-    const leaderboard = resultRows
-      .filter((r: any) => r.metric_label === "points")
-      .sort((a: any, b: any) => b.position - a.position)
-      .map((r: any) => ({
-        name: r.display_name,
-        points: Number(r.metric_value) || 0,
-      }));
+    // Find result for this trip
+    const result = (resultsData || []).find((r: any) => r.trip_id === trip.id);
+    const resultRows = (result?.result_rows || []) as Array<{
+      metric_label: string;
+      position: number;
+      display_name: string;
+      metric_value: string;
+    }>;
+    
+    // Build leaderboard only if result exists and is published
+    const leaderboard =
+      result && result.published
+        ? resultRows
+            .filter((r) => r.metric_label === "points")
+            .sort((a, b) => b.position - a.position)
+            .map((r) => ({
+              name: r.display_name,
+              points: Number(r.metric_value) || 0,
+            }))
+        : undefined;
 
     // Generate unique numeric ID: use legacy_id if available, otherwise use a hash of the UUID
     let numericId: number;
     if (trip.legacy_id) {
       numericId = trip.legacy_id;
     } else {
+      // Hash UUID to generate consistent numeric ID
       const uuid = trip.id;
       let hash = 0;
       for (let i = 0; i < uuid.length; i++) {
@@ -139,7 +150,7 @@ async function fetchTripsData() {
         notes: trip.notes || undefined,
       },
       attendees: tripAttendees,
-      result: result && result.published
+      result: result && result.published && leaderboard
         ? {
             leaderboard,
             notes: result.notes || undefined,
@@ -151,15 +162,15 @@ async function fetchTripsData() {
     };
   });
 
-  console.log("[trips API] Returning", trips.length, "trips with attendees");
   return { ok: true, trips };
 }
 
 /**
  * Request-scoped memoization only (no cross-request caching due to cookies() limitation)
+ * This prevents duplicate fetches within the same request
  */
 const getTripsData = cache(async () => {
-  return await fetchTripsData();
+  return await fetchTripsData(false);
 });
 
 /**
@@ -179,7 +190,9 @@ export async function GET(req: Request) {
 
       const { data: tripsData, error: tripsError } = await supabase
         .from("trips")
-        .select("*")
+        .select(
+          "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at"
+        )
         .order("trip_date", { ascending: false });
 
       console.log("[trips API] Bypass cache fetch result:", {
@@ -229,7 +242,7 @@ export async function GET(req: Request) {
 
       const { data: resultsData, error: resultsError } = await supabase
         .from("trip_results")
-        .select("*,result_rows(*)")
+        .select("id,trip_id,published,published_at,notes,result_rows(id,position,display_name,metric_label,metric_value)")
         .in("trip_id", tripIds);
 
       if (resultsError) {
