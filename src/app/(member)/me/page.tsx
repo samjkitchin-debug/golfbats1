@@ -22,7 +22,6 @@ type MemberRow = {
   last_seen: string | null;
   status: MemberStatus;
   is_admin: boolean;
-  onboarding_complete?: boolean;
 };
 
 type PassportRow = {
@@ -45,6 +44,7 @@ export default function MePage() {
   const [member, setMember] = useState<MemberRow | null>(null);
   const [passport, setPassport] = useState<PassportRow | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
 
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -64,25 +64,8 @@ export default function MePage() {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
-  // Passport photo crop state
-  const [showPassportCropModal, setShowPassportCropModal] = useState(false);
-  const [passportImageSrc, setPassportImageSrc] = useState<string | null>(null);
-  const [passportCrop, setPassportCrop] = useState<Point>({ x: 0, y: 0 });
-  const [passportZoom, setPassportZoom] = useState(1);
-  const [passportCroppedAreaPixels, setPassportCroppedAreaPixels] = useState<Area | null>(null);
-
-  // Passport edit state
-  const [editingPassport, setEditingPassport] = useState(false);
-  const [passportSaved, setPassportSaved] = useState(false);
-  const [passportFullName, setPassportFullName] = useState("");
-  const [passportNumber, setPassportNumber] = useState("");
-  const [passportCountry, setPassportCountry] = useState("");
-  const [passportExpiryDate, setPassportExpiryDate] = useState("");
-  const [passportPhotoPath, setPassportPhotoPath] = useState<string | null>(null);
-  const [passportPhotoUrl, setPassportPhotoUrl] = useState<string | null>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [passportPhotoJustUploaded, setPassportPhotoJustUploaded] = useState(false);
-  const [savingPassport, setSavingPassport] = useState(false);
+  // Passport data (for checking if passport exists - no inline editing)
+  // Passport editing is handled on /me/passport page
 
   useEffect(() => {
     document.title = "GolfBats - Profile";
@@ -111,7 +94,7 @@ export default function MePage() {
       const { data, error: memberErr } = await supabase
         .from("members")
         .select(
-          "id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen,status,is_admin,onboarding_complete"
+          "id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen,status,is_admin"
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -126,15 +109,10 @@ export default function MePage() {
         return;
       }
 
-      const m = (data as MemberRow & { onboarding_complete?: boolean }) ?? null;
+      const m = data as MemberRow | null;
       
-      // If member doesn't exist or onboarding not complete, redirect to onboarding
-      if (!m || !m.onboarding_complete) {
-        router.push("/onboarding");
-        return;
-      }
-      
-      // Onboarding complete - load member data for review/edit
+      // Load member data for profile editing
+      // Initialize even if member is null (first visit)
       setMember(m);
       setIsAdmin(!!m?.is_admin);
       setFullName(m?.full_name ?? "");
@@ -146,6 +124,9 @@ export default function MePage() {
           : String(m.declared_handicap)
       );
       setProfilePhotoPath(m?.profile_photo_path ?? null);
+      
+      // Ensure editing state is available even when member is null
+      // This allows profile photo upload on first visit
 
       // Load passport data
       const { data: passportData } = await supabase
@@ -159,31 +140,6 @@ export default function MePage() {
       if (passportData) {
         const p = passportData as PassportRow;
         setPassport(p);
-        setPassportFullName(p.passport_full_name ?? "");
-        setPassportCountry(p.passport_country ?? "");
-        setPassportExpiryDate(
-          p.passport_expiry_date
-            ? new Date(p.passport_expiry_date).toISOString().split("T")[0]
-            : ""
-        );
-        const path = p.passport_photo_path ?? null;
-        setPassportPhotoPath(path);
-
-        if (path) {
-          try {
-            const res = await fetch("/me/passport/photo");
-            const json = await res.json().catch(() => ({}));
-            if (res.ok && json.photoUrl) {
-              setPassportPhotoUrl(json.photoUrl);
-            } else {
-              setPassportPhotoUrl(null);
-            }
-          } catch {
-            setPassportPhotoUrl(null);
-          }
-        } else {
-          setPassportPhotoUrl(null);
-        }
       }
 
       setLoading(false);
@@ -207,6 +163,12 @@ export default function MePage() {
     !!passport?.passport_country &&
     !!passport?.passport_expiry_date;
 
+  // Check if required profile fields are missing
+  const profileIncomplete =
+    !member?.full_name?.trim() ||
+    !member?.display_name?.trim() ||
+    !member?.nationality?.trim();
+
   return (
     <div className="px-4 pb-24 pt-4">
       <div className="flex items-start justify-between gap-3">
@@ -228,6 +190,16 @@ export default function MePage() {
           )}
         </div>
       </div>
+
+      {/* Profile completion reminder */}
+      {!loading && !error && member && profileIncomplete && (
+        <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <p className="text-sm font-semibold text-gray-900">Complete your profile</p>
+          <p className="mt-1 text-sm text-gray-700">
+            This helps organisers place you in groups and manage travel when required. You can update everything later.
+          </p>
+        </div>
+      )}
 
       {/* Status & trip eligibility pills */}
       {!loading && !error && (
@@ -254,7 +226,7 @@ export default function MePage() {
         </div>
       )}
 
-      {/* Pending approval banner - shown after onboarding */}
+      {/* Pending approval banner */}
       {!loading && !error && member && !isApproved && (
         <div className="mt-4 rounded-2xl border border-blue-400 bg-blue-50 p-4">
           <p className="text-sm font-semibold text-blue-900">Pending approval</p>
@@ -265,9 +237,16 @@ export default function MePage() {
       )}
 
       {error ? (
-        <div className="mt-4 rounded-2xl border border-black p-4">
-          <p className="text-sm font-semibold">Error</p>
-          <p className="mt-1 text-sm">{error}</p>
+        <div className="mt-4 rounded-2xl border border-red-400 bg-red-50 p-4">
+          <p className="text-sm font-semibold text-red-900">Error</p>
+          <p className="mt-1 text-sm text-red-900">{error}</p>
+        </div>
+      ) : null}
+
+      {profileSaveSuccess ? (
+        <div className="mt-4 rounded-2xl border border-green-400 bg-green-50 p-4">
+          <p className="text-sm font-semibold text-green-900">Profile saved</p>
+          <p className="mt-1 text-sm text-green-900">Your profile has been updated successfully.</p>
         </div>
       ) : null}
 
@@ -279,6 +258,7 @@ export default function MePage() {
           onToggleEdit={() => {
             setEditingProfile(!editingProfile);
             setProfileSaved(false);
+            setProfileSaveSuccess(false);
             if (!editingProfile) {
               // Reset to current values when starting edit
               setFullName(member?.full_name ?? "");
@@ -320,6 +300,7 @@ export default function MePage() {
             
             setSavingProfile(true);
             setError(null);
+            setProfileSaveSuccess(false);
 
             const handicapNum =
               declaredHandicap.trim() === ""
@@ -350,12 +331,13 @@ export default function MePage() {
                 throw new Error(json?.error || "Failed to save profile.");
               }
 
+              // Success: keep form open, show success message, re-enable button
               setProfileSaved(true);
-              setEditingProfile(false);
-              // Don't reset savingProfile - keep button disabled
-              router.refresh();
+              setSavingProfile(false); // Re-enable button to show "Saved" state
+              setProfileSaveSuccess(true);
+              setError(null);
               
-              // Reload member data
+              // Reload member data to reflect saved changes
               const { data: { user } } = await supabase.auth.getUser();
               if (user) {
                 const { data } = await supabase
@@ -366,11 +348,26 @@ export default function MePage() {
                 if (data) {
                   setMember(data as MemberRow);
                   setProfilePhotoPath(data.profile_photo_path ?? null);
+                  // Update form fields to match saved data
+                  setFullName(data.full_name ?? "");
+                  setDisplayName(data.display_name ?? "");
+                  setNationality(data.nationality ?? "");
+                  setDeclaredHandicap(
+                    data.declared_handicap === null || data.declared_handicap === undefined
+                      ? ""
+                      : String(data.declared_handicap)
+                  );
                 }
               }
+              
+              // Clear success message after 3 seconds
+              setTimeout(() => {
+                setProfileSaveSuccess(false);
+              }, 3000);
             } catch (e: any) {
               setError(e?.message || "Failed to save profile.");
-              setSavingProfile(false); // Only reset on error
+              setSavingProfile(false); // Reset on error to allow retry
+              setProfileSaveSuccess(false);
             }
           }}
           onProfilePhotoUpload={async (file: File) => {
@@ -392,10 +389,10 @@ export default function MePage() {
                 throw new Error(json?.error || "Failed to upload photo.");
               }
 
+              // Update state immediately without page reload
               setProfilePhotoPath(json.path);
-              router.refresh();
               
-              // Reload member data (include status and is_admin to prevent approval banner from showing)
+              // Reload member data to sync state (no page reload needed)
               const { data: { user } } = await supabase.auth.getUser();
               if (user) {
                 const { data } = await supabase
@@ -406,6 +403,10 @@ export default function MePage() {
                 if (data) {
                   setMember(data as MemberRow);
                   setIsAdmin(!!data.is_admin);
+                  // Update form fields if they were empty
+                  if (!fullName && data.full_name) setFullName(data.full_name);
+                  if (!displayName && data.display_name) setDisplayName(data.display_name);
+                  if (!nationality && data.nationality) setNationality(data.nationality);
                 }
               }
             } catch (e: any) {
@@ -416,133 +417,23 @@ export default function MePage() {
           }}
         />
 
-        {/* Passport Block */}
-        <PassportBlock
-          passport={passport}
-          editing={editingPassport}
-          onToggleEdit={() => {
-            setEditingPassport(!editingPassport);
-            setPassportSaved(false);
-            setPassportPhotoJustUploaded(false);
-            if (!editingPassport) {
-              // Reset to current values when starting edit
-              setPassportFullName(passport?.passport_full_name ?? "");
-              setPassportCountry(passport?.passport_country ?? "");
-              setPassportExpiryDate(
-                passport?.passport_expiry_date
-                  ? new Date(passport.passport_expiry_date).toISOString().split("T")[0]
-                  : ""
-              );
-              setPassportPhotoPath(passport?.passport_photo_path ?? null);
-              setPassportNumber(""); // Don't load encrypted number
-            }
-          }}
-          passportFullName={passportFullName}
-          setPassportFullName={setPassportFullName}
-          passportNumber={passportNumber}
-          setPassportNumber={setPassportNumber}
-          passportCountry={passportCountry}
-          setPassportCountry={setPassportCountry}
-          passportExpiryDate={passportExpiryDate}
-          setPassportExpiryDate={setPassportExpiryDate}
-          passportPhotoPath={passportPhotoPath}
-          passportPhotoUrl={passportPhotoUrl}
-          setPassportPhotoPath={setPassportPhotoPath}
-          uploadingPhoto={uploadingPhoto}
-          setUploadingPhoto={setUploadingPhoto}
-          photoJustUploaded={passportPhotoJustUploaded}
-          saving={savingPassport}
-          saved={passportSaved}
-          onSave={async () => {
-            if (savingPassport) return; // Prevent double submission
-            
-            setSavingPassport(true);
-            setError(null);
-
-            try {
-              const res = await fetch("/me/passport/save", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                  passport_full_name: passportFullName.trim(),
-                  passport_number: passportNumber.trim(),
-                  passport_country: passportCountry.trim(),
-                  passport_expiry_date: passportExpiryDate.trim(),
-                  passport_photo_path: passportPhotoPath,
-                }),
-              });
-
-              const json = await res.json().catch(() => ({}));
-
-              if (!res.ok) {
-                throw new Error(json?.error || "Failed to save passport data.");
-              }
-
-              setPassportSaved(true);
-              setEditingPassport(false);
-              // Don't reset savingPassport - keep button disabled
-              router.refresh();
-
-              // Reload passport data
-              const { data: { user } } = await supabase.auth.getUser();
-              if (user) {
-                const { data: passportData } = await supabase
-                  .from("member_passports")
-                  .select("passport_full_name,passport_country,passport_expiry_date,passport_photo_path")
-                  .eq("user_id", user.id)
-                  .maybeSingle();
-                if (passportData) {
-                  setPassport(passportData as PassportRow);
-                }
-              }
-            } catch (e: any) {
-              setError(e?.message || "Failed to save passport data.");
-              setSavingPassport(false); // Only reset on error
-            }
-          }}
-          onPhotoUpload={async (file: File) => {
-            setUploadingPhoto(true);
-            setPassportPhotoJustUploaded(false);
-            setError(null);
-
-            try {
-              const formData = new FormData();
-              formData.append("file", file);
-
-              const res = await fetch("/me/passport/upload", {
-                method: "POST",
-                body: formData,
-              });
-
-              const json = await res.json().catch(() => ({}));
-
-              if (!res.ok) {
-                throw new Error(json?.error || "Failed to upload photo.");
-              }
-
-              setPassportPhotoPath(json.path);
-              setPassportPhotoJustUploaded(true);
-              setTimeout(() => {
-                setPassportPhotoJustUploaded(false);
-              }, 4000);
-            } catch (e: unknown) {
-              const error = e as { message?: string };
-              setError(error?.message || "Failed to upload photo.");
-            } finally {
-              setUploadingPhoto(false);
-            }
-          }}
-          showPassportCropModal={showPassportCropModal}
-          passportImageSrc={passportImageSrc}
-          passportCrop={passportCrop}
-          passportZoom={passportZoom}
-          passportCroppedAreaPixels={passportCroppedAreaPixels}
-          setShowPassportCropModal={setShowPassportCropModal}
-          setPassportImageSrc={setPassportImageSrc}
-          setPassportCrop={setPassportCrop}
-          setPassportZoom={setPassportZoom}
-          setPassportCroppedAreaPixels={setPassportCroppedAreaPixels}
-        />
+        {/* Passport details section - optional and deferrable */}
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-gray-900">Passport details</div>
+              <p className="mt-1 text-xs text-gray-600">
+                Only required for trips involving travel.
+              </p>
+            </div>
+            <Link
+              href="/me/passport"
+              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              {passport ? "Update" : "Add"}
+            </Link>
+          </div>
+        </div>
 
         <div className="rounded-2xl border border-gray-200 p-3">
           <div className="text-xs font-medium text-gray-600">Data security</div>
@@ -569,6 +460,40 @@ export default function MePage() {
       </div>
     </div>
   );
+}
+
+// Helper function to generate initials from name
+function getInitials(member: MemberRow | null): string {
+  if (!member) return "?";
+  
+  const displayName = member.display_name?.trim();
+  const fullName = member.full_name?.trim();
+  const email = member.email?.trim();
+  
+  // Try display name first
+  if (displayName) {
+    const parts = displayName.split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return displayName[0].toUpperCase();
+  }
+  
+  // Try full name
+  if (fullName) {
+    const parts = fullName.split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return fullName[0].toUpperCase();
+  }
+  
+  // Fallback to email first letter
+  if (email) {
+    return email[0].toUpperCase();
+  }
+  
+  return "?";
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -666,8 +591,8 @@ function ProfileBlock({
                   className="h-16 w-16 rounded-full object-cover border border-gray-300"
                 />
               ) : (
-                <div className="h-16 w-16 rounded-full border border-gray-300 bg-gray-100 flex items-center justify-center text-xs text-gray-500">
-                  No photo
+                <div className="h-16 w-16 rounded-full border border-gray-300 bg-gray-200 flex items-center justify-center text-sm font-semibold text-gray-700">
+                  {getInitials(member)}
                 </div>
               )}
               <div>
@@ -802,23 +727,27 @@ function ProfileBlock({
 
           <button
             onClick={onSave}
-            disabled={saving || saved || uploadingProfilePhoto}
+            disabled={saving || uploadingProfilePhoto}
             className="w-full rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {saving ? "Saving…" : saved ? "Changes saved" : "Save"}
+            {saving ? "Saving…" : saved ? "Saved" : "Save"}
           </button>
         </div>
       ) : (
         <div className="mt-3 space-y-2 text-sm">
-          {member?.profile_photo_path && (
-            <div className="mb-3 flex justify-center">
+          <div className="mb-3 flex justify-center">
+            {member?.profile_photo_path ? (
               <img
                 src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${member.profile_photo_path}`}
                 alt="Profile"
                 className="h-24 w-24 rounded-full object-cover border border-gray-300"
               />
-            </div>
-          )}
+            ) : (
+              <div className="h-24 w-24 rounded-full border border-gray-300 bg-gray-200 flex items-center justify-center text-lg font-semibold text-gray-700">
+                {getInitials(member)}
+              </div>
+            )}
+          </div>
           <Row label="Email" value={member?.email ?? "—"} />
           <Row label="Full name" value={member?.full_name ?? "—"} />
           <Row label="Display name" value={member?.display_name ?? "—"} />
@@ -838,284 +767,6 @@ function ProfileBlock({
   );
 }
 
-function PassportBlock({
-  passport,
-  editing,
-  onToggleEdit,
-  passportFullName,
-  setPassportFullName,
-  passportNumber,
-  setPassportNumber,
-  passportCountry,
-  setPassportCountry,
-  passportExpiryDate,
-  setPassportExpiryDate,
-  passportPhotoPath,
-  passportPhotoUrl,
-  setPassportPhotoPath,
-  uploadingPhoto,
-  setUploadingPhoto,
-  photoJustUploaded,
-  saving,
-  saved,
-  onSave,
-  onPhotoUpload,
-  showPassportCropModal,
-  passportImageSrc,
-  passportCrop,
-  passportZoom,
-  passportCroppedAreaPixels,
-  setShowPassportCropModal,
-  setPassportImageSrc,
-  setPassportCrop,
-  setPassportZoom,
-  setPassportCroppedAreaPixels,
-}: {
-  passport: PassportRow | null;
-  editing: boolean;
-  onToggleEdit: () => void;
-  passportFullName: string;
-  setPassportFullName: (v: string) => void;
-  passportNumber: string;
-  setPassportNumber: (v: string) => void;
-  passportCountry: string;
-  setPassportCountry: (v: string) => void;
-  passportExpiryDate: string;
-  setPassportExpiryDate: (v: string) => void;
-  passportPhotoPath: string | null;
-  passportPhotoUrl: string | null;
-  setPassportPhotoPath: (v: string | null) => void;
-  uploadingPhoto: boolean;
-  setUploadingPhoto: (v: boolean) => void;
-  photoJustUploaded: boolean;
-  saving: boolean;
-  saved: boolean;
-  onSave: () => Promise<void>;
-  onPhotoUpload: (file: File) => Promise<void>;
-  showPassportCropModal: boolean;
-  passportImageSrc: string | null;
-  passportCrop: Point;
-  passportZoom: number;
-  passportCroppedAreaPixels: Area | null;
-  setShowPassportCropModal: (v: boolean) => void;
-  setPassportImageSrc: (v: string | null) => void;
-  setPassportCrop: (v: Point) => void;
-  setPassportZoom: (v: number) => void;
-  setPassportCroppedAreaPixels: (v: Area | null) => void;
-}) {
-  const passportEnabled = process.env.NEXT_PUBLIC_PASSPORT_ENABLED !== "false";
-
-  if (!passportEnabled && !passport) {
-    return (
-      <div className="rounded-2xl border border-black p-4">
-        <div className="text-sm font-semibold">Passport details</div>
-        <p className="mt-2 text-sm">
-          Passport details will be added once appropriate security has been implemented.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-2xl border border-black p-4">
-      <div className="flex items-start justify-between">
-        <div className="text-sm font-semibold">Passport details</div>
-        <button
-          onClick={onToggleEdit}
-          className="rounded-xl border border-black px-3 py-1 text-xs font-semibold hover:bg-gray-50"
-        >
-          {editing ? "Cancel" : "Edit"}
-        </button>
-      </div>
-
-      {editing ? (
-        <div className="mt-4 space-y-3">
-          <div>
-            <div className="text-xs font-semibold">Passport full name</div>
-            <input
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-              value={passportFullName}
-              onChange={(e) => setPassportFullName(e.target.value)}
-              placeholder="As shown on your passport"
-            />
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold">Passport number</div>
-            <input
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-              value={passportNumber}
-              onChange={(e) => setPassportNumber(e.target.value)}
-              placeholder="Enter passport number"
-              type="text"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Your passport number is encrypted and stored securely.
-            </p>
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold">Passport country</div>
-            <select
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none bg-white"
-              value={passportCountry || ""}
-              onChange={(e) => setPassportCountry(e.target.value)}
-            >
-              <option value="" disabled>
-                Select passport country…
-              </option>
-              {COUNTRIES.map((country) => (
-                <option key={country} value={country}>
-                  {country}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold">Passport expiry date</div>
-            <input
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
-              value={passportExpiryDate}
-              onChange={(e) => setPassportExpiryDate(e.target.value)}
-              type="date"
-            />
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold">Passport photo (optional)</div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <div>
-                <input
-                  id="passport-photo-input"
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.addEventListener("load", () => {
-                        setPassportImageSrc(reader.result as string);
-                        setShowPassportCropModal(true);
-                        setPassportZoom(1);
-                        setPassportCrop({ x: 0, y: 0 });
-                      });
-                      reader.readAsDataURL(file);
-                    }
-                  }}
-                  className="hidden"
-                  disabled={uploadingPhoto}
-                />
-                <button
-                  type="button"
-                  onClick={() => document.getElementById("passport-photo-input")?.click()}
-                  disabled={uploadingPhoto}
-                  className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                >
-                  {passportPhotoPath ? "Change Photo" : "Add Passport Photo"}
-                </button>
-              </div>
-
-              {passportPhotoUrl && (
-                <button
-                  type="button"
-                  onClick={() => window.open(passportPhotoUrl, "_blank")}
-                  className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                >
-                  View Passport Photo
-                </button>
-              )}
-            </div>
-            <p className="mt-1 text-xs text-gray-500">
-              You can use your camera or select an existing file.
-            </p>
-            {uploadingPhoto && (
-              <p className="mt-1 text-xs text-gray-600">Uploading photo…</p>
-            )}
-            {photoJustUploaded && !uploadingPhoto && (
-              <p className="mt-1 text-xs text-green-600">Photo uploaded successfully</p>
-            )}
-          </div>
-
-          <button
-            onClick={onSave}
-            disabled={saving || saved || uploadingPhoto}
-            className="w-full rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {saving ? "Saving…" : saved ? "Changes saved" : "Save"}
-          </button>
-        </div>
-      ) : (
-        <div className="mt-3 space-y-2 text-sm">
-          <Row
-            label="Passport full name"
-            value={passport?.passport_full_name ?? "—"}
-          />
-          <Row label="Passport number" value="••••••••" />
-          <Row label="Passport country" value={passport?.passport_country ?? "—"} />
-          <Row
-            label="Passport expiry date"
-            value={
-              passport?.passport_expiry_date
-                ? new Date(passport.passport_expiry_date).toLocaleDateString("en-GB")
-                : "—"
-            }
-          />
-          {passportPhotoUrl && (
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => window.open(passportPhotoUrl, "_blank")}
-                className="text-xs font-medium text-brand-red underline"
-              >
-                View passport photo
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Passport Crop Modal */}
-      {showPassportCropModal && passportImageSrc && (
-        <ImageCropModal
-          title="Crop Passport Photo"
-          imageSrc={passportImageSrc}
-          crop={passportCrop}
-          zoom={passportZoom}
-          onCropChange={setPassportCrop}
-          onZoomChange={setPassportZoom}
-          onCropComplete={(croppedArea, croppedAreaPixels) => {
-            setPassportCroppedAreaPixels(croppedAreaPixels);
-          }}
-          onCancel={() => {
-            setShowPassportCropModal(false);
-            setPassportImageSrc(null);
-          }}
-          onSave={async () => {
-            if (!passportCroppedAreaPixels || !passportImageSrc) return;
-            
-            setShowPassportCropModal(false);
-            setUploadingPhoto(true);
-            
-            try {
-              const croppedImage = await getCroppedImg(passportImageSrc, passportCroppedAreaPixels);
-              const blob = await fetch(croppedImage).then((r) => r.blob());
-              const file = new File([blob], "passport.jpg", { type: "image/jpeg" });
-              await onPhotoUpload(file);
-              setPassportImageSrc(null);
-            } catch (error: unknown) {
-              // Error will be handled by onPhotoUpload's error handling
-              console.error("Failed to crop passport image:", error);
-            } finally {
-              setUploadingPhoto(false);
-            }
-          }}
-        />
-      )}
-    </div>
-  );
-}
 
 // Helper function to create cropped image
 async function getCroppedImg(
