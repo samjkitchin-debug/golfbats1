@@ -1,29 +1,33 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
 const CACHE_TAG = "trips";
 const SIGNUP_WINDOW_DAYS = 30;
 
 // Map a single trip row + related rows into the Trip JSON shape used by /api/trips
-async function buildTripPayload(adminClient: any, legacyId: number) {
-  // Load the trip row by legacy_id
-  const { data: trip, error: tripError } = await adminClient
-    .from("trips")
-    .select("*")
-    .eq("legacy_id", legacyId)
-    .single();
+async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, tripIdentifier: string | number) {
+  // Determine if identifier is legacy_id (number) or id (UUID)
+  let tripQuery = supabase.from("trips").select("*");
+  
+  if (typeof tripIdentifier === "number") {
+    tripQuery = tripQuery.eq("legacy_id", tripIdentifier);
+  } else {
+    tripQuery = tripQuery.eq("id", tripIdentifier);
+  }
+  
+  const { data: trip, error: tripError } = await tripQuery.single();
 
   if (tripError || !trip) {
     console.error("[join API] buildTripPayload: trip not found after join", {
-      legacyId,
+      tripIdentifier,
       error: tripError?.message,
     });
     return null;
   }
 
   // Load attendees for this trip
-  const { data: attendeesData, error: attendeesError } = await adminClient
+  const { data: attendeesData, error: attendeesError } = await supabase
     .from("trip_attendees")
     .select("*,members(id,display_name,full_name)")
     .eq("trip_id", trip.id);
@@ -33,7 +37,7 @@ async function buildTripPayload(adminClient: any, legacyId: number) {
   }
 
   // Load results for this trip
-  const { data: resultsData, error: resultsError } = await adminClient
+  const { data: resultsData, error: resultsError } = await supabase
     .from("trip_results")
     .select("*,result_rows(*)")
     .eq("trip_id", trip.id);
@@ -109,7 +113,7 @@ async function buildTripPayload(adminClient: any, legacyId: number) {
     updatedAtUtc: trip.updated_at,
   };
 
-  console.log("[join API] buildTripPayload attendees count:", attendees.length, "for legacyId:", legacyId);
+  console.log("[join API] buildTripPayload attendees count:", attendees.length, "for tripIdentifier:", tripIdentifier);
 
   return payload;
 }
@@ -125,39 +129,40 @@ export async function POST(
 ) {
   try {
     const params = await Promise.resolve(context.params);
-    // Auth client (anon key + cookies)
     const supabase = await createSupabaseServerClient();
-    // Service-role client for trips / attendees (bypasses RLS)
-    const adminClient = await createSupabaseServiceClient();
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const legacyId = Number(params.id);
-    if (!Number.isFinite(legacyId)) {
-      return NextResponse.json({ error: "Invalid trip ID." }, { status: 400 });
-    }
-
-    // Find trip by legacy_id
-    const { data: trip, error: tripErr } = await adminClient
+    const paramId = params.id;
+    
+    // Determine if param is legacy_id (number) or id (UUID)
+    // Try parsing as number first
+    const legacyId = Number(paramId);
+    const isLegacyId = Number.isFinite(legacyId) && String(legacyId) === paramId.trim();
+    
+    // Find trip - use legacy_id if param is numeric, otherwise use id (UUID)
+    let tripQuery = supabase
       .from("trips")
-      .select("id,trip_date,status")
-      .eq("legacy_id", legacyId)
-      .single();
+      .select("id,group_id,legacy_id,trip_date,status");
+    
+    if (isLegacyId) {
+      tripQuery = tripQuery.eq("legacy_id", legacyId);
+    } else {
+      tripQuery = tripQuery.eq("id", paramId);
+    }
+    
+    const { data: trip, error: tripErr } = await tripQuery.single();
 
     if (tripErr || !trip) {
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    // Phase 0 enforcement: do not allow joining until 30 days before trip date
-    // Also enforce that only "open" trips can be joined.
-    const tripStatus = String((trip as any).status ?? "").toLowerCase();
+    // Validate trip status - only "open" trips can be joined
+    const tripStatus = String(trip.status ?? "").toLowerCase();
     if (tripStatus !== "open") {
       return NextResponse.json(
         { error: "RSVP is closed for this trip." },
@@ -165,7 +170,8 @@ export async function POST(
       );
     }
 
-    const tripDateStr = String((trip as any).trip_date ?? "");
+    // Phase 0 enforcement: do not allow joining until 30 days before trip date
+    const tripDateStr = String(trip.trip_date ?? "");
     const tripDateUtc = new Date(tripDateStr + "T00:00:00Z").getTime();
     if (!Number.isFinite(tripDateUtc)) {
       return NextResponse.json(
@@ -186,32 +192,47 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const handicap = body.handicap !== undefined ? body.handicap : null;
 
-    // Upsert attendee row for this (trip_id, member_id) pair
-    const { error: upsertErr } = await adminClient
+    // Insert attendee row - RLS should allow users to insert their own attendee records
+    const { error: insertErr } = await supabase
       .from("trip_attendees")
-      .upsert(
-        {
-          trip_id: trip.id,
-          member_id: user.id,
-          status: "confirmed",
-          joined_at: new Date().toISOString(),
-          handicap_snapshot: handicap,
-        },
-        {
-          onConflict: "trip_id,member_id",
-        }
-      );
+      .insert({
+        trip_id: trip.id,
+        group_id: trip.group_id,
+        member_id: user.id,
+        status: "confirmed",
+        joined_at: new Date().toISOString(),
+        handicap_snapshot: handicap,
+      });
 
-    if (upsertErr) {
-      console.error("[join API] upsert error:", upsertErr);
+    // Handle duplicate join gracefully
+    if (insertErr) {
+      // PostgreSQL unique constraint violation error code is "23505"
+      if (insertErr.code === "23505" || insertErr.message?.includes("duplicate") || insertErr.message?.includes("unique")) {
+        // User is already joined - return success with alreadyJoined flag
+        const tripIdentifier = isLegacyId ? legacyId : trip.id;
+        const tripPayload = await buildTripPayload(supabase, tripIdentifier);
+        
+        // Invalidate trips cache
+        try {
+          // @ts-expect-error - revalidateTag signature may vary by Next.js version
+          revalidateTag(CACHE_TAG);
+        } catch {
+          // Cache will expire via TTL if revalidation fails
+        }
+        
+        return NextResponse.json({ ok: true, alreadyJoined: true, trip: tripPayload });
+      }
+      
+      console.error("[join API] insert error:", insertErr);
       return NextResponse.json(
-        { error: upsertErr.message || "Failed to join trip." },
+        { error: insertErr.message || "Failed to join trip." },
         { status: 400 }
       );
     }
 
     // Build fresh trip payload (including attendees) so clients can update state without refetching all trips
-    const tripPayload = await buildTripPayload(adminClient, legacyId);
+    const tripIdentifier = isLegacyId ? legacyId : trip.id;
+    const tripPayload = await buildTripPayload(supabase, tripIdentifier);
 
     // Invalidate trips cache
     try {

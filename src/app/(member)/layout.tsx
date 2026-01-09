@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { redirect } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 import SignOutButton from "../components/SignOutButton";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
@@ -15,11 +16,27 @@ function parseAdminEmails(raw: string | undefined) {
 export default async function MemberLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  const isSignedIn = !!user;
+  // Gate: must have at least 1 approved membership
+  const { data: memberships, error } = await supabase
+    .from("group_members")
+    .select("group_id, role, status")
+    .eq("user_id", user.id)
+    .eq("status", "approved")
+    .limit(1);
+
+  if (error) {
+    // Fail closed: if we can't confirm access, do not render member area
+    redirect("/join");
+  }
+
+  if (!memberships || memberships.length === 0) {
+    redirect("/join");
+  }
+
+  const isSignedIn = true;
 
   return (
     <div className="min-h-dvh bg-gray-50">

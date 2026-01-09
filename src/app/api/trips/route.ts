@@ -1,21 +1,14 @@
 import { NextResponse } from "next/server";
-import { cache } from "react";
-import { unstable_cache } from "next/cache";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServiceClient } from "@/app/lib/supabaseServer";
-import { timeFn } from "@/app/lib/perf";
+import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
 const CACHE_TAG = "trips";
-const CACHE_TTL = 30; // 30 seconds - balanced between freshness and performance
 
 /**
- * Cached data fetcher (request-scoped memoization + cross-request caching)
- * Uses the service-role client so trip + attendee data is not filtered by RLS/policies.
- * Optimized to fetch only required columns instead of all columns.
+ * Fetch trips data using authenticated session client (subject to RLS policies)
+ * Returns trips with attendees and results in the same JSON format as before
  */
-async function fetchTripsData(_bypassCache = false) {
-  const supabase = await createSupabaseServiceClient();
-
+async function fetchTripsData(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
   // Fetch trips - only select columns we actually use (performance optimization)
   const { data: tripsData, error: tripsError } = await supabase
     .from("trips")
@@ -166,166 +159,21 @@ async function fetchTripsData(_bypassCache = false) {
 }
 
 /**
- * Request-scoped memoization only (no cross-request caching due to cookies() limitation)
- * This prevents duplicate fetches within the same request
- */
-const getTripsData = cache(async () => {
-  return await fetchTripsData(false);
-});
-
-/**
  * GET /api/trips
- * Retrieve all trips with attendees and results (cached)
- * Query param ?bypassCache=true to force fresh data
+ * Retrieve all trips with attendees and results
+ * Requires authentication - subject to RLS policies (no caching, runs as authenticated user)
  */
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const bypassCache = url.searchParams.get("bypassCache") === "true";
+    const supabase = await createSupabaseServerClient();
     
-    if (bypassCache) {
-      // Bypass cache and fetch fresh data
-      console.log("[trips API] Bypassing cache - fetching fresh data");
-      const supabase = await createSupabaseServiceClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-      const { data: tripsData, error: tripsError } = await supabase
-        .from("trips")
-        .select(
-          "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at"
-        )
-        .order("trip_date", { ascending: false });
-
-      console.log("[trips API] Bypass cache fetch result:", {
-        tripsCount: tripsData?.length ?? 0,
-        error: tripsError?.message,
-        hasData: !!tripsData,
-      });
-
-      if (tripsError) {
-        console.error("[trips API] Bypass cache error:", tripsError);
-        throw new Error(tripsError.message || "Failed to fetch trips.");
-      }
-
-      if (!tripsData || tripsData.length === 0) {
-        console.warn("[trips API] Bypass cache: No trips found in database");
-        return NextResponse.json({ ok: true, trips: [] });
-      }
-
-      const tripIds = tripsData.map((t) => t.id);
-      const { data: attendeesData, error: attendeesError } = await supabase
-        .from("trip_attendees")
-        .select("trip_id,member_id,status,joined_at,handicap_snapshot")
-        .in("trip_id", tripIds);
-
-      if (attendeesError) {
-        console.warn("[trips API] Bypass cache: Failed to fetch attendees:", attendeesError);
-      }
-
-      const attendees = attendeesData || [];
-      const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id))).filter(Boolean);
-
-      const membersById: Record<string, { display_name: string | null; full_name: string | null }> = {};
-      if (memberIds.length) {
-        const { data: membersData, error: membersError } = await supabase
-          .from("members")
-          .select("id,display_name,full_name")
-          .in("id", memberIds as string[]);
-
-        if (membersError) {
-          console.warn("[trips API] Bypass cache: Failed to fetch members:", membersError);
-        }
-
-        for (const m of membersData || []) {
-          membersById[m.id] = { display_name: m.display_name, full_name: m.full_name };
-        }
-      }
-
-      const { data: resultsData, error: resultsError } = await supabase
-        .from("trip_results")
-        .select("id,trip_id,published,published_at,notes,result_rows(id,position,display_name,metric_label,metric_value)")
-        .in("trip_id", tripIds);
-
-      if (resultsError) {
-        console.warn("[trips API] Bypass cache: Failed to fetch results:", resultsError);
-      }
-
-      const trips = tripsData.map((trip) => {
-        const tripAttendees = attendees
-          .filter((a: any) => a.trip_id === trip.id)
-          .map((a: any) => {
-            const member = membersById[a.member_id] || {};
-            const name = member.display_name || member.full_name || "Unknown";
-            return {
-              name,
-              status: a.status as "confirmed" | "waitlist" | "out",
-              joinedAt: new Date(a.joined_at).getTime(),
-              handicapForTrip: a.handicap_snapshot ?? null,
-              memberId: a.member_id,
-            };
-          });
-
-        const result = (resultsData || []).find((r) => r.trip_id === trip.id);
-        const resultRows = result?.result_rows || [];
-        const leaderboard = resultRows
-          .filter((r: any) => r.metric_label === "points")
-          .sort((a: any, b: any) => b.position - a.position)
-          .map((r: any) => ({
-            name: r.display_name,
-            points: Number(r.metric_value) || 0,
-          }));
-
-        let numericId: number;
-        if (trip.legacy_id) {
-          numericId = trip.legacy_id;
-        } else {
-          const uuid = trip.id;
-          let hash = 0;
-          for (let i = 0; i < uuid.length; i++) {
-            const char = uuid.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
-          }
-          numericId = Math.abs(hash) % 1000000 + 1000000;
-        }
-
-        return {
-          id: numericId,
-          name: trip.name || undefined,
-          date: trip.trip_date,
-          format: trip.format,
-          course: undefined,
-          ferry: trip.ferry || undefined,
-          capacity: trip.capacity,
-          status: trip.status as "open" | "closed" | "archived",
-          cutoffAt: trip.cutoff_at ? new Date(trip.cutoff_at).toISOString() : undefined,
-          courseId: trip.course_id,
-          teeId: trip.tee_id,
-          logistics: {
-            meetingPoint: trip.meeting_point || undefined,
-            meetTime: trip.meet_time || undefined,
-            ferryDetails: trip.ferry_details || undefined,
-            notes: trip.notes || undefined,
-          },
-          attendees: tripAttendees,
-          result: result && result.published
-            ? {
-                leaderboard,
-                notes: result.notes || undefined,
-                publishedAt: result.published_at || undefined,
-              }
-            : undefined,
-          createdAtUtc: trip.created_at,
-          updatedAtUtc: trip.updated_at,
-        };
-      });
-
-      console.log("[trips API] Bypass cache: Returning", trips.length, "trips with attendees");
-      return NextResponse.json({ ok: true, trips });
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    
-    console.log("[trips API] Using cached data");
-    const result = await getTripsData();
-    console.log("[trips API] Cached result:", result.trips?.length ?? 0, "trips");
+
+    const result = await fetchTripsData(supabase);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Get trips error:", error);
@@ -338,12 +186,44 @@ export async function GET(req: Request) {
 
 /**
  * POST /api/trips
- * Create or update a trip
+ * Create or update a trip (admin only)
  * Body: { trip: Trip, id?: number } - if id provided, updates; otherwise creates
  */
 export async function POST(req: Request) {
   try {
-    const supabase = await createSupabaseServiceClient();
+    const supabase = await createSupabaseServerClient();
+    
+    // Check authentication
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+    }
+
+    // Check admin status
+    const adminEmails = (process.env.ADMIN_EMAILS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const email = (user.email ?? "").toLowerCase();
+    const isEnvAdmin = adminEmails.includes(email);
+
+    // Also check DB is_admin flag
+    const { data: member } = await supabase
+      .from("members")
+      .select("is_admin")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const isAdmin = isEnvAdmin || !!member?.is_admin;
+
+    if (!isAdmin) {
+      return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+    }
+
     const body = await req.json();
     const { trip, id } = body as { trip: any; id?: number };
 
@@ -482,12 +362,44 @@ export async function POST(req: Request) {
 
 /**
  * DELETE /api/trips
- * Delete a trip
+ * Delete a trip (admin only)
  * Body: { id: number } - legacy_id
  */
 export async function DELETE(req: Request) {
   try {
-    const supabase = await createSupabaseServiceClient();
+    const supabase = await createSupabaseServerClient();
+    
+    // Check authentication
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+    }
+
+    // Check admin status
+    const adminEmails = (process.env.ADMIN_EMAILS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const email = (user.email ?? "").toLowerCase();
+    const isEnvAdmin = adminEmails.includes(email);
+
+    // Also check DB is_admin flag
+    const { data: member } = await supabase
+      .from("members")
+      .select("is_admin")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const isAdmin = isEnvAdmin || !!member?.is_admin;
+
+    if (!isAdmin) {
+      return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+    }
+
     const body = await req.json();
     const { id } = body as { id?: number };
 

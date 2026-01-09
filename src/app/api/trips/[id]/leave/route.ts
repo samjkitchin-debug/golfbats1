@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
 const CACHE_TAG = "trips";
 
 /**
  * POST /api/trips/[id]/leave
- * Leave a trip (set status to "out")
+ * Leave a trip (delete attendee record)
+ * Idempotent: returns 200 even if attendee record doesn't exist
  */
 export async function POST(
   req: Request,
@@ -14,50 +15,56 @@ export async function POST(
 ) {
   try {
     const params = await Promise.resolve(context.params);
-    // Auth client for current user
     const supabase = await createSupabaseServerClient();
-    // Service-role client for trips + attendees (bypasses RLS)
-    const adminClient = await createSupabaseServiceClient();
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const legacyId = Number(params.id);
-    if (!Number.isFinite(legacyId)) {
-      return NextResponse.json({ error: "Invalid trip ID." }, { status: 400 });
-    }
-
-    // Find trip by legacy_id
-    const { data: trip, error: tripErr } = await adminClient
+    const paramId = params.id;
+    
+    // Determine if param is legacy_id (number) or id (UUID)
+    // Try parsing as number first
+    const legacyId = Number(paramId);
+    const isLegacyId = Number.isFinite(legacyId) && String(legacyId) === paramId.trim();
+    
+    // Find trip - use legacy_id if param is numeric, otherwise use id (UUID)
+    let tripQuery = supabase
       .from("trips")
-      .select("id")
-      .eq("legacy_id", legacyId)
-      .single();
+      .select("id,group_id");
+    
+    if (isLegacyId) {
+      tripQuery = tripQuery.eq("legacy_id", legacyId);
+    } else {
+      tripQuery = tripQuery.eq("id", paramId);
+    }
+    
+    const { data: trip, error: tripErr } = await tripQuery.single();
 
     if (tripErr || !trip) {
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    // Remove attendee row for this user + trip
-    const { error: deleteErr } = await adminClient
+    // Delete attendee row for this user + trip
+    // RLS should allow users to delete their own attendee records
+    // Make it idempotent: return 200 even if no row existed (Supabase delete returns success with empty array if nothing matches)
+    const { error: deleteErr } = await supabase
       .from("trip_attendees")
       .delete()
       .eq("trip_id", trip.id)
       .eq("member_id", user.id);
 
     if (deleteErr) {
+      console.error("[leave API] delete error:", deleteErr);
       return NextResponse.json(
         { error: deleteErr.message || "Failed to leave trip." },
         { status: 400 }
       );
     }
 
+    // Idempotent: return success even if no rows were deleted (already left)
     // Invalidate trips cache
     try {
       // @ts-expect-error - revalidateTag signature may vary by Next.js version
