@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import SignOutButton from "../components/SignOutButton";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
 import { isEmailAdmin } from "../lib/auth";
+import MembersNavLink from "./components/MembersNavLink";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
@@ -69,12 +70,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           >
             Courses
           </Link>
-          <Link
-            href="/admin/members"
-            className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-          >
-            Members
-          </Link>
+          <MembersNavLink />
           <Link
             href="/admin/dev-notes"
             className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"

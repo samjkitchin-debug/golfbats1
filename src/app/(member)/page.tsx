@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { loadTrips, joinTrip, leaveTrip, setMyHandicapForTrip, type Trip } from "../lib/tripActions";
+import { loadTrips, joinTrip, leaveTrip, type Trip } from "../lib/tripActions";
 import { loadCourses, type Course } from "../lib/courseActions";
-import { getTripCourseText, formatTripDateLong } from "../lib/tripDisplay";
+import { getTripCourseText } from "../lib/tripDisplay";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { PromptModal } from "../components/PromptModal";
+import { TripCard } from "../components/TripCard";
 
 export default function HomePage() {
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -146,6 +147,9 @@ export default function HomePage() {
   const isCurrentTrip = displayTrip === currentTrip;
 
   const courseText = getTripCourseText(displayTrip, courses);
+  const course = displayTrip.courseId
+    ? courses.find((c) => c.id === displayTrip.courseId)
+    : undefined;
   const myEntry =
     currentUserId
       ? displayTrip.attendees.find((a) => a.memberId && a.memberId === currentUserId)
@@ -365,8 +369,8 @@ export default function HomePage() {
   async function handleImOut() {
     setConfirmModal({
       isOpen: true,
-      title: "Leave Trip?",
-      message: "Are you sure you want to leave this trip?",
+      title: "Leave this trip?",
+      message: "You'll be removed from the attendee list.",
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });
         try {
@@ -385,117 +389,20 @@ export default function HomePage() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-white p-5 shadow-sm">
-        {/* Header: Next trip label + Details button */}
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="text-sm text-gray-500">{isCurrentTrip ? "Current trip" : "Next trip"}</div>
-          <Link
-            href={`/trips/${displayTrip.id}`}
-            className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            Details
-          </Link>
-        </div>
-
-        {/* Trip name (bold) */}
-        <div className="text-lg font-semibold text-gray-900 mb-1">
-          {displayTrip.name || courseText.title}
-        </div>
-
-        {/* Course + tee on one line */}
-        {displayTrip.name && courseText.title && (
-          <div className="text-sm text-gray-600 mb-1">
-            {courseText.title}
-          </div>
-        )}
-
-        {/* Metrics on one muted line */}
-        {courseText.detail && (
-          <div className="text-xs text-gray-500 mb-2">
-            {courseText.detail}
-          </div>
-        )}
-
-        {/* Date + format + status on ONE line */}
-        <div className="text-sm text-gray-700 mb-2">
-          {formatTripDateLong(displayTrip.date)}
-          {displayTrip.format && ` · ${displayTrip.format}`}
-          {displayTrip.ferry && ` · Ferry ${displayTrip.ferry}`}
-          {isCurrentTrip ? " · Game day" : displayTrip.status === "open" && !isScheduled ? " · Open for sign up" : displayTrip.status === "closed" ? " · Signups closed" : ""}
-          {isScheduled && signupOpenDateYmd ? ` · Signups open ${formatTripDateLong(signupOpenDateYmd)}` : ""}
-        </div>
-
-        {/* Cancelled info box */}
-        {displayTrip.status === "cancelled" && (
-          <div className="mb-2 rounded-lg bg-red-50 border border-red-200 p-3">
-            <div className="text-sm text-red-900 font-semibold">
-              This trip has been cancelled.
-            </div>
-          </div>
-        )}
-        
-        {/* Scheduled info box */}
-        {displayTrip.status !== "cancelled" && isScheduled && (
-          <div className="mb-2 rounded-lg bg-blue-50 border border-blue-200 p-3">
-            <div className="text-sm text-blue-900">
-              <span className="font-semibold">Scheduled trip</span> — Date and course shown for planning. Signups will open 30 days before the trip date.
-            </div>
-          </div>
-        )}
-        
-        {/* Game Day info box */}
-        {displayTrip.status !== "cancelled" && isCurrentTrip && (
-          <div className="mb-2 rounded-lg bg-orange-50 border border-orange-200 p-3">
-            <div className="text-sm text-orange-900">
-              <span className="font-semibold">Game day</span> — The round is in progress. Results will be posted after the round.
-            </div>
-          </div>
-        )}
-
-        {/* Logistics */}
-        {displayTrip.logistics?.meetingPoint || displayTrip.logistics?.meetTime ? (
-          <div className="text-sm text-gray-600 mb-2">
-            {displayTrip.logistics.meetingPoint && (
-              <div>📍 {displayTrip.logistics.meetingPoint}</div>
-            )}
-            {displayTrip.logistics.meetTime && (
-              <div>🕐 {displayTrip.logistics.meetTime}</div>
-            )}
-          </div>
-        ) : null}
-
-        <div className="mt-3 flex gap-2">
-          {myEntry ? (
-            // User is already in the trip - show disabled "I'm in" and enabled "I'm out"
-            <>
-              <button
-                onClick={handleImIn}
-                disabled={true}
-                className="flex-1 rounded bg-green-600 py-2 text-sm text-white cursor-default"
-              >
-                You're in
-              </button>
-              <button
-                onClick={handleImOut}
-                className="flex-1 rounded bg-red-600 py-2 text-sm text-white hover:opacity-95"
-              >
-                I'm out
-              </button>
-            </>
-          ) : (
-            // User is not in the trip - show only "I'm in" button in green
-            <button
-              onClick={handleImIn}
-              disabled={joinDisabled}
-              className={`flex-1 rounded py-2 text-sm text-white ${
-                joinDisabled ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-black hover:opacity-95"
-              }`}
-            >
-              Join trip
-            </button>
-          )}
-        </div>
-      </div>
+      <TripCard
+        trip={displayTrip}
+        courseText={courseText}
+        course={course}
+        variant="home"
+        headerLabel={isCurrentTrip ? "Current trip" : "Next trip"}
+        isCurrentTrip={isCurrentTrip}
+        isScheduled={isScheduled}
+        signupOpenDateYmd={signupOpenDateYmd}
+        myEntry={myEntry}
+        joinDisabled={joinDisabled}
+        onJoin={handleImIn}
+        onLeave={handleImOut}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <Link
@@ -519,8 +426,9 @@ export default function HomePage() {
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
         message={confirmModal.message}
-        confirmLabel="Yes"
-        cancelLabel="No"
+        confirmLabel={confirmModal.title === "Leave this trip?" ? "Leave" : "Yes"}
+        cancelLabel={confirmModal.title === "Leave this trip?" ? "Cancel" : "No"}
+        confirmVariant={confirmModal.title === "Leave this trip?" ? "danger" : "primary"}
         onConfirm={confirmModal.onConfirm}
         onCancel={confirmModal.onCancel}
       />

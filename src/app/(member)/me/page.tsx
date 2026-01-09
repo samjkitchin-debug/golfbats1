@@ -22,6 +22,7 @@ type MemberRow = {
   last_seen: string | null;
   status: MemberStatus;
   is_admin: boolean;
+  onboarding_complete?: boolean;
 };
 
 type PassportRow = {
@@ -102,17 +103,15 @@ export default function MePage() {
       if (cancelled) return;
 
       if (userErr || !user) {
-        setError("You are not signed in.");
-        setMember(null);
-        setIsAdmin(false);
-        setLoading(false);
+        // Redirect to login if not authenticated
+        router.push("/login?next=/me");
         return;
       }
 
       const { data, error: memberErr } = await supabase
         .from("members")
         .select(
-          "id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen,status,is_admin"
+          "id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen,status,is_admin,onboarding_complete"
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -120,22 +119,33 @@ export default function MePage() {
       if (cancelled) return;
 
       if (memberErr) {
+        // Database error - show error but don't redirect
         setError(memberErr.message);
         setMember(null);
-      } else {
-        const m = (data as MemberRow) ?? null;
-        setMember(m);
-        setIsAdmin(!!m?.is_admin);
-        setFullName(m?.full_name ?? "");
-        setDisplayName(m?.display_name ?? "");
-        setNationality(m?.nationality ?? "");
-        setDeclaredHandicap(
-          m?.declared_handicap === null || m?.declared_handicap === undefined
-            ? ""
-            : String(m.declared_handicap)
-        );
-        setProfilePhotoPath(m?.profile_photo_path ?? null);
+        setLoading(false);
+        return;
       }
+
+      const m = (data as MemberRow & { onboarding_complete?: boolean }) ?? null;
+      
+      // If member doesn't exist or onboarding not complete, redirect to onboarding
+      if (!m || !m.onboarding_complete) {
+        router.push("/onboarding");
+        return;
+      }
+      
+      // Onboarding complete - load member data for review/edit
+      setMember(m);
+      setIsAdmin(!!m?.is_admin);
+      setFullName(m?.full_name ?? "");
+      setDisplayName(m?.display_name ?? "");
+      setNationality(m?.nationality ?? "");
+      setDeclaredHandicap(
+        m?.declared_handicap === null || m?.declared_handicap === undefined
+          ? ""
+          : String(m.declared_handicap)
+      );
+      setProfilePhotoPath(m?.profile_photo_path ?? null);
 
       // Load passport data
       const { data: passportData } = await supabase
@@ -191,14 +201,6 @@ export default function MePage() {
     member?.email?.trim() ||
     "Me";
 
-  const profileComplete =
-    !!member?.email &&
-    !!member?.full_name &&
-    !!member?.display_name &&
-    !!member?.nationality &&
-    member?.declared_handicap !== null &&
-    member?.declared_handicap !== undefined;
-
   const isApproved = (member?.status ?? "pending") === "active";
   const passportComplete =
     !!passport?.passport_full_name &&
@@ -252,27 +254,14 @@ export default function MePage() {
         </div>
       )}
 
-      {/* Profile gate state */}
-      {!loading && !error && (
-        <>
-          {!profileComplete && (
-            <div className="mt-4 rounded-2xl border border-amber-400 bg-amber-50 p-4">
-              <p className="text-sm font-semibold text-amber-900">Profile incomplete</p>
-              <p className="mt-1 text-sm text-amber-900">
-                Please complete your email, full name, display name, nationality and declared handicap before using the rest of the app.
-                Passport details are optional for now and can be added later, but you’ll need them before you can join a trip.
-              </p>
-            </div>
-          )}
-          {profileComplete && !isApproved && (
-            <div className="mt-4 rounded-2xl border border-blue-400 bg-blue-50 p-4">
-              <p className="text-sm font-semibold text-blue-900">Pending approval</p>
-              <p className="mt-1 text-sm text-blue-900">
-                Your profile has been submitted and is awaiting admin approval. You’ll be able to access all features once your membership is approved.
-              </p>
-            </div>
-          )}
-        </>
+      {/* Pending approval banner - shown after onboarding */}
+      {!loading && !error && member && !isApproved && (
+        <div className="mt-4 rounded-2xl border border-blue-400 bg-blue-50 p-4">
+          <p className="text-sm font-semibold text-blue-900">Pending approval</p>
+          <p className="mt-1 text-sm text-blue-900">
+            Your profile has been submitted and is awaiting admin approval. You'll be able to access all features once your membership is approved.
+          </p>
+        </div>
       )}
 
       {error ? (
@@ -327,6 +316,8 @@ export default function MePage() {
           setZoom={setZoom}
           setCroppedAreaPixels={setCroppedAreaPixels}
           onSave={async () => {
+            if (savingProfile) return; // Prevent double submission
+            
             setSavingProfile(true);
             setError(null);
 
@@ -361,6 +352,7 @@ export default function MePage() {
 
               setProfileSaved(true);
               setEditingProfile(false);
+              // Don't reset savingProfile - keep button disabled
               router.refresh();
               
               // Reload member data
@@ -378,8 +370,7 @@ export default function MePage() {
               }
             } catch (e: any) {
               setError(e?.message || "Failed to save profile.");
-            } finally {
-              setSavingProfile(false);
+              setSavingProfile(false); // Only reset on error
             }
           }}
           onProfilePhotoUpload={async (file: File) => {
@@ -463,6 +454,8 @@ export default function MePage() {
           saving={savingPassport}
           saved={passportSaved}
           onSave={async () => {
+            if (savingPassport) return; // Prevent double submission
+            
             setSavingPassport(true);
             setError(null);
 
@@ -487,6 +480,7 @@ export default function MePage() {
 
               setPassportSaved(true);
               setEditingPassport(false);
+              // Don't reset savingPassport - keep button disabled
               router.refresh();
 
               // Reload passport data
@@ -503,8 +497,7 @@ export default function MePage() {
               }
             } catch (e: any) {
               setError(e?.message || "Failed to save passport data.");
-            } finally {
-              setSavingPassport(false);
+              setSavingPassport(false); // Only reset on error
             }
           }}
           onPhotoUpload={async (file: File) => {
@@ -809,7 +802,7 @@ function ProfileBlock({
 
           <button
             onClick={onSave}
-            disabled={saving || uploadingProfilePhoto}
+            disabled={saving || saved || uploadingProfilePhoto}
             className="w-full rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
             {saving ? "Saving…" : saved ? "Changes saved" : "Save"}
@@ -1047,7 +1040,7 @@ function PassportBlock({
 
           <button
             onClick={onSave}
-            disabled={saving || uploadingPhoto}
+            disabled={saving || saved || uploadingPhoto}
             className="w-full rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
             {saving ? "Saving…" : saved ? "Changes saved" : "Save"}

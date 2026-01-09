@@ -8,6 +8,7 @@ import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
 import { loadTrips, joinTrip, leaveTrip, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
+import { TripCard } from "../../components/TripCard";
 
 // Helper function to check if cutoff has passed (11:59pm SGT on cutoff date)
 function isCutoffPassed(cutoffAt: string | undefined): boolean {
@@ -367,8 +368,8 @@ export default function TripsListPage() {
   async function handleLeaveTrip(tripId: number) {
     setConfirmModal({
       isOpen: true,
-      title: "Leave Trip?",
-      message: "Are you sure you want to leave this trip?",
+      title: "Leave this trip?",
+      message: "You'll be removed from the attendee list.",
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
         try {
@@ -474,7 +475,8 @@ export default function TripsListPage() {
         ) : (
           <ul className="divide-y">
             {upcoming.map((t) => {
-              const { title, detail } = getTripCourseText(t, courses);
+              const courseText = getTripCourseText(t, courses);
+              const course = t.courseId ? courses.find((c) => c.id === t.courseId) : undefined;
               const now = Date.now();
               const tripDate = new Date(t.date + "T00:00:00").getTime();
               const signupOpenAt = tripDate - 30 * 24 * 60 * 60 * 1000;
@@ -506,138 +508,25 @@ export default function TripsListPage() {
               const joinDisabled = isScheduled || t.status !== "open";
 
               const tripPhase = getTripPhase(t);
-              const showLogisticsBand = shouldShowLogistics(t);
-              const logisticsLines = showLogisticsBand ? getLogisticsLines(t) : null;
 
               return (
                 <li key={t.id} className="py-3">
-                  {/* Trip Name + Details Button */}
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
-                      <Link
-                        href={`/trips/${t.id}`}
-                      className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                      >
-                      Details
-                      </Link>
-                  </div>
-
-                  {/* Logistics Highlight Band - Only for Signups Closed or Game Day with logistics */}
-                  {showLogisticsBand && (
-                    <div className="mb-3 rounded-lg border-l-4 border-blue-500 bg-slate-50 px-4 py-3 border border-gray-200">
-                      <div className="flex items-center gap-2 mb-2">
-                        <svg className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <span className="text-sm font-semibold text-gray-900">Logistics</span>
-                      </div>
-                      {logisticsLines && (
-                        <div className="space-y-1 text-sm text-gray-800">
-                          {/* First emphasis line: Meet time (highest priority) */}
-                          {logisticsLines.meetTime && (
-                            <div className="font-medium text-gray-900">Meet {logisticsLines.meetTime}</div>
-                          )}
-                          {/* Second line: Meeting point */}
-                          {logisticsLines.meetingPoint && (
-                            <div>{logisticsLines.meetingPoint}</div>
-                          )}
-                          {/* Third line: Ferry name */}
-                          {logisticsLines.ferryName && (
-                            <div>Ferry: {logisticsLines.ferryName}</div>
-                          )}
-                          {/* Optional: Short ferry details snippet */}
-                          {logisticsLines.ferryDetailsShort && (
-                            <div className="mt-1 text-xs text-gray-600">{logisticsLines.ferryDetailsShort}</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Logistics placeholder for Signups Closed/Game Day without logistics */}
-                  {!showLogisticsBand && (tripPhase === "signupsClosed" || tripPhase === "gameDay") && (
-                    <div className="mb-3 rounded-lg bg-slate-50 px-4 py-3 border border-gray-200">
-                      <div className="text-xs text-gray-500">Logistics coming soon</div>
-                    </div>
-                  )}
-
-                  {/* Course Name */}
-                  <div className="text-base font-medium text-gray-800 mb-1">
-                    {title || "Course TBD"}
-                  </div>
-
-                  {/* Yardage / Par / Slope - Single Muted Line */}
-                  {detail && (
-                    <div className="text-sm text-gray-500 mb-2">
-                      {detail}
-                    </div>
-                  )}
-
-                  {/* Date + Format Together */}
-                  <div className="text-sm text-gray-900 mb-1.5">
-                    {formatTripDateLong(t.date)}
-                    {t.format && <span className="text-gray-600"> · {t.format}</span>}
-                  </div>
-
-                  {/* Status + Confirmed Count Together */}
-                  <div className="flex items-center gap-2 text-sm mb-2">
-                    {t.status?.toLowerCase() === "cancelled" ? (
-                      <span className="text-red-600 font-medium">Cancelled</span>
-                    ) : t.status?.toLowerCase() === "closed" ? (
-                      <span className="text-orange-600 font-medium">Closed</span>
-                    ) : isScheduled && signupOpenDateYmd ? (
-                      <span className="text-blue-600 font-medium">Signups open {formatTripDateLong(signupOpenDateYmd)}</span>
-                    ) : t.status?.toLowerCase() === "open" ? (
-                      <span className="text-green-600 font-medium">Open for sign up</span>
-                      ) : null}
-                    {t.status?.toLowerCase() !== "cancelled" && (
-                      <>
-                        <span className="text-gray-500">·</span>
-                        <span className="text-gray-500">{confirmedCount(t)} confirmed</span>
-                      </>
-                    )}
-                    </div>
-
-                  {/* Cancelled message */}
-                  {t.status?.toLowerCase() === "cancelled" && (
-                    <div className="mb-2 rounded-lg bg-red-50 border border-red-200 p-3">
-                      <div className="text-sm text-red-900 font-medium">This trip has been cancelled.</div>
-                    </div>
-                  )}
-
-                  {/* Logistics - Only show for phases other than Signups Closed/Game Day (not using highlight band) */}
-                  {!showLogisticsBand && (t.logistics?.meetingPoint || t.logistics?.meetTime) ? (
-                    <div className="text-xs text-gray-600 mb-2">
-                      {t.logistics.meetingPoint && <div>📍 {t.logistics.meetingPoint}</div>}
-                      {t.logistics.meetTime && <div>🕐 {t.logistics.meetTime}</div>}
-                    </div>
-                  ) : null}
-
-                  {/* Join Trip Button - Primary CTA */}
-                  {t.status === "open" && !isScheduled && (
-                    <div className="mt-2">
-                      {myEntry ? (
-                        <button
-                          onClick={() => void handleLeaveTrip(t.id)}
-                          className="w-full rounded bg-red-600 px-4 py-2 text-sm text-white hover:opacity-95"
-                        >
-                          I'm out
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            void handleJoinTrip(t.id, t);
-                          }}
-                          className="w-full rounded bg-black px-4 py-2 text-sm text-white hover:opacity-95"
-                        >
-                          Join trip
-                        </button>
-                      )}
-                  </div>
-                  )}
+                  <TripCard
+                    trip={t}
+                    courseText={courseText}
+                    course={course}
+                    variant="list"
+                    isScheduled={isScheduled}
+                    signupOpenDateYmd={signupOpenDateYmd}
+                    myEntry={myEntry}
+                    confirmedCount={confirmedCount(t)}
+                    tripPhase={tripPhase}
+                    joinDisabled={joinDisabled}
+                    onJoin={() => {
+                      void handleJoinTrip(t.id, t);
+                    }}
+                    onLeave={() => void handleLeaveTrip(t.id)}
+                  />
                 </li>
               );
             })}
@@ -709,77 +598,94 @@ export default function TripsListPage() {
       )}
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-3 text-sm font-medium text-gray-600">Past</div>
+        <div className="mb-4 text-sm font-medium text-gray-600">Past</div>
 
         {past.length === 0 ? (
           <div className="text-sm text-gray-600">No past trips yet</div>
         ) : (
-          <ul className="divide-y">
+          <div className="space-y-3">
             {past.map((t) => {
-              const { title, detail } = getTripCourseText(t, courses);
+              const { title } = getTripCourseText(t, courses);
+              
+              // Extract course name and tee label from title (format: "Course Name — Tee Label" or just "Course Name")
+              const courseName = title.includes(" — ")
+                ? title.split(" — ")[0]
+                : title !== "Course TBD"
+                ? title
+                : null;
+              const teeLabel = title.includes(" — ")
+                ? title.split(" — ")[1]
+                : null;
+              
               const top3 = t.result?.leaderboard?.slice(0, 3) ?? [];
+              const winner = t.result?.leaderboard?.[0];
 
               return (
-                <li key={t.id} className="py-4 space-y-2">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      {/* Trip Name - Priority 1 */}
-                      <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
-                      
-                      {/* Course - Priority 2 */}
-                      <div className="mt-1.5">
-                        <div className="text-base font-medium text-gray-800">{title || "Course TBD"}</div>
-                        {detail && (
-                          <div className="mt-0.5 text-sm text-gray-600">{detail}</div>
-                        )}
-                      </div>
-                      
-                      {/* Date - Priority 3 */}
-                      <div className="mt-2 text-base text-gray-900 font-medium">
-                        {formatTripDateLong(t.date)}
-                      </div>
-                      
-                      {/* Secondary Info */}
-                      <div className="mt-2 text-sm text-gray-600">
-                        {t.format && <span>{t.format}</span>}
-                        {t.format && t.ferry && " · "}
-                        {t.ferry && <span>Ferry {t.ferry}</span>}
-                      </div>
-                    </div>
-
-                    <div className="shrink-0 text-right text-xs text-gray-500">
-                      {t.result ? (
-                        <Link href={`/results/${t.id}`} className="hover:text-gray-900">
-                          Result posted →
-                        </Link>
-                      ) : (
-                        "No result"
-                      )}
-                    </div>
+                <div key={t.id} className="rounded-lg border border-gray-200 bg-white p-4 hover:border-gray-300 transition-colors">
+                  {/* 1) Date (primary, visually dominant) */}
+                  <div className="text-xl font-semibold text-gray-900 mb-2">
+                    {formatTripDateLong(t.date)}
                   </div>
 
-                  {top3.length ? (
-                    <div className="text-sm text-gray-700">
-                      <span className="text-gray-500">Top 3:</span>{" "}
-                      {top3.map((r, i) => (
-                        <span key={r.name}>
-                          {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}
-                          {r.name} ({r.points})
-                          {i < top3.length - 1 ? ", " : ""}
-                        </span>
-                      ))}
+                  {/* 2) Trip title / course (secondary) */}
+                  <div className="text-base font-medium text-gray-800 mb-3">
+                    {t.name || courseName || "Trip"}
+                    {t.name && courseName && (
+                      <span className="text-gray-600 font-normal"> · {courseName}</span>
+                    )}
+                  </div>
+
+                  {/* 3) Result affordance */}
+                  {t.result ? (
+                    <div className="mb-2">
+                      <Link
+                        href={`/results/${t.id}`}
+                        className="inline-flex items-center text-sm font-medium text-gray-700 hover:text-gray-900"
+                      >
+                        Result posted →
+                      </Link>
                     </div>
                   ) : null}
 
-                  {t.result?.notes ? (
-                    <div className="text-sm text-gray-600 mt-1">
-                      {t.result.notes}
+                  {/* 4) Optional compact outcome snapshot (Winner or Top 3) */}
+                  {t.result && (
+                    <div className="mb-2">
+                      {winner ? (
+                        <div className="text-sm text-gray-700">
+                          <span className="text-gray-500">Winner:</span>{" "}
+                          <span className="font-medium">{winner.name}</span>
+                          {winner.points !== undefined && (
+                            <span className="text-gray-500"> ({winner.points})</span>
+                          )}
+                        </div>
+                      ) : top3.length > 0 ? (
+                        <div className="text-sm text-gray-700">
+                          <span className="text-gray-500">Top 3:</span>{" "}
+                          {top3.map((r, i) => (
+                            <span key={r.name}>
+                              {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}
+                              <span className="font-medium">{r.name}</span>
+                              {r.points !== undefined && (
+                                <span className="text-gray-500"> ({r.points})</span>
+                              )}
+                              {i < top3.length - 1 ? ", " : ""}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </li>
+                  )}
+
+                  {/* 5) Minimal muted context (format + tees only) */}
+                  {(t.format || teeLabel) && (
+                    <div className="mt-2 text-xs text-gray-500">
+                      {t.format && teeLabel ? `${t.format} · ${teeLabel}` : t.format || teeLabel}
+                    </div>
+                  )}
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
       </section>
 
@@ -787,8 +693,9 @@ export default function TripsListPage() {
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
         message={confirmModal.message}
-        confirmLabel="Yes"
-        cancelLabel="No"
+        confirmLabel={confirmModal.title === "Leave this trip?" ? "Leave" : "Yes"}
+        cancelLabel={confirmModal.title === "Leave this trip?" ? "Cancel" : "No"}
+        confirmVariant={confirmModal.title === "Leave this trip?" ? "danger" : "primary"}
         onConfirm={confirmModal.onConfirm}
         onCancel={confirmModal.onCancel}
       />

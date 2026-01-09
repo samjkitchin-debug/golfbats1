@@ -46,6 +46,7 @@ export default function AdminMembersPage() {
   const [passportStatuses, setPassportStatuses] = useState<Record<string, PassportStatus>>({});
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"pending" | "members" | "admins">("members");
   const [viewingMemberId, setViewingMemberId] = useState<string | null>(null);
   const [passportDetails, setPassportDetails] = useState<PassportDetails | null>(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
@@ -54,6 +55,8 @@ export default function AdminMembersPage() {
   const [editingRolesMember, setEditingRolesMember] = useState<MemberRow | null>(null);
   const [rolesIsAdmin, setRolesIsAdmin] = useState(false);
   const [savingRoles, setSavingRoles] = useState(false);
+  const [openMenuMemberId, setOpenMenuMemberId] = useState<string | null>(null);
+  const [pendingDetailsOpen, setPendingDetailsOpen] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function load() {
@@ -112,27 +115,68 @@ export default function AdminMembersPage() {
     load();
   }, [supabase]);
 
-  // Filter members based on search query
+  // Calculate summary metrics
+  const metrics = useMemo(() => {
+    const pending = members.filter((m) => (m.status ?? "pending") !== "active").length;
+    const passportMissing = members.filter((m) => {
+      const status = passportStatuses[m.id];
+      return !status?.hasPassport;
+    }).length;
+    const inactive = members.filter((m) => {
+      const status = passportStatuses[m.id];
+      const isActive = (m.status ?? "pending") === "active";
+      return isActive && !status?.hasPassport;
+    }).length;
+    
+    return { pending, passportMissing, inactive };
+  }, [members, passportStatuses]);
+
+  // Set default tab to Pending if there are pending members (only on initial load)
+  const [hasInitialized, setHasInitialized] = useState(false);
+  useEffect(() => {
+    if (!hasInitialized && !loading) {
+      if (metrics.pending > 0) {
+        setActiveTab("pending");
+      } else {
+        setActiveTab("members");
+      }
+      setHasInitialized(true);
+    }
+  }, [loading, metrics.pending, hasInitialized]);
+
+  // Filter members based on search query and active tab
   const filteredMembers = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return members;
+    let filtered = members;
+    
+    // Apply tab filter
+    if (activeTab === "pending") {
+      filtered = filtered.filter((m) => (m.status ?? "pending") !== "active");
+    } else if (activeTab === "admins") {
+      filtered = filtered.filter((m) => m.is_admin);
+    } else if (activeTab === "members") {
+      filtered = filtered.filter((m) => !m.is_admin);
     }
     
-    const query = searchQuery.toLowerCase().trim();
-    return members.filter((m) => {
-      const name = (m.display_name || m.full_name || "").toLowerCase();
-      const email = (m.email || "").toLowerCase();
-      const nationality = (m.nationality || "").toLowerCase();
-      const handicap = m.declared_handicap?.toString() || "";
-      
-      return (
-        name.includes(query) ||
-        email.includes(query) ||
-        nationality.includes(query) ||
-        handicap.includes(query)
-      );
-    });
-  }, [members, searchQuery]);
+    // Apply search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((m) => {
+        const name = (m.display_name || m.full_name || "").toLowerCase();
+        const email = (m.email || "").toLowerCase();
+        const nationality = (m.nationality || "").toLowerCase();
+        const handicap = m.declared_handicap?.toString() || "";
+        
+        return (
+          name.includes(query) ||
+          email.includes(query) ||
+          nationality.includes(query) ||
+          handicap.includes(query)
+        );
+      });
+    }
+    
+    return filtered;
+  }, [members, searchQuery, activeTab]);
 
   async function handleViewPassport(memberId: string) {
     setViewingMemberId(memberId);
@@ -164,10 +208,12 @@ export default function AdminMembersPage() {
     setPassportDetails(null);
   }
 
-  async function handleDeleteMember(memberId: string, memberName: string) {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${memberName}? This action cannot be undone. All associated data (passport, trip attendees, etc.) will also be deleted.`
-    );
+  async function handleDeleteMember(memberId: string, memberName: string, isReject = false) {
+    const message = isReject
+      ? `Reject ${memberName}? This will delete their account and all associated data.`
+      : `Are you sure you want to delete ${memberName}? This action cannot be undone. All associated data (passport, trip attendees, etc.) will also be deleted.`;
+    
+    const confirmed = window.confirm(message);
 
     if (!confirmed) return;
 
@@ -379,6 +425,21 @@ export default function AdminMembersPage() {
     }
   }
 
+  // Click outside handler for overflow menu
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (openMenuMemberId !== null && !target.closest(`[data-member-menu="${openMenuMemberId}"]`)) {
+        setOpenMenuMemberId(null);
+      }
+    }
+    
+    if (openMenuMemberId !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [openMenuMemberId]);
+
   return (
     <main className="mx-auto w-full max-w-5xl px-4 pb-10">
       <div className="mt-6 flex items-center justify-between">
@@ -398,248 +459,502 @@ export default function AdminMembersPage() {
         </div>
       ) : (
         <>
-          {/* Search Input */}
+          {/* Summary Metrics (clickable filters) - Responsive grid */}
+          <section className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <button
+              onClick={() => {
+                setActiveTab("pending");
+                setSearchQuery("");
+              }}
+              className={`rounded-xl border p-3 sm:p-4 text-left transition-colors ${
+                activeTab === "pending"
+                  ? "border-gray-900 bg-gray-50"
+                  : "border-gray-200 bg-white hover:border-gray-300"
+              }`}
+            >
+              <div className="text-xs font-medium text-gray-500">Pending approvals</div>
+              <div className="mt-1 text-xl sm:text-2xl font-semibold text-gray-900">{metrics.pending}</div>
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("members");
+                setSearchQuery("");
+                // Filter by passport missing would need additional logic
+              }}
+              className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4 text-left hover:border-gray-300 transition-colors"
+            >
+              <div className="text-xs font-medium text-gray-500">Passport missing</div>
+              <div className="mt-1 text-xl sm:text-2xl font-semibold text-gray-900">{metrics.passportMissing}</div>
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("members");
+                setSearchQuery("");
+                // Filter by inactive would need additional logic
+              }}
+              className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4 text-left hover:border-gray-300 transition-colors"
+            >
+              <div className="text-xs font-medium text-gray-500">Inactive</div>
+              <div className="mt-1 text-xl sm:text-2xl font-semibold text-gray-900">{metrics.inactive}</div>
+            </button>
+          </section>
+
+          {/* Tabs - Responsive */}
+          <section className="mt-4 rounded-xl border bg-white p-1 shadow-sm">
+            <div className="flex gap-1">
+              <button
+                onClick={() => setActiveTab("pending")}
+                className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
+                  activeTab === "pending"
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                Pending
+                {metrics.pending > 0 && (
+                  <span className={`ml-1.5 sm:ml-2 rounded-full px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs ${
+                    activeTab === "pending"
+                      ? "bg-white/20 text-white"
+                      : "bg-gray-200 text-gray-700"
+                  }`}>
+                    {metrics.pending}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab("members")}
+                className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
+                  activeTab === "members"
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                Members
+              </button>
+              <button
+                onClick={() => setActiveTab("admins")}
+                className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
+                  activeTab === "admins"
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                Admins
+              </button>
+            </div>
+          </section>
+
+          {/* Search Input - Mobile-first, prominent on mobile */}
           <section className="mt-4 rounded-xl border bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <input
                 type="text"
                 placeholder="Search by name, email, nationality, or handicap..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 sm:py-2 text-sm focus:border-gray-400 focus:outline-none"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="rounded-lg border border-gray-300 bg-white px-3 sm:px-4 py-2.5 sm:py-2 text-sm text-gray-700 hover:bg-gray-50"
                 >
-                  Clear search
+                  <span className="hidden sm:inline">Clear search</span>
+                  <span className="sm:hidden">Clear</span>
                 </button>
               )}
             </div>
           </section>
 
-          {/* Admins block */}
-          <div className="mt-4 overflow-x-auto rounded-xl border bg-white">
-            <div className="border-b px-4 py-3 text-sm font-semibold text-gray-900">
-              Admins
-            </div>
-            <table className="w-full min-w-[880px] text-left text-sm">
-              <colgroup>
-                <col className="w-[22%]" /><col className="w-[24%]" /><col className="w-[10%]" /><col className="w-[10%]" /><col className="w-[14%]" /><col className="w-[10%]" /><col className="w-[10%]" />
-              </colgroup>
-              <thead className="border-b bg-white">
-                <tr className="text-gray-700">
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">Nat.</th>
-                  <th className="px-4 py-3">HCP</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Passport</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMembers
-                  .filter((m) => m.is_admin)
-                  .map((m) => {
-                    const name = m.display_name || m.full_name || "—";
-                    const passportStatus = passportStatuses[m.id];
-                    const hasCompletePassport = passportStatus?.isComplete ?? false;
-                    const hasPassport = passportStatus?.hasPassport ?? false;
-                    const isActive = (m.status ?? "pending") === "active";
-
-                    return (
-                      <tr key={m.id} className="border-b last:border-b-0">
-                        <td className="px-4 py-3 font-medium text-gray-900">{name}</td>
-                        <td className="px-4 py-3 text-gray-800">{m.email ?? "—"}</td>
-                        <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
-                        <td className="px-4 py-3 text-gray-800">
-                          {m.declared_handicap ?? "—"}
-                        </td>
-                        <td className="px-4 py-3">
-                          {isActive ? (
-                            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
-                              Active
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
-                              Pending
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {hasCompletePassport ? (
-                            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
-                              Complete
-                            </span>
-                          ) : hasPassport ? (
-                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
-                              Incomplete
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800">
-                              None
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingRolesMember(m);
-                                setRolesIsAdmin(!!m.is_admin);
-                              }}
-                              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                            >
-                              Roles
-                            </button>
-                            <button
-                              onClick={() => handleViewPassport(m.id)}
-                              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                            >
-                              View
-                            </button>
-                            {!isActive && (
-                              <button
-                                onClick={() => handleApproveMember(m.id, name)}
-                                disabled={approvingMemberId === m.id}
-                                className="rounded-md border border-green-300 bg-white px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {approvingMemberId === m.id ? "Approving..." : "Approve"}
-                              </button>
+          {/* Tab Content */}
+          <div className="mt-4 rounded-xl border bg-white">
+            {activeTab === "pending" ? (
+              /* Pending Tab - Mobile: cards, Desktop: table */
+              filteredMembers.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-gray-700">
+                  {searchQuery ? "No pending members match your search." : "No pending approvals."}
+                </div>
+              ) : (
+                <>
+                  {/* Mobile: Stacked cards */}
+                  <div className="block sm:hidden divide-y">
+                    {filteredMembers.map((m) => {
+                      const name = m.display_name || m.full_name || "—";
+                      const showDetails = pendingDetailsOpen.has(m.id);
+                      return (
+                        <div key={m.id} className="p-4 space-y-3">
+                          <div>
+                            <div className="text-base font-semibold text-gray-900">{name}</div>
+                            {m.declared_handicap !== null && m.declared_handicap !== undefined && (
+                              <div className="mt-1 text-sm text-gray-600">
+                                HCP {m.declared_handicap}
+                              </div>
                             )}
-                            <button
-                              onClick={() => handleDeleteMember(m.id, name)}
-                              disabled={deletingMemberId === m.id}
-                              className="rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {deletingMemberId === m.id ? "Deleting..." : "Delete"}
-                            </button>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-            {filteredMembers.filter((m) => m.is_admin).length === 0 && (
-              <div className="px-4 py-6 text-sm text-gray-700">
-                {searchQuery ? "No admins match your search." : "No admins found."}
-              </div>
-            )}
-          </div>
-
-          {/* Non-admin members block */}
-          <div className="mt-6 overflow-x-auto rounded-xl border bg-white">
-            <div className="border-b px-4 py-3 text-sm font-semibold text-gray-900">
-              Members
-            </div>
-            <table className="w-full min-w-[880px] text-left text-sm">
-              <colgroup>
-                <col className="w-[22%]" /><col className="w-[24%]" /><col className="w-[10%]" /><col className="w-[10%]" /><col className="w-[14%]" /><col className="w-[10%]" /><col className="w-[10%]" />
-              </colgroup>
-              <thead className="border-b bg-white">
-                <tr className="text-gray-700">
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">Nat.</th>
-                  <th className="px-4 py-3">HCP</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Passport</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-              {filteredMembers
-                .filter((m) => !m.is_admin)
-                .map((m) => {
-                  const name = m.display_name || m.full_name || "—";
-                  const passportStatus = passportStatuses[m.id];
-                  const hasCompletePassport = passportStatus?.isComplete ?? false;
-                  const hasPassport = passportStatus?.hasPassport ?? false;
-                  const isActive = (m.status ?? "pending") === "active";
-
-                  return (
-                    <tr key={m.id} className="border-b last:border-b-0">
-                      <td className="px-4 py-3 font-medium text-gray-900">{name}</td>
-                      <td className="px-4 py-3 text-gray-800">{m.email ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-800">
-                        {m.declared_handicap ?? "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        {isActive ? (
-                          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
-                            Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
-                            Pending
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {hasCompletePassport ? (
-                          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
-                            Complete
-                          </span>
-                        ) : hasPassport ? (
-                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
-                            Incomplete
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800">
-                            None
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingRolesMember(m);
-                                setRolesIsAdmin(!!m.is_admin);
-                              }}
-                              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                            >
-                              Roles
-                            </button>
-                            <button
-                              onClick={() => handleViewPassport(m.id)}
-                              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                            >
-                              View
-                            </button>
-                          {!isActive && (
+                          
+                          {/* View details toggle */}
+                          <button
+                            onClick={() => {
+                              const newSet = new Set(pendingDetailsOpen);
+                              if (showDetails) {
+                                newSet.delete(m.id);
+                              } else {
+                                newSet.add(m.id);
+                              }
+                              setPendingDetailsOpen(newSet);
+                            }}
+                            className="text-sm text-gray-500 hover:text-gray-700"
+                          >
+                            {showDetails ? "Hide details" : "View details"}
+                          </button>
+                          
+                          {/* Hidden metadata */}
+                          {showDetails && (
+                            <div className="space-y-1 text-sm text-gray-600">
+                              {m.email && <div>Email: {m.email}</div>}
+                              {m.nationality && <div>Nationality: {m.nationality}</div>}
+                              <button
+                                onClick={() => handleViewPassport(m.id)}
+                                className="text-gray-500 hover:text-gray-700"
+                              >
+                                View passport →
+                              </button>
+                            </div>
+                          )}
+                          
+                          {/* Primary actions - thumb-safe spacing */}
+                          <div className="flex gap-3 pt-2">
                             <button
                               onClick={() => handleApproveMember(m.id, name)}
                               disabled={approvingMemberId === m.id}
-                              className="rounded-md border border-green-300 bg-white px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="flex-1 rounded-md bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {approvingMemberId === m.id ? "Approving..." : "Approve"}
                             </button>
-                          )}
-                          <button
-                            onClick={() => handleDeleteMember(m.id, name)}
-                            disabled={deletingMemberId === m.id}
-                            className="rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {deletingMemberId === m.id ? "Deleting..." : "Delete"}
-                          </button>
+                            <button
+                              onClick={() => handleDeleteMember(m.id, name, true)}
+                              disabled={deletingMemberId === m.id}
+                              className="flex-1 rounded-md border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {deletingMemberId === m.id ? "Rejecting..." : "Reject"}
+                            </button>
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Desktop: Compact table */}
+                  <div className="hidden sm:block overflow-x-auto">
+                    <table className="w-full min-w-[800px] text-left text-sm">
+                      <colgroup>
+                        <col className="w-[25%]" />
+                        <col className="w-[30%]" />
+                        <col className="w-[15%]" />
+                        <col className="w-[15%]" />
+                        <col className="w-[15%]" />
+                      </colgroup>
+                      <thead className="border-b bg-gray-50">
+                        <tr className="text-gray-700">
+                          <th className="px-4 py-2.5 font-medium">Name</th>
+                          <th className="px-4 py-2.5 font-medium">Email</th>
+                          <th className="px-4 py-2.5 font-medium">Nationality</th>
+                          <th className="px-4 py-2.5 font-medium">HCP</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredMembers.map((m) => {
+                          const name = m.display_name || m.full_name || "—";
+                          return (
+                            <tr key={m.id} className="border-b last:border-b-0 hover:bg-gray-50">
+                              <td className="px-4 py-2.5 font-medium text-gray-900">{name}</td>
+                              <td className="px-4 py-2.5 text-gray-800">{m.email ?? "—"}</td>
+                              <td className="px-4 py-2.5 text-gray-800">{m.nationality ?? "—"}</td>
+                              <td className="px-4 py-2.5 text-gray-800">
+                                {m.declared_handicap ?? "—"}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Link
+                                    href={`/admin/members/${m.id}/passport`}
+                                    className="text-xs text-gray-500 hover:text-gray-700"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      handleViewPassport(m.id);
+                                    }}
+                                  >
+                                    View
+                                  </Link>
+                                  <button
+                                    onClick={() => handleApproveMember(m.id, name)}
+                                    disabled={approvingMemberId === m.id}
+                                    className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {approvingMemberId === m.id ? "Approving..." : "Approve"}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteMember(m.id, name, true)}
+                                    disabled={deletingMemberId === m.id}
+                                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {deletingMemberId === m.id ? "Rejecting..." : "Reject"}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )
+            ) : (
+              /* Members/Admins Tab - Mobile: cards with overflow menu, Desktop: table */
+              filteredMembers.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-gray-700">
+                  {searchQuery
+                    ? `No ${activeTab} match your search.`
+                    : `No ${activeTab} found.`}
+                </div>
+              ) : (
+                <>
+                  {/* Mobile: Compact cards with overflow menu */}
+                  <div className="block sm:hidden divide-y">
+                    {filteredMembers.map((m) => {
+                      const name = m.display_name || m.full_name || "—";
+                      const passportStatus = passportStatuses[m.id];
+                      const hasCompletePassport = passportStatus?.isComplete ?? false;
+                      const hasPassport = passportStatus?.hasPassport ?? false;
+                      const isActive = (m.status ?? "pending") === "active";
 
-            {filteredMembers.filter((m) => !m.is_admin).length === 0 ? (
-              <div className="px-4 py-6 text-sm text-gray-700">
-                {searchQuery ? "No members match your search." : "No members found."}
-              </div>
-            ) : null}
+                      return (
+                        <div key={m.id} className="p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-base font-semibold text-gray-900">{name}</div>
+                              <div className="mt-1 text-sm text-gray-600">{m.email ?? "—"}</div>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                {m.declared_handicap !== null && m.declared_handicap !== undefined && (
+                                  <span className="text-xs text-gray-600">HCP {m.declared_handicap}</span>
+                                )}
+                                {isActive ? (
+                                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                                    Active
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                    Pending
+                                  </span>
+                                )}
+                                {hasCompletePassport ? (
+                                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                                    Passport
+                                  </span>
+                                ) : hasPassport ? (
+                                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                    Passport incomplete
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            
+                            {/* Overflow menu */}
+                            <div className="relative shrink-0" data-member-menu={m.id}>
+                              <button
+                                onClick={() => setOpenMenuMemberId(openMenuMemberId === m.id ? null : m.id)}
+                                className="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                aria-label="More options"
+                              >
+                                <svg
+                                  className="h-5 w-5"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                                  />
+                                </svg>
+                              </button>
+                              {openMenuMemberId === m.id && (
+                                <div className="absolute right-0 top-10 z-10 w-48 rounded-lg border border-gray-200 bg-white shadow-lg">
+                                  <div className="py-1">
+                                    <button
+                                      onClick={() => {
+                                        handleViewPassport(m.id);
+                                        setOpenMenuMemberId(null);
+                                      }}
+                                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                      View profile
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingRolesMember(m);
+                                        setRolesIsAdmin(!!m.is_admin);
+                                        setOpenMenuMemberId(null);
+                                      }}
+                                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                      Manage roles
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleDeleteMember(m.id, name);
+                                        setOpenMenuMemberId(null);
+                                      }}
+                                      disabled={deletingMemberId === m.id}
+                                      className="w-full px-4 py-2.5 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      {deletingMemberId === m.id ? "Deleting..." : "Delete"}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Desktop: Table with kebab menu */}
+                  <div className="hidden sm:block overflow-x-auto">
+                    <table className="w-full min-w-[880px] text-left text-sm">
+                      <colgroup>
+                        <col className="w-[22%]" />
+                        <col className="w-[24%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[14%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[10%]" />
+                      </colgroup>
+                      <thead className="border-b bg-gray-50">
+                        <tr className="text-gray-700">
+                          <th className="px-4 py-3 font-medium">Name</th>
+                          <th className="px-4 py-3 font-medium">Email</th>
+                          <th className="px-4 py-3 font-medium">Nat.</th>
+                          <th className="px-4 py-3 font-medium">HCP</th>
+                          <th className="px-4 py-3 font-medium">Status</th>
+                          <th className="px-4 py-3 font-medium">Passport</th>
+                          <th className="px-4 py-3 font-medium"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredMembers.map((m) => {
+                          const name = m.display_name || m.full_name || "—";
+                          const passportStatus = passportStatuses[m.id];
+                          const hasCompletePassport = passportStatus?.isComplete ?? false;
+                          const hasPassport = passportStatus?.hasPassport ?? false;
+                          const isActive = (m.status ?? "pending") === "active";
+
+                          return (
+                            <tr key={m.id} className="border-b last:border-b-0 hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium text-gray-900">{name}</td>
+                              <td className="px-4 py-3 text-gray-800">{m.email ?? "—"}</td>
+                              <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
+                              <td className="px-4 py-3 text-gray-800">
+                                {m.declared_handicap ?? "—"}
+                              </td>
+                              <td className="px-4 py-3">
+                                {isActive ? (
+                                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                                    Active
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                                    Pending
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {hasCompletePassport ? (
+                                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                                    Complete
+                                  </span>
+                                ) : hasPassport ? (
+                                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                                    Incomplete
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800">
+                                    None
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="relative flex justify-end" data-member-menu={m.id}>
+                                  <button
+                                    onClick={() => setOpenMenuMemberId(openMenuMemberId === m.id ? null : m.id)}
+                                    className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                    aria-label="More options"
+                                  >
+                                    <svg
+                                      className="h-5 w-5"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                                      />
+                                    </svg>
+                                  </button>
+                                  {openMenuMemberId === m.id && (
+                                    <div className="absolute right-0 top-8 z-10 w-48 rounded-lg border border-gray-200 bg-white shadow-lg">
+                                      <div className="py-1">
+                                        <button
+                                          onClick={() => {
+                                            handleViewPassport(m.id);
+                                            setOpenMenuMemberId(null);
+                                          }}
+                                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                        >
+                                          View profile
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setEditingRolesMember(m);
+                                            setRolesIsAdmin(!!m.is_admin);
+                                            setOpenMenuMemberId(null);
+                                          }}
+                                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                        >
+                                          Manage roles
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            handleDeleteMember(m.id, name);
+                                            setOpenMenuMemberId(null);
+                                          }}
+                                          disabled={deletingMemberId === m.id}
+                                          className="w-full px-4 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                          {deletingMemberId === m.id ? "Deleting..." : "Delete"}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )
+            )}
           </div>
         </>
       )}

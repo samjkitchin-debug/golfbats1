@@ -16,6 +16,7 @@ import {
 import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import { PromptModal } from "../../../components/PromptModal";
+import { TripRsvpActions } from "../../../components/TripRsvpActions";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -116,6 +117,11 @@ export default function TripDetailPage() {
     return getTripCourseText(trip, courses);
   }, [trip, courses]);
 
+  const course = useMemo(() => {
+    if (!trip?.courseId) return undefined;
+    return courses.find((c) => c.id === trip.courseId);
+  }, [trip, courses]);
+
   const myEntry = useMemo(() => {
     if (!trip) return undefined;
     // Prefer matching by memberId (supabase user id); fall back to name match if needed
@@ -141,6 +147,24 @@ export default function TripDetailPage() {
   }, [trip, currentUserId, currentUserName, myEntry]);
 
   const [hcp, setHcp] = useState<string>("");
+  const [attendeeProfilePhotos, setAttendeeProfilePhotos] = useState<
+    Array<{ memberId: string; name: string; photoUrl: string | null }>
+  >([]);
+
+  // Compute confirmed and waitlist before early returns (with fallback for null trip)
+  const confirmed = useMemo(() => {
+    if (!trip) return [];
+    return trip.attendees
+      .filter((a) => a.status === "confirmed")
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+  }, [trip]);
+
+  const waitlist = useMemo(() => {
+    if (!trip) return [];
+    return trip.attendees
+      .filter((a) => a.status === "waitlist")
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+  }, [trip]);
 
   useEffect(() => {
     if (!myEntry) {
@@ -152,6 +176,57 @@ export default function TripDetailPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setHcp(v === null || v === undefined ? "" : String(v));
   }, [myEntry]);
+
+  // Fetch profile photos for confirmed attendees (up to 4)
+  useEffect(() => {
+    async function loadAttendeeProfilePhotos() {
+      if (!trip || confirmed.length === 0) {
+        setAttendeeProfilePhotos([]);
+        return;
+      }
+
+      // Get up to 4 confirmed attendees with memberIds
+      const attendeesWithMemberIds = confirmed
+        .filter((a) => a.memberId)
+        .slice(0, 4);
+
+      if (attendeesWithMemberIds.length === 0) {
+        setAttendeeProfilePhotos([]);
+        return;
+      }
+
+      try {
+        const { data: memberData } = await supabase
+          .from("members")
+          .select("id,profile_photo_path,display_name,full_name")
+          .in(
+            "id",
+            attendeesWithMemberIds.map((a) => a.memberId!)
+          );
+
+        if (memberData) {
+          const photos = attendeesWithMemberIds.map((attendee) => {
+            const member = memberData.find((m) => m.id === attendee.memberId);
+            const photoPath = member?.profile_photo_path;
+            const photoUrl = photoPath
+              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${photoPath}`
+              : null;
+            return {
+              memberId: attendee.memberId!,
+              name: attendee.name,
+              photoUrl,
+            };
+          });
+          setAttendeeProfilePhotos(photos);
+        }
+      } catch (error) {
+        console.warn("Failed to load attendee profile photos:", error);
+        setAttendeeProfilePhotos([]);
+      }
+    }
+
+    loadAttendeeProfilePhotos();
+  }, [trip, confirmed, supabase]);
 
   if (!tripId) {
     return (
@@ -168,7 +243,7 @@ export default function TripDetailPage() {
     return (
       <div className="rounded-xl border bg-white p-5 shadow-sm">
         <div className="text-lg font-semibold text-brand-black">Trip not found</div>
-        <div className="mt-2 text-sm text-gray-600">This trip id doesn’t exist.</div>
+        <div className="mt-2 text-sm text-gray-600">This trip id doesn't exist.</div>
         <Link href="/trips" className="mt-3 inline-block text-sm text-gray-700 hover:text-brand-black">
           ← Back to Trips
         </Link>
@@ -318,8 +393,8 @@ export default function TripDetailPage() {
   async function handleImOut() {
     setConfirmModal({
       isOpen: true,
-      title: "Leave trip?",
-      message: "Are you sure you want to leave this trip?",
+      title: "Leave this trip?",
+      message: "You'll be removed from the attendee list.",
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });
         try {
@@ -353,13 +428,59 @@ export default function TripDetailPage() {
     }
   }
 
-  const confirmed = trip.attendees
-    .filter((a) => a.status === "confirmed")
-    .sort((a, b) => a.joinedAt - b.joinedAt);
 
-  const waitlist = trip.attendees
-    .filter((a) => a.status === "waitlist")
-    .sort((a, b) => a.joinedAt - b.joinedAt);
+  // Parse course name and tee from courseText.title (format: "Course Name — Tee Label" or just "Course Name")
+  const courseName = courseText?.title?.includes(" — ")
+    ? courseText.title.split(" — ")[0]
+    : courseText?.title !== "Course TBD"
+    ? courseText?.title
+    : null;
+  const teeLabel = courseText?.title?.includes(" — ")
+    ? courseText.title.split(" — ")[1]
+    : null;
+
+  // Extract metrics from courseText.detail (format: "6000m · Par 72 · Slope 120")
+  const metricsParts = courseText?.detail?.split(" · ") || [];
+  const meters = metricsParts.find((p) => p.endsWith("m")) || null;
+  const par = metricsParts.find((p) => p.startsWith("Par "))?.replace("Par ", "") || null;
+  const slope = metricsParts.find((p) => p.startsWith("Slope "))?.replace("Slope ", "") || null;
+
+  // Build golf details secondary line: "Blue Tees · Stableford · 6000m · Par 72 · Slope 120"
+  const golfDetailsSecondaryParts: string[] = [];
+  if (teeLabel) golfDetailsSecondaryParts.push(teeLabel);
+  if (trip.format) golfDetailsSecondaryParts.push(trip.format);
+  if (meters) golfDetailsSecondaryParts.push(meters);
+  if (par) golfDetailsSecondaryParts.push(`Par ${par}`);
+  if (slope) golfDetailsSecondaryParts.push(`Slope ${slope}`);
+  const golfDetailsSecondary = golfDetailsSecondaryParts.length > 0
+    ? golfDetailsSecondaryParts.join(" · ")
+    : null;
+
+  // Extract time from meetTime
+  const meetTime = trip.logistics?.meetTime?.trim() || null;
+
+  // Trip state: "Open for sign up" + confirmed count (muted)
+  const tripStateText =
+    trip.status === "cancelled"
+      ? null
+      : isScheduled && signupOpenDateYmd
+      ? `Signups open ${signupOpenDateYmd}`
+      : trip.status === "open" && !isScheduled
+      ? "Open for sign up"
+      : trip.status === "closed"
+      ? "Signups closed"
+      : null;
+
+  const confirmedCountValue = trip.attendees.filter((a) => a.status === "confirmed").length;
+
+  // Helper function to get initials from name
+  function getInitials(name: string): string {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  }
 
   return (
     <div className="space-y-4 pb-24">
@@ -368,16 +489,12 @@ export default function TripDetailPage() {
           ← Back to Trips
         </Link>
 
-        <div className="mt-2 text-xl font-semibold text-brand-black">{courseText?.title ?? "Trip"}</div>
-        {courseText?.detail ? <div className="mt-1 text-sm text-gray-600">{courseText.detail}</div> : null}
-
-        <div className="mt-2 text-sm text-gray-700">
-          {formatTripDateLong(trip.date)} · {trip.format}
-          {trip.ferry ? ` · Ferry ${trip.ferry}` : ""}
-          {locked ? " · Locked" : ""}
-          {isScheduled && signupOpenDateYmd ? ` · Signups open ${signupOpenDateYmd}` : ""}
+        {/* Trip name */}
+        <div className="mt-2 text-xl font-semibold text-brand-black">
+          {trip.name || "Trip"}
         </div>
 
+        {/* Cancelled info box */}
         {trip.status === "cancelled" && (
           <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
             <div className="text-sm text-red-900 font-semibold">
@@ -385,7 +502,8 @@ export default function TripDetailPage() {
             </div>
           </div>
         )}
-        
+
+        {/* Scheduled info box */}
         {trip.status !== "cancelled" && isScheduled && (
           <div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 p-3">
             <div className="text-sm text-blue-900">
@@ -393,62 +511,67 @@ export default function TripDetailPage() {
             </div>
           </div>
         )}
+
+        {/* 1) Golf details block */}
+        {(courseName || courseText?.title !== "Course TBD") && (
+          <div className="mt-4">
+            {/* Primary line: Course name + location */}
+            <div className="text-base font-medium text-gray-900">
+              {courseName || courseText?.title}
+              {course?.location && (
+                <span className="text-gray-600"> · {course.location}</span>
+              )}
+            </div>
+            {/* Secondary line: Tee + format + metrics */}
+            {golfDetailsSecondary && (
+              <div className="text-sm text-gray-600 mt-1">
+                {golfDetailsSecondary}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 2) Time block */}
+        <div className="mt-3 space-y-0.5">
+          <div className="text-sm text-gray-900 font-medium">
+            {formatTripDateLong(trip.date)}
+          </div>
+          {meetTime && (
+            <div className="text-sm text-gray-700">
+              {meetTime}
+            </div>
+          )}
+        </div>
+
+        {/* 4) Trip state block (muted) */}
+        {tripStateText && (
+          <div className="mt-2 text-sm text-gray-500">
+            {tripStateText}
+            {trip.status !== "cancelled" && (
+              <span className="ml-2">· {confirmedCountValue} confirmed</span>
+            )}
+          </div>
+        )}
       </div>
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">
         <div className="mb-3 text-sm font-medium text-gray-600">RSVP</div>
 
-        <div className="flex gap-2">
-          {myEntry ? (
-            // User is already in the trip - show disabled "I'm in" and enabled "I'm out"
-            <>
-              <button
-                onClick={handleImIn}
-                disabled={true}
-                className="flex-1 rounded bg-green-600 py-2 text-sm text-white cursor-default"
-              >
-                You're In
-              </button>
-              <button
-                onClick={handleImOut}
-                disabled={locked}
-                className={`flex-1 rounded py-2 text-sm text-white ${
-                  locked ? "bg-gray-400" : "bg-red-600 hover:opacity-95"
-                }`}
-              >
-                I'm Out
-              </button>
-            </>
-          ) : (
-            // User is not in the trip - show only "Join Trip" button in black
-            <button
-              onClick={handleImIn}
-              disabled={joinDisabled}
-              className={`flex-1 rounded py-2 text-sm text-white ${
-                joinDisabled ? "bg-gray-200 text-gray-500" : "bg-black hover:opacity-95"
-              }`}
-            >
-              Join Trip
-            </button>
-          )}
-        </div>
+        <TripRsvpActions
+          status={myEntry?.status}
+          onJoin={handleImIn}
+          onLeave={handleImOut}
+          joinDisabled={joinDisabled}
+          leaveDisabled={locked}
+          showJoin={trip.status === "open" && !isScheduled}
+          showMicrocopy={true}
+        />
 
-        {isScheduled && signupOpenDateYmd ? (
+        {isScheduled && signupOpenDateYmd && (
           <div className="mt-3 text-sm text-gray-600">
             Signups open on <span className="font-semibold">{signupOpenDateYmd}</span> (30 days before the trip).
           </div>
-        ) : null}
-
-        <div className="mt-3 text-sm text-gray-700">
-          Your status:{" "}
-          <span className="font-semibold">
-            {myEntry?.status === "confirmed"
-              ? "Confirmed"
-              : myEntry?.status === "waitlist"
-              ? "Waitlist"
-              : "Not in"}
-          </span>
-        </div>
+        )}
       </section>
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">
@@ -477,53 +600,82 @@ export default function TripDetailPage() {
         <div className="mt-2 text-xs text-gray-500">Stored on your attendee record for this trip.</div>
       </section>
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-3 text-sm font-medium text-gray-600">Logistics</div>
+      {/* 3) Logistics block (single coherent group) */}
+      {(trip.logistics?.meetingPoint || trip.ferry || trip.logistics?.ferryDetails || trip.logistics?.notes) && (
+        <section className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="mb-3 text-sm font-medium text-gray-600">Logistics</div>
 
-        {trip.logistics ? (
           <div className="space-y-2 text-sm text-gray-700">
-            {trip.logistics.meetingPoint ? (
-              <div>
-                <div className="text-xs text-gray-500">Meeting point</div>
-                <div>{trip.logistics.meetingPoint}</div>
-              </div>
-            ) : null}
+            {trip.logistics?.meetingPoint && (
+              <div>{trip.logistics.meetingPoint}</div>
+            )}
 
-            {trip.logistics.meetTime ? (
-              <div>
-                <div className="text-xs text-gray-500">Meet time</div>
-                <div>{trip.logistics.meetTime}</div>
-              </div>
-            ) : null}
+            {trip.ferry && (
+              <div>Ferry: {trip.ferry}</div>
+            )}
 
-            {trip.logistics.ferryDetails ? (
-              <div>
-                <div className="text-xs text-gray-500">Ferry</div>
-                <div className="whitespace-pre-wrap">{trip.logistics.ferryDetails}</div>
+            {trip.logistics?.ferryDetails && (
+              <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                {trip.logistics.ferryDetails}
               </div>
-            ) : null}
+            )}
 
-            {trip.logistics.notes ? (
-              <div>
-                <div className="text-xs text-gray-500">Notes</div>
-                <div className="whitespace-pre-wrap">{trip.logistics.notes}</div>
+            {trip.logistics?.notes && (
+              <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                {trip.logistics.notes}
               </div>
-            ) : null}
+            )}
+          </div>
+        </section>
+      )}
 
-            {!trip.logistics.meetingPoint &&
-            !trip.logistics.meetTime &&
-            !trip.logistics.ferryDetails &&
-            !trip.logistics.notes ? (
-              <div className="text-sm text-gray-600">No logistics posted yet.</div>
-            ) : null}
+      <section className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="mb-2 text-sm font-medium text-gray-600">Results</div>
+
+        {trip.result ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm text-gray-700">Published</div>
+            <Link
+              href={`/results/${tripIdSafe}`}
+              className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              View Results →
+            </Link>
           </div>
         ) : (
-          <div className="text-sm text-gray-600">No logistics posted yet.</div>
+          <div className="text-sm text-gray-600">Not published yet.</div>
         )}
       </section>
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-3 text-sm font-medium text-gray-600">Attendees</div>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="text-sm font-medium text-gray-600">Attendees</div>
+          
+          {/* Profile photo avatars (up to 4, overlapping slightly) */}
+          {attendeeProfilePhotos.length > 0 && (
+            <div className="flex items-center -space-x-2">
+              {attendeeProfilePhotos.slice(0, 4).map((attendee) => (
+                <div
+                  key={attendee.memberId}
+                  className="relative h-7 w-7 shrink-0 rounded-full border-2 border-white bg-gray-100 overflow-hidden"
+                  title={attendee.name}
+                >
+                  {attendee.photoUrl ? (
+                    <img
+                      src={attendee.photoUrl}
+                      alt={attendee.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-gray-400">
+                      {getInitials(attendee.name)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="text-sm text-gray-700">
           <span className="font-semibold">{confirmed.length}</span> confirmed
@@ -562,30 +714,13 @@ export default function TripDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-2 text-sm font-medium text-gray-600">Results</div>
-
-        {trip.result ? (
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm text-gray-700">Published</div>
-            <Link
-              href={`/results/${tripIdSafe}`}
-              className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              View Results →
-            </Link>
-          </div>
-        ) : (
-          <div className="text-sm text-gray-600">Not published yet.</div>
-        )}
-      </section>
-
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
         message={confirmModal.message}
-        confirmLabel="Yes"
-        cancelLabel="No"
+        confirmLabel={confirmModal.title === "Leave this trip?" ? "Leave" : "Yes"}
+        cancelLabel={confirmModal.title === "Leave this trip?" ? "Cancel" : "No"}
+        confirmVariant={confirmModal.title === "Leave this trip?" ? "danger" : "primary"}
         onConfirm={confirmModal.onConfirm}
         onCancel={confirmModal.onCancel}
       />

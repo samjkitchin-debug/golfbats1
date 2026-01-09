@@ -1,0 +1,88 @@
+import type { AttendanceStatus } from "../lib/tripActions";
+
+type TripRsvpActionsProps = {
+  status?: AttendanceStatus | undefined;
+  onJoin?: () => void;
+  onLeave?: () => void;
+  joinDisabled?: boolean;
+  leaveDisabled?: boolean;
+  showJoin?: boolean; // Controls if Join button should be visible (e.g., trip is open and not scheduled)
+  showMicrocopy?: boolean; // Show optional muted microcopy "You're on the attendee list" (only if space allows, e.g., Trip Details page)
+  className?: string; // Optional className for the container
+};
+
+export function TripRsvpActions({
+  status,
+  onJoin,
+  onLeave,
+  joinDisabled = false,
+  leaveDisabled = false,
+  showJoin = true,
+  showMicrocopy = false,
+  className = "",
+}: TripRsvpActionsProps) {
+  const isConfirmed = status === "confirmed";
+
+  if (isConfirmed) {
+    // User is IN (confirmed): Show Confirmed pill + I'm out button (if onLeave provided)
+    return (
+      <div className={className}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1.5">
+            <svg
+              className="h-4 w-4 text-green-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            <span className="text-sm font-medium text-green-700">Confirmed</span>
+          </div>
+          {onLeave && (
+            <button
+              onClick={onLeave}
+              disabled={leaveDisabled}
+              className={`shrink-0 rounded border px-3 py-1.5 text-sm font-medium ${
+                leaveDisabled
+                  ? "border-gray-300 bg-gray-50 text-gray-400 cursor-not-allowed"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              I'm out
+            </button>
+          )}
+        </div>
+        {showMicrocopy && (
+          <div className="mt-2 text-xs text-gray-500">You're on the attendee list</div>
+        )}
+      </div>
+    );
+  }
+
+  // User is NOT IN: Show primary Join button (if onJoin provided and showJoin is true)
+  if (!showJoin || !onJoin) {
+    return null;
+  }
+
+  return (
+    <div className={className}>
+      <button
+        onClick={onJoin}
+        disabled={joinDisabled}
+        className={`w-full rounded px-4 py-2 text-sm font-medium text-white hover:opacity-95 ${
+          joinDisabled
+            ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+            : "bg-black"
+        }`}
+      >
+        Join
+      </button>
+    </div>
+  );
+}

@@ -44,6 +44,8 @@ export default function MembersPage() {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [nationalityFilter, setNationalityFilter] = useState<string>("");
+  const [selectedLetter, setSelectedLetter] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadMembers() {
@@ -71,26 +73,99 @@ export default function MembersPage() {
     loadMembers();
   }, [supabase]);
 
+  // Get unique nationalities for filter
+  const uniqueNationalities = useMemo(() => {
+    const nationalities = new Set<string>();
+    members.forEach((m) => {
+      if (m.nationality) {
+        nationalities.add(m.nationality);
+      }
+    });
+    return Array.from(nationalities).sort();
+  }, [members]);
+
+  // Filter members by search query and nationality
   const filteredMembers = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return members;
+    let filtered = members;
+
+    // Apply nationality filter
+    if (nationalityFilter) {
+      filtered = filtered.filter((m) => m.nationality === nationalityFilter);
     }
 
-    const query = searchQuery.toLowerCase().trim();
-    return members.filter((m) => {
-      const fullName = (m.full_name || "").toLowerCase();
-      const displayName = (m.display_name || "").toLowerCase();
-      const email = (m.email || "").toLowerCase();
-      const nationality = (m.nationality || "").toLowerCase();
+    // Apply search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((m) => {
+        const fullName = (m.full_name || "").toLowerCase();
+        const displayName = (m.display_name || "").toLowerCase();
+        const email = (m.email || "").toLowerCase();
+        const nationality = (m.nationality || "").toLowerCase();
 
-      return (
-        fullName.includes(query) ||
-        displayName.includes(query) ||
-        email.includes(query) ||
-        nationality.includes(query)
-      );
+        return (
+          fullName.includes(query) ||
+          displayName.includes(query) ||
+          email.includes(query) ||
+          nationality.includes(query)
+        );
+      });
+    }
+
+    // Apply alphabetical filter if letter is selected
+    if (selectedLetter) {
+      filtered = filtered.filter((m) => {
+        const name = (m.display_name || m.full_name || "").trim();
+        if (!name) return false;
+        const firstLetter = name.charAt(0).toUpperCase();
+        return firstLetter === selectedLetter;
+      });
+    }
+
+    return filtered;
+  }, [members, searchQuery, nationalityFilter, selectedLetter]);
+
+  // Get first letter of each member's name for A-Z navigation
+  const membersByLetter = useMemo(() => {
+    const byLetter: Record<string, number> = {};
+    members.forEach((m) => {
+      const name = (m.display_name || m.full_name || "").trim();
+      if (name) {
+        const firstLetter = name.charAt(0).toUpperCase();
+        if (/[A-Z]/.test(firstLetter)) {
+          byLetter[firstLetter] = (byLetter[firstLetter] || 0) + 1;
+        }
+      }
     });
-  }, [members, searchQuery]);
+    return byLetter;
+  }, [members]);
+
+  // Cap default rendering to 50 members (unless search/filter is active)
+  const displayMembers = useMemo(() => {
+    const hasActiveFilter = searchQuery.trim() || nationalityFilter || selectedLetter;
+    // If any filter is active, show all filtered results
+    // Otherwise, cap at 50 for performance
+    if (hasActiveFilter) {
+      return filteredMembers;
+    }
+    return filteredMembers.slice(0, 50);
+  }, [filteredMembers, searchQuery, nationalityFilter, selectedLetter]);
+
+  // Scroll to first member with selected letter
+  useEffect(() => {
+    if (selectedLetter) {
+      // Wait for DOM to update after filtering, then scroll
+      const timeoutId = setTimeout(() => {
+        const firstMemberWithLetter = document.querySelector(
+          `[data-first-letter="${selectedLetter}"]`
+        );
+        if (firstMemberWithLetter) {
+          firstMemberWithLetter.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 150);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [selectedLetter, displayMembers]);
 
   return (
     <div className="pb-24">
@@ -98,73 +173,141 @@ export default function MembersPage() {
         <h1 className="text-2xl font-bold text-gray-900">Members</h1>
       </div>
 
-      {/* Search */}
-      <div className="mb-4">
+      {/* Search and Filters */}
+      <div className="mb-4 space-y-3">
         <input
           type="text"
           placeholder="Search by name, email, or nationality..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setSelectedLetter(null); // Clear letter filter when searching
+          }}
           className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-gray-900"
         />
+
+        {/* Nationality Filter */}
+        {uniqueNationalities.length > 0 && (
+          <div>
+            <select
+              value={nationalityFilter}
+              onChange={(e) => {
+                setNationalityFilter(e.target.value);
+                setSelectedLetter(null); // Clear letter filter when filtering by nationality
+              }}
+              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-gray-900"
+            >
+              <option value="">All nationalities</option>
+              {uniqueNationalities.map((nat) => (
+                <option key={nat} value={nat}>
+                  {nat}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* A-Z Jump Control */}
+        {!searchQuery.trim() && !nationalityFilter && (
+          <div className="flex flex-wrap gap-1.5">
+            {Array.from({ length: 26 }, (_, i) => {
+              const letter = String.fromCharCode(65 + i); // A-Z
+              const count = membersByLetter[letter] || 0;
+              const isActive = selectedLetter === letter;
+              
+              return (
+                <button
+                  key={letter}
+                  onClick={() => {
+                    setSelectedLetter(isActive ? null : letter);
+                  }}
+                  disabled={count === 0}
+                  className={`px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                    isActive
+                      ? "bg-gray-900 text-white border-gray-900"
+                      : count > 0
+                      ? "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                      : "bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed"
+                  }`}
+                  title={count > 0 ? `${count} member${count !== 1 ? "s" : ""}` : "No members"}
+                >
+                  {letter}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Helper text for default rendering */}
+      {!loading && !searchQuery.trim() && !nationalityFilter && !selectedLetter && members.length > 50 && (
+        <div className="mb-3 text-xs text-gray-500">
+          Showing 50 of {members.length} members — search to find someone
+        </div>
+      )}
 
       {/* Members List */}
       {loading ? (
         <div className="text-center py-8 text-sm text-gray-600">Loading members…</div>
-      ) : filteredMembers.length === 0 ? (
+      ) : displayMembers.length === 0 ? (
         <div className="rounded-xl border bg-white p-6 text-center">
           <p className="text-sm text-gray-600">
-            {searchQuery ? "No members found matching your search." : "No members found."}
+            {searchQuery || nationalityFilter || selectedLetter
+              ? "No members found matching your filters."
+              : "No members found."}
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {filteredMembers.map((member) => {
+        <div className="space-y-1.5">
+          {displayMembers.map((member) => {
             const displayName = member.display_name || member.full_name || "—";
             const handicap = member.declared_handicap;
             const photoUrl = member.profile_photo_path
               ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${member.profile_photo_path}`
               : null;
             const flag = getFlagForNationality(member.nationality);
+            
+            // Get first letter for A-Z navigation
+            const firstLetter = displayName.trim().charAt(0).toUpperCase();
+            const isFirstWithLetter = filteredMembers.findIndex(
+              (m) => (m.display_name || m.full_name || "").trim().charAt(0).toUpperCase() === firstLetter
+            ) === filteredMembers.findIndex((m) => m.id === member.id);
 
             return (
               <div
                 key={member.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3"
+                data-first-letter={isFirstWithLetter && /[A-Z]/.test(firstLetter) ? firstLetter : undefined}
+                className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-2.5"
               >
-                {/* Photo + Name */}
-                <div className="flex items-center gap-3 min-w-0">
+                {/* Photo + Name + Handicap (primary row) */}
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   {photoUrl ? (
                     <img
                       src={photoUrl}
                       alt={displayName}
-                      className="h-14 w-14 flex-shrink-0 rounded-full object-cover border border-gray-300"
+                      className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-gray-300"
                     />
                   ) : (
-                    <div className="h-14 w-14 flex-shrink-0 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-sm font-medium text-gray-600">
+                    <div className="h-12 w-12 flex-shrink-0 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-sm font-medium text-gray-600">
                       {displayName.charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">
-                      {displayName}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-semibold text-gray-900 truncate">
+                        {displayName}
+                      </div>
+                      <div className="text-sm font-semibold text-gray-900 flex-shrink-0">
+                        {handicap !== null && handicap !== undefined ? `HCP ${handicap}` : "TBC"}
+                      </div>
                     </div>
-                    {flag && (
-                      <div className="mt-0.5 flex items-center gap-1 text-xs text-gray-500">
-                        <span className="text-base">{flag}</span>
+                    {/* Nationality (demoted, smaller, muted) */}
+                    {member.nationality && (
+                      <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-400">
+                        {flag && <span className="text-xs">{flag}</span>}
+                        <span>{member.nationality}</span>
                       </div>
                     )}
-                  </div>
-                </div>
-
-                {/* Handicap on the right */}
-                <div className="ml-3 flex-shrink-0 text-right">
-                  <div className="text-[11px] uppercase tracking-wide text-gray-500">
-                    Handicap
-                  </div>
-                  <div className="mt-0.5 text-sm font-semibold text-gray-900">
-                    {handicap !== null && handicap !== undefined ? handicap : "TBC"}
                   </div>
                 </div>
               </div>
