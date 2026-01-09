@@ -191,6 +191,16 @@ export default function MePage() {
         </div>
       </div>
 
+      {/* Welcome orientation block - shown when profile is incomplete */}
+      {!loading && !error && member && profileIncomplete && (
+        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="text-sm font-semibold text-gray-900">Welcome to GolfBats</p>
+          <p className="mt-1 text-sm text-gray-700">
+            You're joining a private golf group. To get you set up, we just need a few basic details. You can update everything later.
+          </p>
+        </div>
+      )}
+
       {/* Profile completion reminder */}
       {!loading && !error && member && profileIncomplete && (
         <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
@@ -226,12 +236,11 @@ export default function MePage() {
         </div>
       )}
 
-      {/* Pending approval banner */}
+      {/* Pending approval status message */}
       {!loading && !error && member && !isApproved && (
-        <div className="mt-4 rounded-2xl border border-blue-400 bg-blue-50 p-4">
-          <p className="text-sm font-semibold text-blue-900">Pending approval</p>
-          <p className="mt-1 text-sm text-blue-900">
-            Your profile has been submitted and is awaiting admin approval. You'll be able to access all features once your membership is approved.
+        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+          <p className="text-sm text-gray-700">
+            Membership pending approval. An organiser will review your details shortly.
           </p>
         </div>
       )}
@@ -272,13 +281,29 @@ export default function MePage() {
             }
           }}
           fullName={fullName}
-          setFullName={setFullName}
+          setFullName={(v) => {
+            setFullName(v);
+            // Reset saved state when user makes changes
+            if (profileSaved) setProfileSaved(false);
+          }}
           displayName={displayName}
-          setDisplayName={setDisplayName}
+          setDisplayName={(v) => {
+            setDisplayName(v);
+            // Reset saved state when user makes changes
+            if (profileSaved) setProfileSaved(false);
+          }}
           nationality={nationality}
-          setNationality={setNationality}
+          setNationality={(v) => {
+            setNationality(v);
+            // Reset saved state when user makes changes
+            if (profileSaved) setProfileSaved(false);
+          }}
           declaredHandicap={declaredHandicap}
-          setDeclaredHandicap={setDeclaredHandicap}
+          setDeclaredHandicap={(v) => {
+            setDeclaredHandicap(v);
+            // Reset saved state when user makes changes
+            if (profileSaved) setProfileSaved(false);
+          }}
           profilePhotoPath={profilePhotoPath}
           setProfilePhotoPath={setProfilePhotoPath}
           uploadingProfilePhoto={uploadingProfilePhoto}
@@ -348,22 +373,13 @@ export default function MePage() {
                 if (data) {
                   setMember(data as MemberRow);
                   setProfilePhotoPath(data.profile_photo_path ?? null);
-                  // Update form fields to match saved data
-                  setFullName(data.full_name ?? "");
-                  setDisplayName(data.display_name ?? "");
-                  setNationality(data.nationality ?? "");
-                  setDeclaredHandicap(
-                    data.declared_handicap === null || data.declared_handicap === undefined
-                      ? ""
-                      : String(data.declared_handicap)
-                  );
+                  // Don't update form fields - preserve user's current state
+                  // This allows them to continue editing without losing their changes
                 }
               }
               
-              // Clear success message after 3 seconds
-              setTimeout(() => {
-                setProfileSaveSuccess(false);
-              }, 3000);
+              // Keep success message visible (don't auto-clear)
+              // User can continue editing, and button will show "Save" again if they make changes
             } catch (e: any) {
               setError(e?.message || "Failed to save profile.");
               setSavingProfile(false); // Reset on error to allow retry
@@ -419,20 +435,18 @@ export default function MePage() {
 
         {/* Passport details section - optional and deferrable */}
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-gray-900">Passport details</div>
-              <p className="mt-1 text-xs text-gray-600">
-                Only required for trips involving travel.
-              </p>
-            </div>
-            <Link
-              href="/me/passport"
-              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              {passport ? "Update" : "Add"}
-            </Link>
+          <div className="mb-3">
+            <div className="text-sm font-semibold text-gray-900">Passport details (optional)</div>
+            <p className="mt-1 text-xs text-gray-600">
+              Only required for trips involving travel (e.g. ferries). You can add this later.
+            </p>
           </div>
+          <Link
+            href="/me/passport"
+            className="inline-block rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            Add passport details
+          </Link>
         </div>
 
         <div className="rounded-2xl border border-gray-200 p-3">
@@ -569,7 +583,12 @@ function ProfileBlock({
   return (
     <div className="rounded-2xl border border-black p-4">
       <div className="flex items-start justify-between">
-        <div className="text-sm font-semibold">Profile</div>
+        <div>
+          <div className="text-sm font-semibold">Profile</div>
+          <p className="mt-0.5 text-xs text-gray-600">
+            This helps organisers place you in groups and manage trips.
+          </p>
+        </div>
         <button
           onClick={onToggleEdit}
           className="rounded-xl border border-black px-3 py-1 text-xs font-semibold hover:bg-gray-50"

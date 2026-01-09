@@ -52,6 +52,14 @@ function isMePath(pathname: string) {
   return pathname === "/me";
 }
 
+function isAdminPath(pathname: string) {
+  return pathname.startsWith("/admin");
+}
+
+function isAuthPath(pathname: string) {
+  return pathname.startsWith("/auth");
+}
+
 type MemberGateState = {
   profileComplete: boolean;
   approved: boolean;
@@ -124,19 +132,50 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // Global auth gating
+  // Member existence gate
+  // Logic:
+  // - If user is NOT authenticated → allow request
+  // - If request path starts with /admin → allow request
+  // - If request path is /me or /auth → allow request
+  // - If user IS authenticated:
+  //   - Query members table for record matching user id
+  //   - If NO member record exists → redirect to /me
+  //   - If member record exists → allow request
+
+  // Allow unauthenticated users through (they'll be handled by other gates if needed)
   if (!user) {
-    const loginUrl = req.nextUrl.clone();
-    loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("next", pathname + search);
-    return NextResponse.redirect(loginUrl);
+    return res;
+  }
+
+  // Allow admin paths
+  if (isAdminPath(pathname)) {
+    return res;
+  }
+
+  // Allow /me and /auth paths (including profile edit paths under /me)
+  if (isMePath(pathname) || isAuthPath(pathname) || isProfileEditPath(pathname)) {
+    return res;
+  }
+
+  // For authenticated users on other paths, check member existence
+  const { data: memberExists } = await supabase
+    .from("members")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  // If no member record exists, redirect to /me
+  if (!memberExists) {
+    const meUrl = req.nextUrl.clone();
+    meUrl.pathname = "/me";
+    return NextResponse.redirect(meUrl);
   }
 
   // Profile completeness + approval gate
   // Users without a complete, approved profile may ONLY access:
   // - /me
   // - /me/edit and related save/upload routes
-  if (!isProfileEditPath(pathname) && !isMePath(pathname)) {
+  if (!isAdminPath(pathname) && !isProfileEditPath(pathname) && !isMePath(pathname)) {
     const adminEmailsRaw = process.env.ADMIN_EMAILS || "";
     const adminEmails = adminEmailsRaw
       .split(",")

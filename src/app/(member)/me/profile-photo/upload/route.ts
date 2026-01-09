@@ -88,14 +88,43 @@ export async function POST(req: Request) {
 
     // Update members table with photo path
     const photoPath = `profile-photos/${filePath}`;
-    const { error: updateError } = await supabase
+    
+    // Check if member exists
+    const { data: existingMember } = await supabase
       .from("members")
-      .update({ profile_photo_path: photoPath })
-      .eq("id", user.id);
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    if (updateError) {
-      console.error("Failed to update member profile photo path:", updateError);
-      // Continue anyway - photo is uploaded
+    if (existingMember) {
+      // Update existing member
+      const { error: updateError } = await supabase
+        .from("members")
+        .update({ profile_photo_path: photoPath })
+        .eq("id", user.id);
+
+      if (updateError) {
+        console.error("Failed to update member profile photo path:", updateError);
+        // Continue anyway - photo is uploaded
+      }
+    } else {
+      // Create new member row with minimal data (for first visit)
+      const now = new Date().toISOString();
+      const { error: insertError } = await supabase
+        .from("members")
+        .insert({
+          id: user.id,
+          email: user.email || "",
+          profile_photo_path: photoPath,
+          created_at: now,
+          last_seen: now,
+          status: "pending",
+        });
+
+      if (insertError) {
+        console.error("Failed to create member record:", insertError);
+        // Continue anyway - photo is uploaded
+      }
     }
 
     // Return full path including bucket name for database storage
