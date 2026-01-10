@@ -976,16 +976,16 @@ export default function AdminTripPage() {
 
   if (!Number.isFinite(tripId)) {
     return (
-      <main className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-sm text-gray-700">Invalid trip id.</div>
+      <main className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="text-sm text-foreground">Invalid trip id.</div>
       </main>
     );
   }
 
   if (!trip || !phaseCalculations) {
     return (
-      <main className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-sm text-gray-700">Trip not found.</div>
+      <main className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="text-sm text-foreground">Trip not found.</div>
       </main>
     );
   }
@@ -1765,15 +1765,15 @@ export default function AdminTripPage() {
 
   return (
     <main className="flex flex-col gap-6">
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
         <div className="flex flex-col gap-4">
           {/* Trip Identity - Primary */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-bold text-gray-900 mb-0.5">
+              <h1 className="text-xl font-bold text-foreground mb-0.5">
                 {tripSafe.name || "Untitled Trip"}
               </h1>
-              <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+              <div className="flex items-center gap-2 text-xs text-muted mb-1">
                 <span>Trip #{tripSafe.id}</span>
                 <span>•</span>
                 <span>{tripSafe.date ? formatDateForDisplay(tripSafe.date) : "No date"}</span>
@@ -1785,7 +1785,7 @@ export default function AdminTripPage() {
                 )}
               </div>
               {/* Course Metadata - De-emphasized Context */}
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-muted">
                 {courseText.title}
                 {courseText.detail ? <span> • {courseText.detail}</span> : null}
               </div>
@@ -1797,7 +1797,7 @@ export default function AdminTripPage() {
               {!primaryActionData && currentPhaseId === "signupsClosed" && hasLogisticsData && (
                 <button
                   onClick={moveToGameDay}
-                  className="hidden md:inline-flex rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] items-center"
+                  className="hidden md:inline-flex rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] items-center"
                 >
                   Start round →
                 </button>
@@ -1805,7 +1805,7 @@ export default function AdminTripPage() {
               {!primaryActionData && currentPhaseId === "gameDay" && (
                 <button
                   onClick={moveToResults}
-                  className="hidden md:inline-flex rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] items-center"
+                  className="hidden md:inline-flex rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] items-center"
                 >
                   Round complete →
                 </button>
@@ -1814,7 +1814,7 @@ export default function AdminTripPage() {
                 <button
                   onClick={onPublishResults}
                   disabled={!phase3Form.leaderboard.trim()}
-                  className="hidden md:inline-flex rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] items-center"
+                  className="hidden md:inline-flex rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] items-center"
                 >
                   Publish & archive →
                 </button>
@@ -1824,18 +1824,18 @@ export default function AdminTripPage() {
               <div className="relative" data-actions-dropdown>
                 <button
                   onClick={() => setShowActionsDropdown(!showActionsDropdown)}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 min-h-[44px] flex items-center"
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-muted hover:bg-background min-h-[44px] flex items-center"
                 >
                   More
                 </button>
                 {showActionsDropdown && (
-                  <div className="absolute right-0 mt-2 w-48 rounded-lg border border-gray-200 bg-white shadow-lg z-50 py-1">
+                  <div className="absolute right-0 mt-2 w-48 rounded-lg border border-border bg-surface shadow-lg z-50 py-1">
                     <button
                       onClick={() => {
                         setShowActionsDropdown(false);
                         onCancelTrip();
                       }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 min-h-[44px] flex items-center"
+                      className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-background min-h-[44px] flex items-center"
                     >
                       Cancel trip
                     </button>
@@ -1844,7 +1844,7 @@ export default function AdminTripPage() {
                         setShowActionsDropdown(false);
                         onDeleteTrip();
                       }}
-                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 min-h-[44px] flex items-center"
+                      className="w-full text-left px-4 py-2 text-sm text-danger hover:bg-danger-light min-h-[44px] flex items-center"
                     >
                       Delete trip
                     </button>
@@ -1856,8 +1856,8 @@ export default function AdminTripPage() {
 
           {/* Cancelled state */}
           {tripSafe.status === "cancelled" && (
-            <div className="border-t border-gray-200 pt-4">
-              <div className="inline-flex rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600">
+            <div className="border-t border-border pt-4">
+              <div className="inline-flex rounded-full bg-background px-3 py-1.5 text-xs font-medium text-muted">
                 Cancelled
               </div>
             </div>
@@ -1865,29 +1865,29 @@ export default function AdminTripPage() {
 
           {/* NEXT STEP (Primary Section - Mobile: Above progress, Desktop: Current position) */}
           {tripSafe.status !== "cancelled" && (primaryActionData || (currentPhaseId === "signupsClosed" && hasLogisticsData) || optionalActionsData.length > 0) && (
-            <div className="border-t border-gray-200 pt-4 md:order-1">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Next step</h3>
+            <div className="border-t border-border pt-4 md:order-1">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Next step</h3>
               
               {/* Primary action (required) or status (done) */}
               {primaryActionData ? (
                 <div className="flex items-start gap-3">
                   {primaryActionData.variant === "required" && (
-                    <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-5 h-5 text-brand-orange mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                   )}
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-900 mb-1">
+                    <div className="text-sm font-medium text-foreground mb-1">
                       {primaryActionData.label}
                     </div>
                     {primaryActionData.metaText && (
-                      <div className="text-xs text-gray-500 mb-3">
+                      <div className="text-xs text-muted mb-3">
                         {primaryActionData.metaText}
                       </div>
                     )}
                     <button
                       onClick={executePrimaryAction}
-                      className="w-full md:w-auto rounded-lg bg-brand-black px-4 py-3 md:py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] flex items-center justify-center"
+                      className="w-full md:w-auto rounded-lg bg-foreground px-4 py-3 md:py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] flex items-center justify-center"
                     >
                       {primaryActionData.actionType === "navigate" && primaryActionData.actionPhase === 2 ? "Post logistics" :
                        primaryActionData.actionType === "roundComplete" ? "Round complete" :
@@ -1898,11 +1898,11 @@ export default function AdminTripPage() {
                 </div>
               ) : currentPhaseId === "signupsClosed" && hasLogisticsData ? (
                 <div className="flex items-start gap-3">
-                  <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-5 h-5 text-brand-green mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-700">
+                    <div className="text-sm font-medium text-foreground">
                       Logistics published
                     </div>
                   </div>
@@ -1911,15 +1911,15 @@ export default function AdminTripPage() {
               
               {/* Optional actions - Info only, not clickable */}
               {optionalActionsData.length > 0 && (
-                <div className={`${primaryActionData || (currentPhaseId === "signupsClosed" && hasLogisticsData) ? "mt-4 pt-4 border-t border-gray-100" : ""}`}>
+                <div className={`${primaryActionData || (currentPhaseId === "signupsClosed" && hasLogisticsData) ? "mt-4 pt-4 border-t border-border" : ""}`}>
                   <div className="space-y-2">
                     {optionalActionsData.map((action, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between text-sm text-gray-600 py-1"
+                        className="flex items-center justify-between text-sm text-muted py-1"
                       >
                         <span>{action.label}</span>
-                        <span className="text-xs text-gray-500">Optional</span>
+                        <span className="text-xs text-muted">Optional</span>
                       </div>
                     ))}
                   </div>
@@ -1930,34 +1930,34 @@ export default function AdminTripPage() {
 
           {/* PROGRESS / STAGES (Stepper - Mobile: Below Next Step, Collapsed by default) */}
           {tripSafe.status !== "cancelled" && (
-            <div className="border-t border-gray-200 pt-4 md:order-2">
+            <div className="border-t border-border pt-4 md:order-2">
               {/* Mobile: Collapsed view by default */}
               <div className="md:hidden">
                 {!showStepperExpanded && (
                   <div className="space-y-3">
-                    <h3 className="text-sm font-medium text-gray-700">Progress</h3>
+                    <h3 className="text-sm font-medium text-foreground">Progress</h3>
                     <div className="space-y-2.5">
                       {/* Current phase */}
                       <div className="flex items-start gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-blue-50 border-2 border-blue-500 flex items-center justify-center text-xs font-medium text-blue-700 flex-shrink-0">
+                        <div className="w-7 h-7 rounded-full bg-surface/50 border-2 border-brand-green flex items-center justify-center text-xs font-medium text-brand-green flex-shrink-0">
                           {currentPhaseIndex + 1}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-gray-500 mb-0.5">Current</div>
-                          <div className="text-sm font-medium text-gray-900">{PHASES[currentPhaseIndex]?.label}</div>
+                          <div className="text-xs text-muted mb-0.5">Current</div>
+                          <div className="text-sm font-medium text-foreground">{PHASES[currentPhaseIndex]?.label}</div>
                         </div>
                       </div>
                       {/* Next phase */}
                       {nextPhase && (
                         <div className="flex items-start gap-2.5">
-                          <div className="w-7 h-7 rounded-full bg-gray-50 border-2 border-gray-300 flex items-center justify-center text-xs font-medium text-gray-500 flex-shrink-0">
+                          <div className="w-7 h-7 rounded-full bg-background border-2 border-border flex items-center justify-center text-xs font-medium text-muted flex-shrink-0">
                             {currentPhaseIndex + 2}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs text-gray-500 mb-0.5">Next</div>
-                            <div className="text-sm font-medium text-gray-700">{nextPhase.label}</div>
+                            <div className="text-xs text-muted mb-0.5">Next</div>
+                            <div className="text-sm font-medium text-foreground">{nextPhase.label}</div>
                             {nextPhase.isAuto && nextPhaseProgression && (
-                              <div className="text-xs text-gray-500 mt-0.5">
+                              <div className="text-xs text-muted mt-0.5">
                                 Auto on {formatDateForDisplay(nextPhaseProgression.date.includes("T") ? nextPhaseProgression.date.split("T")[0] : nextPhaseProgression.date)}
                               </div>
                             )}
@@ -1967,10 +1967,10 @@ export default function AdminTripPage() {
                     </div>
                     <button
                       onClick={() => setShowStepperExpanded(true)}
-                      className="w-full text-left px-3 py-2.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm text-gray-700 flex items-center justify-between min-h-[44px]"
+                      className="w-full text-left px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-background text-sm text-foreground flex items-center justify-between min-h-[44px]"
                     >
                       <span>View all stages</span>
-                      <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-4 h-4 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
@@ -1979,10 +1979,10 @@ export default function AdminTripPage() {
                 {showStepperExpanded && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-medium text-gray-700">Progress / Stages</h3>
+                      <h3 className="text-sm font-medium text-foreground">Progress / Stages</h3>
                       <button
                         onClick={() => setShowStepperExpanded(false)}
-                        className="text-xs text-gray-500 hover:text-gray-700 min-h-[44px] px-2 flex items-center"
+                        className="text-xs text-muted hover:text-foreground min-h-[44px] px-2 flex items-center"
                       >
                         Hide stages
                       </button>
@@ -1998,18 +1998,18 @@ export default function AdminTripPage() {
                             <div
                               className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium border-2 flex-shrink-0 ${
                                 isComplete
-                                  ? "bg-green-50 border-green-500 text-green-700"
+                                  ? "bg-brand-green/10 border-brand-green text-brand-green"
                                   : isCurrent
-                                  ? "bg-blue-50 border-blue-500 text-blue-700"
-                                  : "bg-gray-50 border-gray-300 text-gray-500"
+                                  ? "bg-surface/50 border-brand-green text-brand-green"
+                                  : "bg-background border-border text-muted"
                               }`}
                             >
                               {isComplete ? "✓" : index + 1}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-xs font-medium text-gray-700">{phase.label}</div>
+                              <div className="text-xs font-medium text-foreground">{phase.label}</div>
                               {isCurrent && (
-                                <div className="text-xs text-gray-500 mt-0.5">{phase.ruleText}</div>
+                                <div className="text-xs text-muted mt-0.5">{phase.ruleText}</div>
                               )}
                             </div>
                           </div>
@@ -2022,7 +2022,7 @@ export default function AdminTripPage() {
 
               {/* Desktop: Always visible, horizontal stepper - only current shows description */}
               <div className="hidden md:block">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Progress / Stages</h3>
+                <h3 className="text-sm font-medium text-foreground mb-3">Progress / Stages</h3>
                 <div className="flex items-start gap-x-2 gap-y-3 flex-wrap max-w-full">
                   {PHASES.map((phase, index) => {
                     const stepState = getStepState(phase.id, currentPhaseId);
@@ -2037,10 +2037,10 @@ export default function AdminTripPage() {
                           <div
                             className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium border-2 flex-shrink-0 ${
                               isComplete
-                                ? "bg-green-50 border-green-500 text-green-700"
+                                ? "bg-brand-green-light border-brand-green text-brand-green"
                                 : isCurrent
-                                ? "bg-blue-50 border-blue-500 text-blue-700"
-                                : "bg-gray-50 border-gray-300 text-gray-500"
+                                ? "bg-brand-blue-light border-brand-blue text-brand-blue"
+                                : "bg-background border-border text-muted"
                             }`}
                           >
                             {isComplete ? "✓" : index + 1}
@@ -2049,17 +2049,17 @@ export default function AdminTripPage() {
                           <div className="flex flex-col gap-0.5 min-w-0">
                             <span
                               className={`text-xs font-medium whitespace-nowrap ${
-                                isCurrent ? "text-blue-700" : isComplete ? "text-gray-700" : "text-gray-500"
+                                isCurrent ? "text-brand-green" : isComplete ? "text-foreground" : "text-muted"
                               }`}
                             >
                               {phase.label}
                             </span>
                             {isCurrent && (
-                              <span className="text-xs text-gray-500">{phase.ruleText}</span>
+                              <span className="text-xs text-muted">{phase.ruleText}</span>
                             )}
                             {/* Small auto badge only for current if auto */}
                             {isCurrent && phase.isAuto && (
-                              <span className="text-xs text-blue-600 mt-0.5">Auto</span>
+                              <span className="text-xs text-muted mt-0.5">Auto</span>
                             )}
                           </div>
                         </div>
@@ -2067,7 +2067,7 @@ export default function AdminTripPage() {
                         {index < PHASES.length - 1 && (
                           <div
                             className={`w-4 h-0.5 flex-shrink-0 mt-3 ${
-                              isComplete ? "bg-green-500" : "bg-gray-300"
+                              isComplete ? "bg-brand-green" : "bg-border"
                             }`}
                           />
                         )}
@@ -2081,15 +2081,15 @@ export default function AdminTripPage() {
 
           {/* WHAT HAPPENS NEXT (Automation Narrative - Mobile: After Progress, Desktop: After Next Step) */}
           {tripSafe.status !== "cancelled" && automationNarrative.length > 0 && (
-            <div className="border-t border-gray-200 pt-4 md:order-3">
+            <div className="border-t border-border pt-4 md:order-3">
               {/* Mobile: Collapsible by default */}
               <button
                 onClick={() => setShowAutomationExpanded(!showAutomationExpanded)}
                 className="w-full flex items-center justify-between md:hidden mb-2 min-h-[44px]"
               >
-                <h3 className="text-sm font-medium text-gray-700">What happens next</h3>
+                <h3 className="text-sm font-medium text-foreground">What happens next</h3>
                 <svg
-                  className={`w-4 h-4 text-gray-500 transition-transform ${showAutomationExpanded ? "rotate-180" : ""}`}
+                  className={`w-4 h-4 text-muted transition-transform ${showAutomationExpanded ? "rotate-180" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -2100,11 +2100,11 @@ export default function AdminTripPage() {
               
               {/* Desktop: Always visible */}
               <div className={`${showAutomationExpanded ? "" : "hidden"} md:block`}>
-                <h3 className="text-sm font-medium text-gray-700 mb-2 hidden md:block">What happens next</h3>
+                <h3 className="text-sm font-medium text-foreground mb-2 hidden md:block">What happens next</h3>
                 <div className="space-y-1.5">
                   {automationNarrative.map((item, index) => (
-                    <div key={index} className="flex items-start gap-2 text-sm text-gray-600">
-                      <span className="text-gray-400 mt-0.5">•</span>
+                    <div key={index} className="flex items-start gap-2 text-sm text-muted">
+                      <span className="text-muted mt-0.5">•</span>
                       <span>{item}</span>
                     </div>
                   ))}
@@ -2114,53 +2114,53 @@ export default function AdminTripPage() {
           )}
 
           {/* Dev Phase Navigation - Keep for development */}
-          <div className="flex items-center gap-1 text-xs text-gray-400 border-t border-gray-200 pt-3">
-            <span className="text-gray-300">Dev:</span>
+          <div className="flex items-center gap-1 text-xs text-muted border-t border-border pt-3">
+            <span className="text-muted">Dev:</span>
             <button
               onClick={() => navigateToPhase(0)}
-              className={`px-1.5 py-0.5 rounded ${selectedPhase === 0 ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
+              className={`px-1.5 py-0.5 rounded ${selectedPhase === 0 ? "bg-background text-foreground" : "hover:text-muted"}`}
               title="View Phase 0"
             >
               0
             </button>
             <button
               onClick={() => navigateToPhase(1)}
-              className={`px-1.5 py-0.5 rounded ${selectedPhase === 1 ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
+              className={`px-1.5 py-0.5 rounded ${selectedPhase === 1 ? "bg-background text-foreground" : "hover:text-muted"}`}
               title="View Phase 1"
             >
               1
             </button>
             <button
               onClick={() => navigateToPhase(2)}
-              className={`px-1.5 py-0.5 rounded ${selectedPhase === 2 ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
+              className={`px-1.5 py-0.5 rounded ${selectedPhase === 2 ? "bg-background text-foreground" : "hover:text-muted"}`}
               title="View Phase 2"
             >
               2
             </button>
             <button
               onClick={() => navigateToPhase(3)}
-              className={`px-1.5 py-0.5 rounded ${selectedPhase === 3 ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
+              className={`px-1.5 py-0.5 rounded ${selectedPhase === 3 ? "bg-background text-foreground" : "hover:text-muted"}`}
               title="View Game Day"
             >
               3
             </button>
             <button
               onClick={() => navigateToPhase(4)}
-              className={`px-1.5 py-0.5 rounded ${selectedPhase === 4 ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
+              className={`px-1.5 py-0.5 rounded ${selectedPhase === 4 ? "bg-background text-foreground" : "hover:text-muted"}`}
               title="View Results"
             >
               4
             </button>
             <button
               onClick={() => navigateToPhase(5)}
-              className={`px-1.5 py-0.5 rounded ${selectedPhase === 5 ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
+              className={`px-1.5 py-0.5 rounded ${selectedPhase === 5 ? "bg-background text-foreground" : "hover:text-muted"}`}
               title="View Archived"
             >
               5
             </button>
             <button
               onClick={() => navigateToPhase(null)}
-              className={`px-1.5 py-0.5 rounded ${selectedPhase === null ? "bg-gray-200 text-gray-700" : "hover:text-gray-600"}`}
+              className={`px-1.5 py-0.5 rounded ${selectedPhase === null ? "bg-background text-foreground" : "hover:text-muted"}`}
               title="Auto (actual phase)"
             >
               A
@@ -2171,34 +2171,34 @@ export default function AdminTripPage() {
 
       {/* Scheduled - Form-based, no auto-save */}
       {showScheduled && (
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-3">
             {/* No back button on first phase */}
-            <h2 className="text-lg font-semibold text-gray-900">Scheduled</h2>
+            <h2 className="text-lg font-semibold text-foreground">Scheduled</h2>
           </div>
           {!phase0Posted ? (
-            <p className="mb-4 text-sm text-gray-600">
+            <p className="mb-4 text-sm text-muted">
               Fill in the trip details below, then click "Post trip" to save. Signups will automatically open 30 days before the trip date.
             </p>
           ) : (
-            <p className="mb-4 text-sm text-gray-600">
+            <p className="mb-4 text-sm text-muted">
               Trip details are set. Signups will automatically open 30 days before the trip date, or you can manually open signups below.
             </p>
           )}
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">
+              <div className="text-sm font-medium text-foreground">
                 Trip Name
-                <span className="text-red-500 ml-1">*</span>
+                <span className="text-brand-orange ml-1">*</span>
               </div>
               {phase0Posted && !phase0Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                   {phase0Form.tripName || "—"}
                 </div>
               ) : (
                 <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   type="text"
                   value={phase0Form.tripName}
                   onChange={(e) => updatePhase0Form("tripName", e.target.value)}
@@ -2209,14 +2209,14 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Trip date <span className="text-red-600">*</span></div>
+              <div className="text-sm font-medium text-foreground">Trip date <span className="text-brand-orange">*</span></div>
               {phase0Posted && !phase0Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                   {phase0Form.date ? formatDateForDisplay(phase0Form.date) : "—"}
                 </div>
               ) : (
                 <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   type="date"
                   value={phase0Form.date}
                   onChange={(e) => updatePhase0Form("date", e.target.value)}
@@ -2225,42 +2225,42 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">
+              <div className="text-sm font-medium text-foreground">
                 Last day to sign up
-                <span className="text-red-500 ml-1">*</span>
+                <span className="text-brand-orange ml-1">*</span>
               </div>
               {phase0Posted && !phase0Editing ? (
                 <>
-                  <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                  <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                     {phase0Form.cutoffDate ? formatDateForDisplay(phase0Form.cutoffDate) : "—"}
                   </div>
                   {phase0Form.cutoffDate && (
-                    <div className="mt-1 text-xs text-gray-500">RSVP closes at 11:59pm SGT on this date</div>
+                    <div className="mt-1 text-xs text-muted">RSVP closes at 11:59pm SGT on this date</div>
                   )}
                 </>
               ) : (
                 <>
                   <input
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                     type="date"
                     value={phase0Form.cutoffDate}
                     onChange={(e) => updatePhase0Form("cutoffDate", e.target.value)}
                     required
                   />
-                  <div className="mt-1 text-xs text-gray-500">RSVP closes at 11:59pm SGT on this date</div>
+                  <div className="mt-1 text-xs text-muted">RSVP closes at 11:59pm SGT on this date</div>
                 </>
               )}
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Format</div>
+              <div className="text-sm font-medium text-foreground">Format</div>
               {phase0Posted && !phase0Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                   {phase0Form.format || "—"}
                 </div>
               ) : (
                 <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   value={phase0Form.format}
                   onChange={(e) => updatePhase0Form("format", e.target.value)}
                   placeholder="e.g. Stableford"
@@ -2269,14 +2269,14 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">Course <span className="text-red-600">*</span></div>
+              <div className="text-sm font-medium text-foreground">Course <span className="text-brand-orange">*</span></div>
               {phase0Posted && !phase0Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                   {selectedCourseName}
                 </div>
               ) : (
                 <select
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   value={phase0Form.courseId ?? ""}
                   onChange={(e) => {
                     updatePhase0Form("courseId", e.target.value || null);
@@ -2298,14 +2298,14 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">Tee</div>
+              <div className="text-sm font-medium text-foreground">Tee</div>
               {phase0Posted && !phase0Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                   {selectedTeeLabel}
                 </div>
               ) : (
                 <select
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   value={phase0Form.teeId ?? ""}
                   onChange={(e) => updatePhase0Form("teeId", e.target.value || null)}
                   disabled={!phase0Form.courseId || !allowCourseEdit}
@@ -2328,7 +2328,7 @@ export default function AdminTripPage() {
                   <button
                     onClick={onPostPhase0Trip}
                     disabled={!phase0Form.tripName?.trim() || !phase0Form.date || !phase0Form.courseId || !phase0Form.cutoffDate}
-                    className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Post trip
                   </button>
@@ -2336,17 +2336,17 @@ export default function AdminTripPage() {
                 {phase0Posted && !phase0Editing && (
                   <button
                     disabled
-                    className="rounded-lg bg-gray-400 px-4 py-2 text-sm font-medium text-white cursor-not-allowed"
+                    className="rounded-lg bg-border px-4 py-2 text-sm font-medium text-white cursor-not-allowed"
                   >
                     Trip posted
                   </button>
                 )}
                 {phase0FormDirty && !phase0Posted && (
-                  <span className="flex items-center text-sm text-gray-500">Unsaved changes</span>
+                  <span className="flex items-center text-sm text-muted">Unsaved changes</span>
                 )}
               </div>
               {phase0SuccessMessage && (
-                <div className={`text-sm ${phase0SuccessMessage.includes("Failed") ? "text-red-600" : "text-green-600"}`}>
+                <div className={`text-sm ${phase0SuccessMessage.includes("Failed") ? "text-brand-orange" : "text-brand-green"}`}>
                   {phase0SuccessMessage}
                 </div>
               )}
@@ -2356,13 +2356,13 @@ export default function AdminTripPage() {
                 <>
                   <button
                     onClick={onEditPhase0}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
                   >
                     Edit
                   </button>
                   <button
                     onClick={moveToOpenForSignups}
-                    className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                   >
                     Open signups →
                   </button>
@@ -2372,14 +2372,14 @@ export default function AdminTripPage() {
                 <>
                   <button
                     onClick={onCancelPhase0Edit}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={onSavePhase0Changes}
                     disabled={!phase0Form.date || !phase0Form.courseId}
-                    className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Save changes
                   </button>
@@ -2392,69 +2392,69 @@ export default function AdminTripPage() {
 
       {/* Open for Signups - Read-only view */}
       {showOpenForSignups && (
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-3">
             <button
               onClick={goBackToScheduled}
-              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+              className="text-xs text-muted hover:text-foreground px-2 py-1 rounded border border-border bg-surface hover:bg-background"
             >
               ← Back
             </button>
-            <h2 className="text-lg font-semibold text-gray-900">Open for Signups</h2>
+            <h2 className="text-lg font-semibold text-foreground">Open for Signups</h2>
           </div>
-          <p className="mb-4 text-sm text-gray-600">
+          <p className="mb-4 text-sm text-muted">
             Trip details are set. Signups will automatically close at 11:59pm SGT on the cutoff date, or you can manually close it below.
           </p>
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">Trip Name</div>
-              <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+              <div className="text-sm font-medium text-foreground">Trip Name</div>
+              <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                 {phase1Form.tripName || "—"}
               </div>
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Trip date</div>
-              <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+              <div className="text-sm font-medium text-foreground">Trip date</div>
+              <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                 {phase1Form.date ? formatDateForDisplay(phase1Form.date) : "—"}
               </div>
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Last day to sign up</div>
-              <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+              <div className="text-sm font-medium text-foreground">Last day to sign up</div>
+              <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                 {phase1Form.cutoffDate ? formatDateForDisplay(phase1Form.cutoffDate) : "—"}
               </div>
               {phase1Form.cutoffDate && (
-                <div className="mt-1 text-xs text-gray-500">RSVP closes at 11:59pm SGT on this date</div>
+                <div className="mt-1 text-xs text-muted">RSVP closes at 11:59pm SGT on this date</div>
               )}
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Format</div>
-              <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+              <div className="text-sm font-medium text-foreground">Format</div>
+              <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                 {phase1Form.format || "—"}
               </div>
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Capacity</div>
-              <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+              <div className="text-sm font-medium text-foreground">Capacity</div>
+              <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                 {phase1Form.capacity || "—"}
               </div>
             </label>
 
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">Course</div>
-              <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+              <div className="text-sm font-medium text-foreground">Course</div>
+              <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                 {phase1CourseName}
               </div>
             </label>
 
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">Tee</div>
-              <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+              <div className="text-sm font-medium text-foreground">Tee</div>
+              <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                 {phase1TeeLabel}
               </div>
             </label>
@@ -2463,7 +2463,7 @@ export default function AdminTripPage() {
           <div className="mt-6 flex justify-end">
             <button
               onClick={moveToSignupsClosed}
-              className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               Close signups →
             </button>
@@ -2473,30 +2473,30 @@ export default function AdminTripPage() {
 
       {/* Signups Closed - Form-based, no auto-save */}
       {showSignupsClosed && (
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-3">
             <button
               onClick={goBackToOpenForSignups}
-              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+              className="text-xs text-muted hover:text-foreground px-2 py-1 rounded border border-border bg-surface hover:bg-background"
             >
               ← Back
             </button>
-            <h2 className="text-lg font-semibold text-gray-900">Signups Closed</h2>
+            <h2 className="text-lg font-semibold text-foreground">Signups Closed</h2>
           </div>
-          <p className="mb-4 text-sm text-gray-600">
+          <p className="mb-4 text-sm text-muted">
             Add logistics information that will be displayed on the trip details page for attendees.
           </p>
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Ferry</div>
+              <div className="text-sm font-medium text-foreground">Ferry</div>
               {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                   {phase2Form.ferry || "—"}
                 </div>
               ) : (
                 <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   value={phase2Form.ferry}
                   onChange={(e) => updatePhase2Form("ferry", e.target.value)}
                   placeholder="e.g. Batam Fast"
@@ -2505,14 +2505,14 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium text-gray-800">Meet time</div>
+              <div className="text-sm font-medium text-foreground">Meet time</div>
               {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                   {phase2Form.meetTime || "—"}
                 </div>
               ) : (
                 <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   value={phase2Form.meetTime}
                   onChange={(e) => updatePhase2Form("meetTime", e.target.value)}
                   placeholder="e.g. 6:00am"
@@ -2521,14 +2521,14 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">Meeting point</div>
+              <div className="text-sm font-medium text-foreground">Meeting point</div>
               {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
                   {phase2Form.meetingPoint || "—"}
                 </div>
               ) : (
                 <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   value={phase2Form.meetingPoint}
                   onChange={(e) => updatePhase2Form("meetingPoint", e.target.value)}
                   placeholder="e.g. Harbourfront Ferry Terminal"
@@ -2537,14 +2537,14 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">Ferry details</div>
+              <div className="text-sm font-medium text-foreground">Ferry details</div>
               {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700 whitespace-pre-wrap min-h-[3rem]">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground whitespace-pre-wrap min-h-[3rem]">
                   {phase2Form.ferryDetails || "—"}
                 </div>
               ) : (
                 <textarea
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   rows={3}
                   value={phase2Form.ferryDetails}
                   onChange={(e) => updatePhase2Form("ferryDetails", e.target.value)}
@@ -2554,14 +2554,14 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">Notes</div>
+              <div className="text-sm font-medium text-foreground">Notes</div>
               {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 text-gray-700 whitespace-pre-wrap min-h-[4rem]">
+                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground whitespace-pre-wrap min-h-[4rem]">
                   {phase2Form.notes || "—"}
                 </div>
               ) : (
                 <textarea
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   rows={4}
                   value={phase2Form.notes}
                   onChange={(e) => updatePhase2Form("notes", e.target.value)}
@@ -2577,7 +2577,7 @@ export default function AdminTripPage() {
                 {!phase2Posted && (
                   <button
                     onClick={onPostLogistics}
-                    className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                   >
                     Post logistics
                   </button>
@@ -2585,23 +2585,23 @@ export default function AdminTripPage() {
                 {phase2Posted && !phase2Editing && (
                   <button
                     disabled
-                    className="rounded-lg bg-gray-400 px-4 py-2 text-sm font-medium text-white cursor-not-allowed"
+                    className="rounded-lg bg-border px-4 py-2 text-sm font-medium text-white cursor-not-allowed"
                   >
                     Logistics posted
                   </button>
                 )}
                 <button
-                  className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                  className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                   onClick={onExportTravelAgentCsv}
                 >
                   Export for travel agent (CSV)
                 </button>
                 {phase2FormDirty && !phase2Posted && (
-                  <span className="flex items-center text-sm text-gray-500">Unsaved changes</span>
+                  <span className="flex items-center text-sm text-muted">Unsaved changes</span>
                 )}
               </div>
               {phase2SuccessMessage && (
-                <div className={`text-sm ${phase2SuccessMessage.includes("Failed") ? "text-red-600" : "text-green-600"}`}>
+                <div className={`text-sm ${phase2SuccessMessage.includes("Failed") ? "text-brand-orange" : "text-brand-green"}`}>
                   {phase2SuccessMessage}
                 </div>
               )}
@@ -2611,12 +2611,12 @@ export default function AdminTripPage() {
                 <>
                   <button
                     onClick={onEditPhase2}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
                   >
                     Edit
                   </button>
                   <button
-                    className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                     onClick={moveToGameDay}
                   >
                     Start round →
@@ -2627,13 +2627,13 @@ export default function AdminTripPage() {
                 <>
                   <button
                     onClick={onCancelPhase2Edit}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={onSavePhase2Changes}
-                    className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                   >
                     Save changes
                   </button>
@@ -2646,23 +2646,23 @@ export default function AdminTripPage() {
 
       {/* Game Day - Placeholder for future scorecard/live scoring */}
       {showGameDay && (
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-3">
             <button
               onClick={goBackToSignupsClosed}
-              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+              className="text-xs text-muted hover:text-foreground px-2 py-1 rounded border border-border bg-surface hover:bg-background"
             >
               ← Back
             </button>
-            <h2 className="text-lg font-semibold text-gray-900">Game Day</h2>
+            <h2 className="text-lg font-semibold text-foreground">Game Day</h2>
           </div>
-          <p className="mb-4 text-sm text-gray-600">
+          <p className="mb-4 text-sm text-muted">
             The round is in progress. Scorecard and live scoring will be available here.
           </p>
           <div className="mt-6 flex justify-end">
             <button
               onClick={moveToResults}
-              className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               Round complete →
             </button>
@@ -2672,27 +2672,27 @@ export default function AdminTripPage() {
 
       {/* Results - Form-based, no auto-save */}
       {showResults && (
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-3">
             <button
               onClick={goBackToGameDay}
-              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+              className="text-xs text-muted hover:text-foreground px-2 py-1 rounded border border-border bg-surface hover:bg-background"
             >
               ← Back
             </button>
-            <h2 className="text-lg font-semibold text-gray-900">Results</h2>
+            <h2 className="text-lg font-semibold text-foreground">Results</h2>
           </div>
-          <p className="mb-4 text-sm text-gray-600">
+          <p className="mb-4 text-sm text-muted">
             Enter the leaderboard and notes. Once published, the trip will be archived.
           </p>
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">
+              <div className="text-sm font-medium text-foreground">
                 Leaderboard (one per line: <span className="font-mono">Name,Points</span>)
               </div>
               <textarea
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm font-mono"
                 rows={6}
                 value={phase3Form.leaderboard}
                 onChange={(e) => updatePhase3Form("leaderboard", e.target.value)}
@@ -2701,9 +2701,9 @@ export default function AdminTripPage() {
             </label>
 
             <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-gray-800">Notes</div>
+              <div className="text-sm font-medium text-foreground">Notes</div>
               <textarea
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                 rows={3}
                 value={phase3Form.notes}
                 onChange={(e) => updatePhase3Form("notes", e.target.value)}
@@ -2715,14 +2715,14 @@ export default function AdminTripPage() {
           <div className="mt-6 flex gap-3 justify-between">
             <div className="flex gap-3">
               {phase3FormDirty && (
-                <span className="flex items-center text-sm text-gray-500">Unsaved changes</span>
+                <span className="flex items-center text-sm text-muted">Unsaved changes</span>
               )}
             </div>
             <div className="flex gap-2">
               <button
                 onClick={onPublishResults}
                 disabled={!phase3Form.leaderboard.trim()}
-                className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Publish & archive →
               </button>
@@ -2733,27 +2733,27 @@ export default function AdminTripPage() {
       
       {/* Archived - Show archived trip with results */}
       {showArchived && (
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-3">
             <button
               onClick={goBackToResults}
-              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+              className="text-xs text-muted hover:text-foreground px-2 py-1 rounded border border-border bg-surface hover:bg-background"
             >
               ← Back
             </button>
-            <h2 className="text-lg font-semibold text-gray-900">Archived</h2>
+            <h2 className="text-lg font-semibold text-foreground">Archived</h2>
           </div>
-          <p className="mb-4 text-sm text-gray-600">
+          <p className="mb-4 text-sm text-muted">
             This trip has been archived. Results are published and visible to members.
           </p>
           
           {tripSafe.result && (
             <div className="space-y-3">
               <div>
-                <div className="text-sm font-medium text-gray-800">Leaderboard</div>
+                <div className="text-sm font-medium text-foreground">Leaderboard</div>
                 <div className="mt-2 space-y-1">
                   {tripSafe.result.leaderboard.map((r, idx) => (
-                    <div key={idx} className="text-sm text-gray-700">
+                    <div key={idx} className="text-sm text-foreground">
                       {idx + 1}. {r.name} - {r.points} points
                     </div>
                   ))}
@@ -2761,8 +2761,8 @@ export default function AdminTripPage() {
               </div>
               {tripSafe.result.notes && (
                 <div>
-                  <div className="text-sm font-medium text-gray-800">Notes</div>
-                  <div className="mt-1 text-sm text-gray-700">{tripSafe.result.notes}</div>
+                  <div className="text-sm font-medium text-foreground">Notes</div>
+                  <div className="mt-1 text-sm text-foreground">{tripSafe.result.notes}</div>
                 </div>
               )}
             </div>
@@ -2770,13 +2770,13 @@ export default function AdminTripPage() {
           
           <div className="mt-4 flex gap-2">
             <button
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
               onClick={onClearResult}
             >
               Clear Results
             </button>
             <button
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
               onClick={onExportCsv}
             >
               Export CSV
@@ -2786,9 +2786,9 @@ export default function AdminTripPage() {
       )}
       
       {/* Attendees Section - Show in all phases */}
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-gray-900">Attendees</h2>
+          <h2 className="text-lg font-semibold text-foreground">Attendees</h2>
           {attendeesData.length > 0 && (
             <div className="flex items-center gap-2">
               <input
@@ -2796,12 +2796,12 @@ export default function AdminTripPage() {
                 placeholder="Search attendees..."
                 value={attendeesSearchQuery}
                 onChange={(e) => setAttendeesSearchQuery(e.target.value)}
-                className="w-48 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-gray-400 focus:outline-none"
+                className="w-48 rounded-lg border border-border px-3 py-1.5 text-sm focus:border-border focus:outline-none"
               />
               {attendeesSearchQuery && (
                 <button
                   onClick={() => setAttendeesSearchQuery("")}
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                  className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground hover:bg-background"
                 >
                   Clear
                 </button>
@@ -2811,11 +2811,11 @@ export default function AdminTripPage() {
         </div>
         
         {loadingAttendees ? (
-          <div className="text-sm text-gray-600">Loading attendees…</div>
+          <div className="text-sm text-muted">Loading attendees…</div>
         ) : attendeesData.length === 0 ? (
-          <div className="text-sm text-gray-600">No confirmed attendees yet.</div>
+          <div className="text-sm text-muted">No confirmed attendees yet.</div>
         ) : filteredAttendees.length === 0 ? (
-          <div className="text-sm text-gray-600">No attendees match your search.</div>
+          <div className="text-sm text-muted">No attendees match your search.</div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
             {filteredAttendees.map((attendee, idx) => {
@@ -2826,25 +2826,25 @@ export default function AdminTripPage() {
               return (
                 <div
                   key={idx}
-                  className="flex items-center gap-3 rounded-lg border border-gray-200 p-3"
+                  className="flex items-center gap-3 rounded-lg border border-border p-3"
                 >
                   {photoUrl ? (
                     <img
                       src={photoUrl}
                       alt={attendee.display_name || attendee.name}
-                      className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-gray-300"
+                      className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-border"
                     />
                   ) : (
-                    <div className="h-12 w-12 flex-shrink-0 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-xs font-medium text-gray-600">
+                    <div className="h-12 w-12 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-xs font-medium text-muted">
                       {(attendee.display_name || attendee.name).charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-gray-900">
+                    <div className="text-sm font-medium text-foreground">
                       {attendee.display_name || attendee.name}
                     </div>
                     {attendee.handicap !== null && (
-                      <div className="text-xs text-gray-600">
+                      <div className="text-xs text-muted">
                         HCP: {attendee.handicap}
                       </div>
                     )}

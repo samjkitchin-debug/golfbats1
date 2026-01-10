@@ -104,26 +104,26 @@ export default function AdminCoursesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-xl font-semibold text-brand-black">Courses</div>
-        <div className="mt-1 text-sm text-gray-600">
+      <div className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="text-xl font-semibold text-foreground">Courses</div>
+        <div className="mt-1 text-sm text-muted">
           Admin-only. Add courses and tees used when creating trips.
         </div>
       </div>
 
       {/* Search Input */}
-      <section className="rounded-xl border bg-white p-4 shadow-sm">
+      <section className="rounded-xl border bg-surface p-4 shadow-sm">
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search courses by name, location, or tee..."
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-border"
         />
         {searchQuery && (
           <button
             onClick={() => setSearchQuery("")}
-            className="mt-2 text-xs text-gray-600 hover:text-gray-900 underline"
+            className="mt-2 text-xs text-muted hover:text-foreground underline"
           >
             Clear search
           </button>
@@ -131,8 +131,8 @@ export default function AdminCoursesPage() {
       </section>
 
       {/* Add Course */}
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-sm font-medium text-gray-700">Add course</div>
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="text-sm font-medium text-foreground">Add course</div>
 
         <div className="mt-3 grid gap-2">
           <input
@@ -156,12 +156,12 @@ export default function AdminCoursesPage() {
 
           <button
             onClick={handleAddCourse}
-            className="mt-1 rounded-md bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+            className="mt-1 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
           >
             Add course
           </button>
 
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-muted">
             Tip: keep tee labels simple (e.g. Blue / White / Red).
           </div>
         </div>
@@ -169,11 +169,11 @@ export default function AdminCoursesPage() {
 
       {/* List Courses */}
       {loading ? (
-        <div className="rounded-xl border bg-white p-5 text-sm text-gray-600 shadow-sm">
+        <div className="rounded-xl border bg-surface p-5 text-sm text-muted shadow-sm">
           Loading courses...
         </div>
       ) : sorted.length === 0 ? (
-        <div className="rounded-xl border bg-white p-5 text-sm text-gray-600 shadow-sm">
+        <div className="rounded-xl border bg-surface p-5 text-sm text-muted shadow-sm">
           No courses yet.
         </div>
       ) : (
@@ -328,25 +328,25 @@ function CourseCard({
   }
 
   return (
-    <section className="rounded-xl border bg-white p-5 shadow-sm">
+    <section className="rounded-xl border bg-surface p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-lg font-semibold text-brand-black">{course.name}</div>
-          {course.location ? <div className="mt-1 text-sm text-gray-600">{course.location}</div> : null}
+          <div className="text-lg font-semibold text-foreground">{course.name}</div>
+          {course.location ? <div className="mt-1 text-sm text-muted">{course.location}</div> : null}
         </div>
 
         <div className="flex gap-2">
           {!isEditing && (
             <button
               onClick={() => setIsEditing(true)}
-              className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded-md border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
             >
               Edit
             </button>
           )}
           <button
             onClick={() => onDelete(course.id)}
-            className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded-md border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
           >
             Delete
           </button>
@@ -357,7 +357,7 @@ function CourseCard({
       {isEditing && (
         <>
           <div className="mt-4 grid gap-2">
-            <div className="text-sm font-medium text-gray-700">Edit Course</div>
+            <div className="text-sm font-medium text-foreground">Edit Course</div>
 
             <input
               value={name}
@@ -381,10 +381,10 @@ function CourseCard({
 
           {/* Tees */}
           <div className="mt-5">
-            <div className="text-sm font-medium text-gray-700">Tee sets</div>
+            <div className="text-sm font-medium text-foreground">Tee sets</div>
 
             {teesSorted.filter((tee) => !deletedTeeIds.has(tee.id)).length === 0 && newTees.length === 0 ? (
-              <div className="mt-2 text-sm text-gray-600">No tees yet.</div>
+              <div className="mt-2 text-sm text-muted">No tees yet.</div>
             ) : (
               <div className="mt-3 space-y-2">
                 {teesSorted
@@ -424,7 +424,7 @@ function CourseCard({
 
                           <button
                             onClick={() => removeTee(tee.id)}
-                            className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            className="rounded-md border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
                           >
                             Delete
                           </button>
@@ -467,7 +467,7 @@ function CourseCard({
 
                       <button
                         onClick={() => removeNewTee(newTee.tempId)}
-                        className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        className="rounded-md border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
                       >
                         Remove
                       </button>
@@ -477,8 +477,8 @@ function CourseCard({
               </div>
             )}
 
-            <div className="mt-4 rounded-lg border bg-white p-4">
-              <div className="text-sm font-medium text-gray-700">Add Tee</div>
+            <div className="mt-4 rounded-lg border bg-surface p-4">
+              <div className="text-sm font-medium text-foreground">Add Tee</div>
 
               <div className="mt-3 grid gap-2 md:grid-cols-4">
                 <input
@@ -512,12 +512,12 @@ function CourseCard({
 
               <button
                 onClick={addNewTeeLine}
-                className="mt-3 rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                className="mt-3 rounded-md bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
               >
                 Add Tee
               </button>
 
-              <div className="mt-2 text-xs text-gray-500">
+              <div className="mt-2 text-xs text-muted">
                 For now: meters / par / slope. We can add course rating later if you want.
               </div>
             </div>
@@ -527,13 +527,13 @@ function CourseCard({
           <div className="mt-5 flex gap-2">
             <button
               onClick={handleSaveChanges}
-              className="rounded-md bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               {saved ? "Changes Saved" : "Save Changes"}
             </button>
             <button
               onClick={() => setIsEditing(false)}
-              className="rounded-md border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded-md border bg-surface px-4 py-2 text-sm text-foreground hover:bg-background"
             >
               Cancel
             </button>

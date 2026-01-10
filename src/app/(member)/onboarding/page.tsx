@@ -419,7 +419,7 @@ export default function OnboardingPage() {
   if (loading) {
     return (
       <div className="px-4 pb-24 pt-4">
-        <div className="text-center text-gray-600">Loading...</div>
+        <div className="text-center text-muted">Loading...</div>
       </div>
     );
   }
@@ -444,15 +444,15 @@ export default function OnboardingPage() {
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-medium ${
                     index <= currentStepIndex
-                      ? "border-gray-900 bg-gray-900 text-white"
-                      : "border-gray-300 bg-white text-gray-400"
+                      ? "border-foreground bg-foreground text-white"
+                      : "border-border bg-surface text-muted"
                   }`}
                 >
                   {index + 1}
                 </div>
                 <div
                   className={`mt-2 text-xs font-medium ${
-                    index <= currentStepIndex ? "text-gray-900" : "text-gray-400"
+                    index <= currentStepIndex ? "text-foreground" : "text-muted"
                   }`}
                 >
                   {step.label}
@@ -461,7 +461,7 @@ export default function OnboardingPage() {
               {index < steps.length - 1 && (
                 <div
                   className={`mx-2 h-0.5 flex-1 ${
-                    index < currentStepIndex ? "bg-gray-900" : "bg-gray-300"
+                    index < currentStepIndex ? "bg-foreground" : "bg-border"
                   }`}
                 />
               )}
@@ -471,7 +471,7 @@ export default function OnboardingPage() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div className="mb-4 rounded-lg border border-danger bg-danger-light p-3 text-sm text-danger">
           {error}
         </div>
       )}
@@ -480,27 +480,27 @@ export default function OnboardingPage() {
       {currentStep === "welcome" && (
         <div className="space-y-6">
           <div>
-            <h1 className="text-2xl font-bold">Welcome to GolfBats</h1>
-            <p className="mt-2 text-sm text-gray-600">
+            <h1 className="text-2xl font-bold">Welcome to Day fore it</h1>
+            <p className="mt-2 text-sm text-muted">
               Let's set up your profile. This will only take a few minutes.
             </p>
           </div>
 
-          <div className="space-y-4 text-sm text-gray-700">
+          <div className="space-y-4 text-sm text-foreground">
             <p>We'll ask you for:</p>
             <ul className="space-y-2 ml-4">
               <li className="list-disc">Basic profile details</li>
               <li className="list-disc">Profile photo (optional but recommended)</li>
               <li className="list-disc">Passport details (optional, only required for some trips)</li>
             </ul>
-            <p className="text-gray-600">
+            <p className="text-muted">
               You can skip passport details if you're not ready to provide them yet.
             </p>
           </div>
 
           <button
             onClick={() => setCurrentStep("profile")}
-            className="w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800"
+            className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-white hover:opacity-90"
           >
             Get started
           </button>
@@ -512,51 +512,51 @@ export default function OnboardingPage() {
         <div className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold">Basic Profile</h1>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-muted">
               Tell us a bit about yourself.
             </p>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Full name <span className="text-red-500">*</span>
+              <label className="block text-sm font-medium text-foreground">
+                Full name <span className="text-brand-orange">*</span>
               </label>
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-border focus:outline-none"
                 placeholder="John Smith"
                 disabled={savingProfile}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Display name <span className="text-red-500">*</span>
+              <label className="block text-sm font-medium text-foreground">
+                Display name <span className="text-brand-orange">*</span>
               </label>
               <input
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-border focus:outline-none"
                 placeholder="John"
                 disabled={savingProfile}
               />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-muted">
                 This is how your name will appear to other members.
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Nationality <span className="text-red-500">*</span>
+              <label className="block text-sm font-medium text-foreground">
+                Nationality <span className="text-brand-orange">*</span>
               </label>
               <select
                 value={nationality}
                 onChange={(e) => setNationality(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none bg-white"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-border focus:outline-none bg-surface"
                 disabled={savingProfile}
               >
                 <option value="">Select nationality</option>
@@ -569,7 +569,7 @@ export default function OnboardingPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-foreground">
                 Declared handicap
               </label>
               <input
@@ -579,17 +579,17 @@ export default function OnboardingPage() {
                 step="0.1"
                 value={declaredHandicap}
                 onChange={(e) => setDeclaredHandicap(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-border focus:outline-none"
                 placeholder="18 (optional)"
                 disabled={savingProfile || profileSaved}
               />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-muted">
                 Optional. Your handicap must be between 0 and 36.
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-foreground">
                 Profile photo
               </label>
               <div className="mt-2 flex items-center gap-3">
@@ -597,10 +597,10 @@ export default function OnboardingPage() {
                   <img
                     src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${profilePhotoPath}`}
                     alt="Profile"
-                    className="h-16 w-16 rounded-full object-cover border border-gray-300"
+                    className="h-16 w-16 rounded-full object-cover border border-border"
                   />
                 ) : (
-                  <div className="h-16 w-16 rounded-full border border-gray-300 bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-600">
+                  <div className="h-16 w-16 rounded-full border border-border bg-background flex items-center justify-center text-sm font-medium text-muted">
                     {displayName ? getInitials(displayName) : fullName ? getInitials(fullName) : "?"}
                   </div>
                 )}
@@ -630,16 +630,16 @@ export default function OnboardingPage() {
                     type="button"
                     onClick={() => document.getElementById("profile-photo-input")?.click()}
                     disabled={uploadingProfilePhoto || savingProfile || profileSaved}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {profilePhotoPath ? "Change Photo" : "Add Photo"}
                   </button>
                   {uploadingProfilePhoto && (
-                    <p className="mt-1 text-xs text-gray-500">Uploading photo...</p>
+                    <p className="mt-1 text-xs text-muted">Uploading photo...</p>
                   )}
                 </div>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-muted">
                 Optional but recommended. This helps other members recognize you.
               </p>
             </div>
@@ -648,7 +648,7 @@ export default function OnboardingPage() {
           <button
             onClick={handleSaveProfile}
             disabled={savingProfile || profileSaved}
-            className="w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {savingProfile ? "Saving..." : profileSaved ? "Saved" : "Save & continue"}
           </button>
@@ -660,7 +660,7 @@ export default function OnboardingPage() {
         <div className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold">Passport Details</h1>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-muted">
               Passport details are only required for trips involving travel.
               You can skip this and add it later if needed.
             </p>
@@ -668,65 +668,65 @@ export default function OnboardingPage() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-foreground">
                 Passport full name
               </label>
               <input
                 type="text"
                 value={passportFullName}
                 onChange={(e) => setPassportFullName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-border focus:outline-none"
                 placeholder="As shown on your passport"
                 disabled={savingPassport}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-foreground">
                 Passport number
               </label>
               <input
                 type="text"
                 value={passportNumber}
                 onChange={(e) => setPassportNumber(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-border focus:outline-none"
                 placeholder="Enter passport number"
                 disabled={savingPassport}
               />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-muted">
                 Your passport number is encrypted and stored securely.
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-foreground">
                 Passport country
               </label>
               <input
                 type="text"
                 value={passportCountry}
                 onChange={(e) => setPassportCountry(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-border focus:outline-none"
                 placeholder="e.g. United Kingdom"
                 disabled={savingPassport}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-foreground">
                 Passport expiry date
               </label>
               <input
                 type="date"
                 value={passportExpiryDate}
                 onChange={(e) => setPassportExpiryDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-border focus:outline-none"
                 disabled={savingPassport}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-foreground">
                 Passport photo
               </label>
               
@@ -736,7 +736,7 @@ export default function OnboardingPage() {
                   <img
                     src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${passportPhotoPath}`}
                     alt="Passport photo"
-                    className="h-32 w-auto rounded-lg border border-gray-300 object-contain"
+                    className="h-32 w-auto rounded-lg border border-border object-contain"
                   />
                 </div>
               )}
@@ -788,7 +788,7 @@ export default function OnboardingPage() {
                   type="button"
                   onClick={() => handlePassportPhotoFileSelect(false)}
                   disabled={uploadingPhoto || savingPassport}
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Upload photo
                 </button>
@@ -796,13 +796,13 @@ export default function OnboardingPage() {
                   type="button"
                   onClick={() => handlePassportPhotoFileSelect(true)}
                   disabled={uploadingPhoto || savingPassport}
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Take photo
                 </button>
               </div>
               {uploadingPhoto && (
-                <p className="mt-1 text-xs text-gray-500">Uploading photo...</p>
+                <p className="mt-1 text-xs text-muted">Uploading photo...</p>
               )}
             </div>
           </div>
@@ -811,14 +811,14 @@ export default function OnboardingPage() {
             <button
               onClick={() => handleSavePassport(false)}
               disabled={savingPassport}
-              className="w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {savingPassport ? "Saving..." : "Save passport"}
             </button>
             <button
               onClick={handleSkipPassport}
               disabled={savingPassport}
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Skip for now
             </button>
@@ -830,9 +830,9 @@ export default function OnboardingPage() {
       {currentStep === "complete" && (
         <div className="space-y-6 text-center">
           <div>
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-green-light">
               <svg
-                className="h-8 w-8 text-green-600"
+                className="h-8 w-8 text-brand-green"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -846,20 +846,20 @@ export default function OnboardingPage() {
               </svg>
             </div>
             <h1 className="mt-4 text-2xl font-bold">Setup complete</h1>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-muted">
               Your profile has been set up successfully.
             </p>
           </div>
 
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-left">
-            <p className="text-sm text-gray-700">
+          <div className="rounded-lg border border-border bg-background p-4 text-left">
+            <p className="text-sm text-foreground">
               <span className="font-medium">Your membership is pending admin approval.</span> You will be notified once your account has been approved.
             </p>
           </div>
 
           <button
             onClick={handleComplete}
-            className="w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800"
+            className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-white hover:opacity-90"
           >
             Go to profile
           </button>
@@ -1020,10 +1020,10 @@ function ImageCropModal({
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-4">
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">{title}</h3>
+      <div className="w-full max-w-md rounded-xl bg-surface p-4">
+        <h3 className="mb-4 text-lg font-semibold text-foreground">{title}</h3>
         
-        <div className="relative h-64 w-full bg-gray-100 rounded-lg overflow-hidden">
+        <div className="relative h-64 w-full bg-background rounded-lg overflow-hidden">
           <Cropper
             image={imageSrc}
             crop={crop}
@@ -1046,7 +1046,7 @@ function ImageCropModal({
 
         <div className="mt-4 space-y-3">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-foreground mb-1">
               Zoom
             </label>
             <input
@@ -1063,13 +1063,13 @@ function ImageCropModal({
           <div className="flex gap-2">
             <button
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5"
             >
               Cancel
             </button>
             <button
               onClick={onSave}
-              className="flex-1 rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
             >
               Save
             </button>

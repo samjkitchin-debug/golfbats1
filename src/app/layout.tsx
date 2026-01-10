@@ -71,8 +71,14 @@ const aptos = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "GolfBats",
+  title: {
+    default: "DayForeIt",
+    template: "DayForeIt",
+  },
   description: "Private golf club coordination noticeboard",
+  icons: {
+    icon: "/browserIcon.png",
+  },
 };
 
 export default function RootLayout({

@@ -35,11 +35,11 @@ export default function MembersNavLink() {
   return (
     <Link
       href="/admin/members"
-      className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 relative"
+      className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background relative"
     >
       Members
       {pendingCount !== null && pendingCount > 0 && (
-        <span className="ml-2 rounded-full bg-red-500 px-2 py-0.5 text-xs font-medium text-white">
+        <span className="ml-2 rounded-full bg-brand-orange px-2 py-0.5 text-xs font-medium text-white">
           {pendingCount}
         </span>
       )}

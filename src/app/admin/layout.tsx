@@ -36,20 +36,20 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div className="min-h-dvh bg-gray-50">
-      <header className="sticky top-0 z-20 border-b bg-white">
+    <div className="min-h-dvh bg-background">
+      <header className="sticky top-0 z-20 border-b bg-surface border-border">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-sm font-semibold text-gray-900">
-              GolfBats
+            <Link href="/" className="text-sm font-semibold text-foreground">
+              Day fore it
             </Link>
-            <span className="text-xs text-gray-400">/ admin</span>
+            <span className="text-xs text-muted">/ admin</span>
           </div>
 
           <div className="flex items-center gap-2">
             <Link
               href="/"
-              className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
             >
               Back to app
             </Link>
@@ -60,26 +60,26 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-4 pb-3">
           <Link
             href="/admin"
-            className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
           >
             Trips
           </Link>
           <Link
             href="/admin/courses"
-            className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
           >
             Courses
           </Link>
           <MembersNavLink />
           <Link
             href="/admin/dev-notes"
-            className="rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
           >
             Dev Notes
           </Link>
         </div>
 
-        <div className="h-0.5 w-full bg-brand-red" />
+        <div className="h-0.5 w-full bg-brand-green" />
       </header>
 
       <main className="mx-auto w-full max-w-5xl px-4 py-6">{children}</main>

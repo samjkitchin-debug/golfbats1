@@ -173,7 +173,10 @@ export async function loadTrips(bypassCache = false): Promise<Trip[]> {
     });
 
     if (!res.ok) {
-      console.error("[loadTrips] API error:", json?.error);
+      // Suppress error logging for 401 Unauthorized (user may have signed out)
+      if (res.status !== 401) {
+        console.error("[loadTrips] API error:", json?.error);
+      }
       return [];
     }
 

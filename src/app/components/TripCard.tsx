@@ -93,14 +93,14 @@ export function TripCard({
       : null;
 
   return (
-    <div className={isHome ? "rounded-xl border bg-white p-5 shadow-sm" : ""}>
+    <div className={isHome ? "rounded-xl border border-border bg-surface p-5" : ""}>
       {/* Header: Label + Details button (Home variant only) */}
       {isHome && headerLabel && (
         <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="text-sm text-gray-500">{headerLabel}</div>
+          <div className="text-sm text-muted">{headerLabel}</div>
           <Link
             href={`/trips/${trip.id}`}
-            className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            className="shrink-0 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-foreground hover:bg-background"
           >
             Details
           </Link>
@@ -110,12 +110,12 @@ export function TripCard({
       {/* Trip Name + Details Button (List variant) */}
       {!isHome && (
         <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="text-lg font-semibold text-gray-900">
+          <div className="text-lg font-semibold text-foreground">
             {trip.name || "Trip"}
           </div>
           <Link
             href={`/trips/${trip.id}`}
-            className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            className="shrink-0 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-foreground hover:bg-background"
           >
             Details
           </Link>
@@ -124,15 +124,15 @@ export function TripCard({
 
       {/* Trip name (Home variant) */}
       {isHome && (
-        <div className="text-lg font-semibold text-gray-900 mb-3">
+        <div className="text-lg font-semibold text-foreground mb-3">
           {trip.name || courseName || "Trip"}
         </div>
       )}
 
       {/* Cancelled info box */}
       {trip.status === "cancelled" && (
-        <div className="mb-3 rounded-lg bg-red-50 border border-red-200 p-3">
-          <div className={`${isHome ? "text-sm text-red-900 font-semibold" : "text-sm text-red-900 font-medium"}`}>
+        <div className="mb-3 rounded-lg border border-border bg-surface/50 p-3">
+          <div className={`${isHome ? "text-sm text-foreground font-semibold" : "text-sm text-foreground font-medium"}`}>
             This trip has been cancelled.
           </div>
         </div>
@@ -140,8 +140,8 @@ export function TripCard({
 
       {/* Scheduled info box (Home variant) */}
       {isHome && trip.status !== "cancelled" && isScheduled && (
-        <div className="mb-3 rounded-lg bg-blue-50 border border-blue-200 p-3">
-          <div className="text-sm text-blue-900">
+        <div className="mb-3 rounded-lg border border-border bg-surface/50 p-3">
+          <div className="text-sm text-foreground">
             <span className="font-semibold">Scheduled trip</span> — Date and course
             shown for planning. Signups will open 30 days before the trip date.
           </div>
@@ -150,8 +150,8 @@ export function TripCard({
 
       {/* Game Day info box (Home variant) */}
       {isHome && trip.status !== "cancelled" && isCurrentTrip && (
-        <div className="mb-3 rounded-lg bg-orange-50 border border-orange-200 p-3">
-          <div className="text-sm text-orange-900">
+        <div className="mb-3 rounded-lg border border-border bg-surface/50 p-3">
+          <div className="text-sm text-foreground">
             <span className="font-semibold">Game day</span> — The round is in
             progress. Results will be posted after the round.
           </div>
@@ -162,15 +162,15 @@ export function TripCard({
       {(courseName || courseText.title !== "Course TBD") && (
         <div className="mb-3">
           {/* Primary line: Course name + location */}
-          <div className={`${isHome ? "text-base" : "text-base"} font-medium text-gray-900`}>
+          <div className={`${isHome ? "text-base" : "text-base"} font-medium text-foreground`}>
             {courseName || courseText.title}
             {course?.location && (
-              <span className="text-gray-600"> · {course.location}</span>
+              <span className="text-muted"> · {course.location}</span>
             )}
           </div>
           {/* Secondary line: Tee + format + metrics */}
           {golfDetailsSecondary && (
-            <div className={`${isHome ? "text-sm" : "text-sm"} text-gray-600 mt-1`}>
+            <div className={`${isHome ? "text-sm" : "text-sm"} text-muted mt-1`}>
               {golfDetailsSecondary}
             </div>
           )}
@@ -179,11 +179,11 @@ export function TripCard({
 
       {/* 2) Time block */}
       <div className="mb-3 space-y-0.5">
-        <div className={`${isHome ? "text-sm" : "text-sm"} text-gray-900 font-medium`}>
+        <div className={`${isHome ? "text-sm" : "text-sm"} text-foreground font-medium`}>
           {formatTripDateLong(trip.date)}
         </div>
         {meetTime && (
-          <div className={`${isHome ? "text-sm" : "text-sm"} text-gray-700`}>
+          <div className={`${isHome ? "text-sm" : "text-sm"} text-muted`}>
             {meetTime}
           </div>
         )}
@@ -191,7 +191,7 @@ export function TripCard({
 
       {/* 3) Logistics block (single coherent group) */}
       {(meetingPoint || ferryName) && (
-        <div className="mb-3 space-y-1 text-sm text-gray-700">
+        <div className="mb-3 space-y-1 text-sm text-foreground">
           {meetingPoint && <div>{meetingPoint}</div>}
           {ferryName && <div>Ferry: {ferryName}</div>}
         </div>
@@ -201,14 +201,14 @@ export function TripCard({
       {!meetingPoint &&
         !ferryName &&
         (tripPhase === "signupsClosed" || tripPhase === "gameDay") && (
-          <div className="mb-3 rounded-lg bg-slate-50 px-4 py-3 border border-gray-200">
-            <div className="text-xs text-gray-500">Logistics coming soon</div>
+          <div className="mb-3 rounded-lg bg-surface/50 px-4 py-3 border border-border">
+            <div className="text-xs text-muted">Logistics coming soon</div>
           </div>
         )}
 
       {/* 4) Trip state block (muted) */}
       {tripStateText && (
-        <div className="mb-2 text-sm text-gray-500">
+        <div className="mb-2 text-sm text-muted">
           {tripStateText}
           {confirmedCount !== undefined && trip.status !== "cancelled" && (
             <span className="ml-2">· {confirmedCount} confirmed</span>

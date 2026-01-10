@@ -45,12 +45,12 @@ export default function ResultDetailPage() {
   if (!tripId) {
     return (
       <div className="space-y-3">
-        <Link href="/results" className="text-sm text-gray-700 hover:text-brand-black">
+        <Link href="/results" className="text-sm text-foreground hover:text-foreground">
           ← Back to Results
         </Link>
-        <div className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="text-lg font-semibold text-brand-black">Invalid trip</div>
-          <div className="mt-2 text-sm text-gray-600">This result id isn’t valid.</div>
+        <div className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="text-lg font-semibold text-foreground">Invalid trip</div>
+          <div className="mt-2 text-sm text-muted">This result id isn’t valid.</div>
         </div>
       </div>
     );
@@ -59,12 +59,12 @@ export default function ResultDetailPage() {
   if (!trip) {
     return (
       <div className="space-y-3">
-        <Link href="/results" className="text-sm text-gray-700 hover:text-brand-black">
+        <Link href="/results" className="text-sm text-foreground hover:text-foreground">
           ← Back to Results
         </Link>
-        <div className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="text-lg font-semibold text-brand-black">Result not found</div>
-          <div className="mt-2 text-sm text-gray-600">No trip exists with id #{tripId}.</div>
+        <div className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="text-lg font-semibold text-foreground">Result not found</div>
+          <div className="mt-2 text-sm text-muted">No trip exists with id #{tripId}.</div>
         </div>
       </div>
     );
@@ -73,19 +73,19 @@ export default function ResultDetailPage() {
   if (!trip.result) {
     return (
       <div className="space-y-3">
-        <Link href="/results" className="text-sm text-gray-700 hover:text-brand-black">
+        <Link href="/results" className="text-sm text-foreground hover:text-foreground">
           ← Back to Results
         </Link>
-        <div className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="text-lg font-semibold text-brand-black">
+        <div className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="text-lg font-semibold text-foreground">
             {courseText?.title ?? "Trip"} — Results
           </div>
-          <div className="mt-1 text-sm text-gray-600">{formatTripDateLong(trip.date)}</div>
-          <div className="mt-3 text-sm text-gray-700">Results have not been published yet.</div>
+          <div className="mt-1 text-sm text-muted">{formatTripDateLong(trip.date)}</div>
+          <div className="mt-3 text-sm text-foreground">Results have not been published yet.</div>
           <div className="mt-4">
             <Link
               href={`/trips/${trip.id}`}
-              className="inline-flex rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="inline-flex rounded-md border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
             >
               View Trip →
             </Link>
@@ -101,22 +101,22 @@ export default function ResultDetailPage() {
   return (
     <div className="space-y-4">
       <div>
-        <Link href="/results" className="text-sm text-gray-700 hover:text-brand-black">
+        <Link href="/results" className="text-sm text-foreground hover:text-foreground">
           ← Back to Results
         </Link>
 
-        <div className="mt-2 text-xl font-semibold text-brand-black">
+        <div className="mt-2 text-xl font-semibold text-foreground">
           {courseText?.title ?? "Trip"} — Results
         </div>
-        {courseText?.detail ? <div className="mt-1 text-sm text-gray-600">{courseText.detail}</div> : null}
-        <div className="mt-2 text-sm text-gray-700">{formatTripDateLong(trip.date)}</div>
+        {courseText?.detail ? <div className="mt-1 text-sm text-muted">{courseText.detail}</div> : null}
+        <div className="mt-2 text-sm text-foreground">{formatTripDateLong(trip.date)}</div>
       </div>
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-3 text-sm font-medium text-gray-600">Leaderboard</div>
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="mb-3 text-sm font-medium text-muted">Leaderboard</div>
 
         {leaderboard.length === 0 ? (
-          <div className="text-sm text-gray-600">No leaderboard rows were published.</div>
+          <div className="text-sm text-muted">No leaderboard rows were published.</div>
         ) : (
           <div className="space-y-2">
             {leaderboard.map((row: any, idx: number) => {
@@ -136,10 +136,10 @@ export default function ResultDetailPage() {
                   className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="w-6 text-gray-500">{idx + 1}</span>
-                    <span className="font-medium text-brand-black">{name}</span>
+                    <span className="w-6 text-muted">{idx + 1}</span>
+                    <span className="font-medium text-foreground">{name}</span>
                   </div>
-                  <div className="text-gray-700">{score}</div>
+                  <div className="text-foreground">{score}</div>
                 </div>
               );
             })}
@@ -148,22 +148,22 @@ export default function ResultDetailPage() {
       </section>
 
       {notes ? (
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="mb-2 text-sm font-medium text-gray-600">Notes</div>
-          <div className="whitespace-pre-wrap text-sm text-gray-700">{notes}</div>
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="mb-2 text-sm font-medium text-muted">Notes</div>
+          <div className="whitespace-pre-wrap text-sm text-foreground">{notes}</div>
         </section>
       ) : null}
 
       <div className="flex gap-2">
         <Link
           href={`/trips/${trip.id}`}
-          className="flex-1 rounded-md border bg-white px-3 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+          className="flex-1 rounded-md border bg-surface px-3 py-2 text-center text-sm text-foreground hover:bg-background"
         >
           Trip details
         </Link>
         <Link
           href="/trips"
-          className="flex-1 rounded-md border bg-white px-3 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+          className="flex-1 rounded-md border bg-surface px-3 py-2 text-center text-sm text-foreground hover:bg-background"
         >
           Trips
         </Link>

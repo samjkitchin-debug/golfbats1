@@ -230,9 +230,9 @@ export default function TripDetailPage() {
 
   if (!tripId) {
     return (
-      <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-lg font-semibold text-brand-black">Invalid trip</div>
-        <Link href="/trips" className="mt-3 inline-block text-sm text-gray-700 hover:text-brand-black">
+      <div className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="text-lg font-semibold text-foreground">Invalid trip</div>
+        <Link href="/trips" className="mt-3 inline-block text-sm text-foreground hover:text-foreground">
           ← Back to Trips
         </Link>
       </div>
@@ -241,10 +241,10 @@ export default function TripDetailPage() {
 
   if (!trip) {
     return (
-      <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-lg font-semibold text-brand-black">Trip not found</div>
-        <div className="mt-2 text-sm text-gray-600">This trip id doesn't exist.</div>
-        <Link href="/trips" className="mt-3 inline-block text-sm text-gray-700 hover:text-brand-black">
+      <div className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="text-lg font-semibold text-foreground">Trip not found</div>
+        <div className="mt-2 text-sm text-muted">This trip id doesn't exist.</div>
+        <Link href="/trips" className="mt-3 inline-block text-sm text-foreground hover:text-foreground">
           ← Back to Trips
         </Link>
       </div>
@@ -485,19 +485,19 @@ export default function TripDetailPage() {
   return (
     <div className="space-y-4 pb-24">
       <div>
-        <Link href="/trips" className="text-sm text-gray-700 hover:text-brand-black">
+        <Link href="/trips" className="text-sm text-foreground hover:text-foreground">
           ← Back to Trips
         </Link>
 
         {/* Trip name */}
-        <div className="mt-2 text-xl font-semibold text-brand-black">
+        <div className="mt-2 text-xl font-semibold text-foreground">
           {trip.name || "Trip"}
         </div>
 
         {/* Cancelled info box */}
         {trip.status === "cancelled" && (
-          <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
-            <div className="text-sm text-red-900 font-semibold">
+          <div className="mt-3 rounded-lg bg-danger-light border border-danger p-3">
+            <div className="text-sm text-danger font-semibold">
               This trip has been cancelled.
             </div>
           </div>
@@ -505,8 +505,8 @@ export default function TripDetailPage() {
 
         {/* Scheduled info box */}
         {trip.status !== "cancelled" && isScheduled && (
-          <div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 p-3">
-            <div className="text-sm text-blue-900">
+          <div className="mt-3 rounded-lg border border-border bg-surface/50 p-3">
+            <div className="text-sm text-foreground">
               <span className="font-semibold">Scheduled trip</span> — Date and course shown for planning. Signups will open 30 days before the trip date.
             </div>
           </div>
@@ -516,15 +516,15 @@ export default function TripDetailPage() {
         {(courseName || courseText?.title !== "Course TBD") && (
           <div className="mt-4">
             {/* Primary line: Course name + location */}
-            <div className="text-base font-medium text-gray-900">
+            <div className="text-base font-medium text-foreground">
               {courseName || courseText?.title}
               {course?.location && (
-                <span className="text-gray-600"> · {course.location}</span>
+                <span className="text-muted"> · {course.location}</span>
               )}
             </div>
             {/* Secondary line: Tee + format + metrics */}
             {golfDetailsSecondary && (
-              <div className="text-sm text-gray-600 mt-1">
+              <div className="text-sm text-muted mt-1">
                 {golfDetailsSecondary}
               </div>
             )}
@@ -533,11 +533,11 @@ export default function TripDetailPage() {
 
         {/* 2) Time block */}
         <div className="mt-3 space-y-0.5">
-          <div className="text-sm text-gray-900 font-medium">
+          <div className="text-sm text-foreground font-medium">
             {formatTripDateLong(trip.date)}
           </div>
           {meetTime && (
-            <div className="text-sm text-gray-700">
+            <div className="text-sm text-foreground">
               {meetTime}
             </div>
           )}
@@ -545,7 +545,7 @@ export default function TripDetailPage() {
 
         {/* 4) Trip state block (muted) */}
         {tripStateText && (
-          <div className="mt-2 text-sm text-gray-500">
+          <div className="mt-2 text-sm text-muted">
             {tripStateText}
             {trip.status !== "cancelled" && (
               <span className="ml-2">· {confirmedCountValue} confirmed</span>
@@ -554,8 +554,8 @@ export default function TripDetailPage() {
         )}
       </div>
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-3 text-sm font-medium text-gray-600">RSVP</div>
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="mb-3 text-sm font-medium text-muted">RSVP</div>
 
         <TripRsvpActions
           status={myEntry?.status}
@@ -568,17 +568,17 @@ export default function TripDetailPage() {
         />
 
         {isScheduled && signupOpenDateYmd && (
-          <div className="mt-3 text-sm text-gray-600">
+          <div className="mt-3 text-sm text-muted">
             Signups open on <span className="font-semibold">{signupOpenDateYmd}</span> (30 days before the trip).
           </div>
         )}
       </section>
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-3 text-sm font-medium text-gray-600">Handicap snapshot</div>
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="mb-3 text-sm font-medium text-muted">Handicap snapshot</div>
 
         {!myEntry ? (
-          <div className="text-sm text-gray-600">RSVP first to save a handicap snapshot for this trip.</div>
+          <div className="text-sm text-muted">RSVP first to save a handicap snapshot for this trip.</div>
         ) : (
           <div className="flex gap-2">
             <input
@@ -590,22 +590,22 @@ export default function TripDetailPage() {
             />
             <button
               onClick={saveHandicap}
-              className="rounded-md bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               Save
             </button>
           </div>
         )}
 
-        <div className="mt-2 text-xs text-gray-500">Stored on your attendee record for this trip.</div>
+        <div className="mt-2 text-xs text-muted">Stored on your attendee record for this trip.</div>
       </section>
 
       {/* 3) Logistics block (single coherent group) */}
       {(trip.logistics?.meetingPoint || trip.ferry || trip.logistics?.ferryDetails || trip.logistics?.notes) && (
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="mb-3 text-sm font-medium text-gray-600">Logistics</div>
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="mb-3 text-sm font-medium text-muted">Logistics</div>
 
-          <div className="space-y-2 text-sm text-gray-700">
+          <div className="space-y-2 text-sm text-foreground">
             {trip.logistics?.meetingPoint && (
               <div>{trip.logistics.meetingPoint}</div>
             )}
@@ -615,13 +615,13 @@ export default function TripDetailPage() {
             )}
 
             {trip.logistics?.ferryDetails && (
-              <div className="text-sm text-gray-700 whitespace-pre-wrap">
+              <div className="text-sm text-foreground whitespace-pre-wrap">
                 {trip.logistics.ferryDetails}
               </div>
             )}
 
             {trip.logistics?.notes && (
-              <div className="text-sm text-gray-700 whitespace-pre-wrap">
+              <div className="text-sm text-foreground whitespace-pre-wrap">
                 {trip.logistics.notes}
               </div>
             )}
@@ -629,27 +629,27 @@ export default function TripDetailPage() {
         </section>
       )}
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-2 text-sm font-medium text-gray-600">Results</div>
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="mb-2 text-sm font-medium text-muted">Results</div>
 
         {trip.result ? (
           <div className="flex items-center justify-between gap-3">
-            <div className="text-sm text-gray-700">Published</div>
+            <div className="text-sm text-foreground">Published</div>
             <Link
               href={`/results/${tripIdSafe}`}
-              className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded-md border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
             >
               View Results →
             </Link>
           </div>
         ) : (
-          <div className="text-sm text-gray-600">Not published yet.</div>
+          <div className="text-sm text-muted">Not published yet.</div>
         )}
       </section>
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-sm font-medium text-gray-600">Attendees</div>
+          <div className="text-sm font-medium text-muted">Attendees</div>
           
           {/* Profile photo avatars (up to 4, overlapping slightly) */}
           {attendeeProfilePhotos.length > 0 && (
@@ -657,7 +657,7 @@ export default function TripDetailPage() {
               {attendeeProfilePhotos.slice(0, 4).map((attendee) => (
                 <div
                   key={attendee.memberId}
-                  className="relative h-7 w-7 shrink-0 rounded-full border-2 border-white bg-gray-100 overflow-hidden"
+                  className="relative h-7 w-7 shrink-0 rounded-full border-2 border-surface bg-background overflow-hidden"
                   title={attendee.name}
                 >
                   {attendee.photoUrl ? (
@@ -667,7 +667,7 @@ export default function TripDetailPage() {
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-gray-400">
+                    <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-muted">
                       {getInitials(attendee.name)}
                     </div>
                   )}
@@ -677,7 +677,7 @@ export default function TripDetailPage() {
           )}
         </div>
 
-        <div className="text-sm text-gray-700">
+        <div className="text-sm text-foreground">
           <span className="font-semibold">{confirmed.length}</span> confirmed
           {waitlist.length ? (
             <>
@@ -693,20 +693,20 @@ export default function TripDetailPage() {
               <span>
                 {idx + 1}. {a.name}
               </span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-muted">
                 {a.handicapForTrip !== undefined && a.handicapForTrip !== null ? `HCP ${a.handicapForTrip}` : ""}
               </span>
             </div>
           ))}
 
-          {waitlist.length ? <div className="pt-2 text-sm font-medium text-gray-600">Waitlist</div> : null}
+          {waitlist.length ? <div className="pt-2 text-sm font-medium text-muted">Waitlist</div> : null}
 
           {waitlist.map((a, idx) => (
             <div key={a.name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
               <span>
                 {idx + 1}. {a.name}
               </span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-muted">
                 {a.handicapForTrip !== undefined && a.handicapForTrip !== null ? `HCP ${a.handicapForTrip}` : ""}
               </span>
             </div>

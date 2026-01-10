@@ -53,12 +53,12 @@ export default function LoginClient() {
 
   return (
     <div className="flex flex-col items-center">
-      <h2 className="mb-6 text-center text-xl font-semibold text-black">
+      <h2 className="mb-6 text-center text-xl font-semibold text-foreground">
         Sign in
       </h2>
 
       {message && (
-        <div className="mb-4 w-full rounded-lg border border-black/20 px-3 py-2 text-center text-sm text-black">
+        <div className="mb-4 w-full rounded-lg border border-border bg-surface px-3 py-2 text-center text-sm text-foreground">
           {message}
         </div>
       )}
@@ -68,13 +68,13 @@ export default function LoginClient() {
         <button
           onClick={signInGoogle}
           disabled={busy !== null}
-          className="w-full rounded-xl border border-black px-4 py-4 text-base font-medium text-black disabled:opacity-50"
+          className="w-full rounded-xl border border-border bg-surface px-4 py-4 text-base font-medium text-foreground hover:bg-background disabled:opacity-50"
         >
           {busy === "google" ? "Opening Google…" : "Continue with Google"}
         </button>
 
         {/* Divider */}
-        <div className="text-center text-sm text-black/60">or</div>
+        <div className="text-center text-sm text-muted">or</div>
 
         {/* Email */}
         <input
@@ -82,13 +82,13 @@ export default function LoginClient() {
           placeholder="Email address"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-xl border border-black px-3 py-4 text-base text-black outline-none"
+          className="w-full rounded-xl border border-border bg-surface px-3 py-4 text-base text-foreground placeholder:text-muted outline-none"
         />
 
         <button
           onClick={signInMagicLink}
           disabled={busy !== null || !email}
-          className="w-full rounded-xl bg-black px-4 py-4 text-base font-medium text-white disabled:opacity-50"
+          className="w-full rounded-xl bg-brand-green px-4 py-4 text-base font-medium text-white disabled:opacity-50"
         >
           {busy === "magic" ? "Sending link…" : "Email me a sign-in link"}
         </button>

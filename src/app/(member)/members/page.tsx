@@ -170,7 +170,7 @@ export default function MembersPage() {
   return (
     <div className="pb-24">
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Members</h1>
+        <h1 className="text-2xl font-bold text-foreground">Members</h1>
       </div>
 
       {/* Search and Filters */}
@@ -183,7 +183,7 @@ export default function MembersPage() {
             setSearchQuery(e.target.value);
             setSelectedLetter(null); // Clear letter filter when searching
           }}
-          className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-gray-900"
+          className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm outline-none focus:border-foreground"
         />
 
         {/* Nationality Filter */}
@@ -195,7 +195,7 @@ export default function MembersPage() {
                 setNationalityFilter(e.target.value);
                 setSelectedLetter(null); // Clear letter filter when filtering by nationality
               }}
-              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-gray-900"
+              className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm outline-none focus:border-foreground"
             >
               <option value="">All nationalities</option>
               {uniqueNationalities.map((nat) => (
@@ -224,10 +224,10 @@ export default function MembersPage() {
                   disabled={count === 0}
                   className={`px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors ${
                     isActive
-                      ? "bg-gray-900 text-white border-gray-900"
+                      ? "bg-foreground text-white border-foreground"
                       : count > 0
-                      ? "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                      : "bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed"
+                      ? "bg-surface text-foreground border-border hover:bg-background"
+                      : "bg-background text-muted border-border cursor-not-allowed"
                   }`}
                   title={count > 0 ? `${count} member${count !== 1 ? "s" : ""}` : "No members"}
                 >
@@ -241,17 +241,17 @@ export default function MembersPage() {
 
       {/* Helper text for default rendering */}
       {!loading && !searchQuery.trim() && !nationalityFilter && !selectedLetter && members.length > 50 && (
-        <div className="mb-3 text-xs text-gray-500">
+        <div className="mb-3 text-xs text-muted">
           Showing 50 of {members.length} members — search to find someone
         </div>
       )}
 
       {/* Members List */}
       {loading ? (
-        <div className="text-center py-8 text-sm text-gray-600">Loading members…</div>
+        <div className="text-center py-8 text-sm text-muted">Loading members…</div>
       ) : displayMembers.length === 0 ? (
-        <div className="rounded-xl border bg-white p-6 text-center">
-          <p className="text-sm text-gray-600">
+        <div className="rounded-xl border bg-surface p-6 text-center">
+          <p className="text-sm text-muted">
             {searchQuery || nationalityFilter || selectedLetter
               ? "No members found matching your filters."
               : "No members found."}
@@ -277,7 +277,7 @@ export default function MembersPage() {
               <div
                 key={member.id}
                 data-first-letter={isFirstWithLetter && /[A-Z]/.test(firstLetter) ? firstLetter : undefined}
-                className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-2.5"
+                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-2.5"
               >
                 {/* Photo + Name + Handicap (primary row) */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -285,25 +285,25 @@ export default function MembersPage() {
                     <img
                       src={photoUrl}
                       alt={displayName}
-                      className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-gray-300"
+                      className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-border"
                     />
                   ) : (
-                    <div className="h-12 w-12 flex-shrink-0 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-sm font-medium text-gray-600">
+                    <div className="h-12 w-12 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-sm font-medium text-muted">
                       {displayName.charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <div className="text-sm font-semibold text-gray-900 truncate">
+                      <div className="text-sm font-semibold text-foreground truncate">
                         {displayName}
                       </div>
-                      <div className="text-sm font-semibold text-gray-900 flex-shrink-0">
+                      <div className="text-sm font-semibold text-foreground flex-shrink-0">
                         {handicap !== null && handicap !== undefined ? `HCP ${handicap}` : "TBC"}
                       </div>
                     </div>
                     {/* Nationality (demoted, smaller, muted) */}
                     {member.nationality && (
-                      <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-400">
+                      <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted">
                         {flag && <span className="text-xs">{flag}</span>}
                         <span>{member.nationality}</span>
                       </div>

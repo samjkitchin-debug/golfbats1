@@ -74,7 +74,7 @@ export default function MePage() {
   // Passport editing is handled on /me/passport page
 
   useEffect(() => {
-    document.title = "GolfBats - Profile";
+    document.title = "Day fore it - Profile";
   }, []);
 
   useEffect(() => {
@@ -199,9 +199,9 @@ export default function MePage() {
 
       {/* Welcome orientation block - shown when profile is incomplete */}
       {!loading && !error && member && profileIncomplete && (
-        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <p className="text-sm font-semibold text-gray-900">Welcome to GolfBats</p>
-          <p className="mt-1 text-sm text-gray-700">
+        <div className="mt-4 rounded-xl border border-border bg-surface/50 p-4">
+          <p className="text-sm font-semibold text-foreground">Welcome to Day fore it</p>
+          <p className="mt-1 text-sm text-muted">
             You're joining a private golf group. To get you set up, we just need a few basic details. You can update everything later.
           </p>
         </div>
@@ -209,9 +209,9 @@ export default function MePage() {
 
       {/* Profile completion reminder */}
       {!loading && !error && member && profileIncomplete && (
-        <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-          <p className="text-sm font-semibold text-gray-900">Complete your profile</p>
-          <p className="mt-1 text-sm text-gray-700">
+        <div className="mt-4 rounded-2xl border border-border bg-surface/50 p-4">
+          <p className="text-sm font-semibold text-foreground">Complete your profile</p>
+          <p className="mt-1 text-sm text-muted">
             This helps organisers place you in groups and manage travel when required. You can update everything later.
           </p>
         </div>
@@ -223,8 +223,8 @@ export default function MePage() {
           <span
             className={`inline-flex items-center rounded-full px-3 py-1 font-medium ${
               isApproved
-                ? "bg-green-100 text-green-800"
-                : "bg-amber-100 text-amber-800"
+                ? "bg-brand-green/10 text-brand-green border border-brand-green/30"
+                : "bg-surface/50 text-muted border border-border"
             }`}
           >
             Status: {isApproved ? "Active" : "Pending approval"}
@@ -232,8 +232,8 @@ export default function MePage() {
           <span
             className={`inline-flex items-center rounded-full px-3 py-1 font-medium ${
               passportComplete
-                ? "bg-green-100 text-green-800"
-                : "bg-amber-100 text-amber-800"
+                ? "bg-brand-green/10 text-brand-green border border-brand-green/30"
+                : "bg-surface/50 text-muted border border-border"
             }`}
           >
             Trips:{" "}
@@ -244,24 +244,24 @@ export default function MePage() {
 
       {/* Pending approval status message */}
       {!loading && !error && member && !isApproved && (
-        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-          <p className="text-sm text-gray-700">
+        <div className="mt-4 rounded-xl border border-border bg-surface/50 px-4 py-3">
+          <p className="text-sm text-muted">
             Membership pending approval. An organiser will review your details shortly.
           </p>
         </div>
       )}
 
       {error ? (
-        <div className="mt-4 rounded-2xl border border-red-400 bg-red-50 p-4">
-          <p className="text-sm font-semibold text-red-900">Error</p>
-          <p className="mt-1 text-sm text-red-900">{error}</p>
+        <div className="mt-4 rounded-2xl border border-border bg-surface/50 p-4">
+          <p className="text-sm font-semibold text-foreground">Error</p>
+          <p className="mt-1 text-sm text-foreground">{error}</p>
         </div>
       ) : null}
 
       {profileSaveSuccess ? (
-        <div className="mt-4 rounded-2xl border border-green-400 bg-green-50 p-4">
-          <p className="text-sm font-semibold text-green-900">Profile saved</p>
-          <p className="mt-1 text-sm text-green-900">Your profile has been updated successfully.</p>
+        <div className="mt-4 rounded-2xl border border-brand-green bg-surface/50 p-4">
+          <p className="text-sm font-semibold text-foreground">Profile saved</p>
+          <p className="mt-1 text-sm text-foreground">Your profile has been updated successfully.</p>
         </div>
       ) : null}
 
@@ -440,27 +440,27 @@ export default function MePage() {
         />
 
         {/* Passport details section - optional and deferrable */}
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+        <div className="rounded-2xl border border-border bg-surface/50 p-4">
           <div className="mb-3">
-            <div className="text-sm font-semibold text-gray-900">Passport details (optional)</div>
-            <p className="mt-1 text-xs text-gray-600">
+            <div className="text-sm font-semibold text-foreground">Passport details (optional)</div>
+            <p className="mt-1 text-xs text-muted">
               Only required for trips involving travel (e.g. ferries). You can add this later.
             </p>
           </div>
           <Link
             href="/me/passport"
-            className="inline-block rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+            className="inline-block rounded-xl border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground hover:bg-background"
           >
             Add passport details
           </Link>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 p-3">
-          <div className="text-xs font-medium text-gray-600">Data security</div>
+        <div className="rounded-2xl border border-border bg-surface/50 p-3">
+          <div className="text-xs font-medium text-muted">Data security</div>
 
-          <div className="mt-2 space-y-2 text-xs text-gray-600 leading-relaxed">
-            <div>
-              <div className="font-medium text-gray-700">Protection measures</div>
+            <div className="mt-2 space-y-2 text-xs text-muted leading-relaxed">
+              <div>
+                <div className="font-medium text-foreground">Protection measures</div>
               <ul className="mt-1 ml-4 list-disc space-y-0.5">
                 <li>Passport numbers are encrypted using AES-256-GCM with server-side key management and cannot be read by anyone except authorised administrators with proper access controls</li>
                 <li>You can view, update, or delete your own passport information at any time</li>
@@ -470,7 +470,7 @@ export default function MePage() {
             </div>
 
             <div>
-              <div className="font-medium text-gray-700">Disclaimer</div>
+              <div className="font-medium text-foreground">Disclaimer</div>
               <p className="mt-1">
                 Passport information is collected only to organise trip logistics, such as ferry bookings and travel arrangements. Please do not upload passport data unless it is required for a specific trip you are attending. Your passport information may be deleted after the relevant trip is completed.
               </p>
@@ -478,41 +478,43 @@ export default function MePage() {
           </div>
         </div>
 
-        {/* Danger zone */}
-        <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-4">
+        {/* Delete account */}
+        <div className="rounded-2xl border border-border bg-surface p-4">
           <div className="mb-3">
-            <div className="text-sm font-semibold text-red-900">Danger zone</div>
-            <p className="mt-1 text-xs text-red-800">
-              Permanently delete your account and all associated data. This action cannot be undone.
+            <div className="text-sm font-semibold text-foreground">Delete account</div>
+            <p className="mt-1 text-xs text-muted">
+              Permanently deletes your account and associated data. This cannot be undone.
             </p>
           </div>
-          <button
-            onClick={() => {
-              setShowDeleteModal(true);
-              setDeleteConfirmText("");
-              setDeleteError(null);
-            }}
-            disabled={deletingAccount}
-            className="rounded-xl border-2 border-red-600 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Delete my account
-          </button>
+          <div className="flex justify-center">
+            <button
+              onClick={() => {
+                setShowDeleteModal(true);
+                setDeleteConfirmText("");
+                setDeleteError(null);
+              }}
+              disabled={deletingAccount}
+              className="rounded-lg border border-brand-orange bg-surface px-4 py-2 text-sm text-brand-orange hover:bg-brand-orange/5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Delete my account
+            </button>
+          </div>
           {deleteError && (
-            <p className="mt-3 text-sm font-medium text-red-900">{deleteError}</p>
+            <p className="mt-3 text-center text-sm font-medium text-foreground">{deleteError}</p>
           )}
         </div>
       </div>
 
       {/* Delete account confirmation modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
-            <h3 className="mb-2 text-lg font-semibold text-gray-900">Delete account</h3>
-            <p className="mb-4 text-sm text-gray-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-surface border border-border p-6">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">Delete account</h3>
+            <p className="mb-4 text-sm text-muted">
               This will permanently delete your account and all associated data. This action cannot be undone.
             </p>
-            <p className="mb-4 text-sm font-medium text-gray-900">
-              Type <span className="font-mono text-red-600">DELETE</span> to confirm:
+            <p className="mb-4 text-sm font-medium text-foreground">
+              Type <span className="font-mono text-brand-orange">DELETE</span> to confirm:
             </p>
             <input
               type="text"
@@ -520,7 +522,7 @@ export default function MePage() {
               onChange={(e) => setDeleteConfirmText(e.target.value)}
               placeholder="Type DELETE to confirm"
               disabled={deletingAccount}
-              className="mb-6 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mb-6 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-brand-green focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
               autoFocus
             />
             <div className="flex gap-3">
@@ -531,7 +533,7 @@ export default function MePage() {
                   setDeleteError(null);
                 }}
                 disabled={deletingAccount}
-                className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
@@ -566,9 +568,9 @@ export default function MePage() {
                     }
 
                     if (json.ok === true) {
-                      // Account deleted successfully - sign out and redirect
+                      // Account deleted successfully - sign out and redirect to login
                       await supabase.auth.signOut();
-                      router.replace("/");
+                      router.replace("/login");
                       return;
                     }
 
@@ -582,7 +584,7 @@ export default function MePage() {
                   }
                 }}
                 disabled={deleteConfirmText !== "DELETE" || deletingAccount}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg bg-brand-orange px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deletingAccount ? "Deleting..." : "Delete account"}
               </button>
@@ -699,17 +701,17 @@ function ProfileBlock({
   setCroppedAreaPixels: (v: Area | null) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-black p-4">
+    <div className="rounded-2xl border border-border p-4">
       <div className="flex items-start justify-between">
         <div>
           <div className="text-sm font-semibold">Profile</div>
-          <p className="mt-0.5 text-xs text-gray-600">
+          <p className="mt-0.5 text-xs text-muted">
             This helps organisers place you in groups and manage trips.
           </p>
         </div>
         <button
           onClick={onToggleEdit}
-          className="rounded-xl border border-black px-3 py-1 text-xs font-semibold hover:bg-gray-50"
+          className="rounded-xl border border-border px-3 py-1 text-xs font-semibold hover:bg-background"
         >
           {editing ? "Cancel" : "Edit"}
         </button>
@@ -725,10 +727,10 @@ function ProfileBlock({
                 <img
                   src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${profilePhotoPath}`}
                   alt="Profile"
-                  className="h-16 w-16 rounded-full object-cover border border-gray-300"
+                  className="h-16 w-16 rounded-full object-cover border border-border"
                 />
               ) : (
-                <div className="h-16 w-16 rounded-full border border-gray-300 bg-gray-200 flex items-center justify-center text-sm font-semibold text-gray-700">
+                <div className="h-16 w-16 rounded-full border border-border bg-background flex items-center justify-center text-sm font-semibold text-muted">
                   {getInitials(member)}
                 </div>
               )}
@@ -758,12 +760,12 @@ function ProfileBlock({
                   type="button"
                   onClick={() => document.getElementById("profile-photo-input")?.click()}
                   disabled={uploadingProfilePhoto}
-                  className="rounded-xl border border-black bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-60"
+                  className="rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold hover:bg-background disabled:opacity-60"
                 >
                   {profilePhotoPath ? "Change Photo" : "Add Photo"}
                 </button>
                 {uploadingProfilePhoto && (
-                  <p className="mt-1 text-xs text-gray-600">Uploading photo…</p>
+                  <p className="mt-1 text-xs text-muted">Uploading photo…</p>
                 )}
               </div>
             </div>
@@ -771,14 +773,14 @@ function ProfileBlock({
 
           <div>
             <div className="text-xs font-semibold">Email</div>
-            <div className="mt-1 text-sm text-gray-600">{member?.email ?? "—"}</div>
-            <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
+            <div className="mt-1 text-sm text-muted">{member?.email ?? "—"}</div>
+            <p className="mt-1 text-xs text-muted">Email cannot be changed</p>
           </div>
 
           <div>
             <div className="text-xs font-semibold">Full name</div>
             <input
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+              className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="e.g. John Smith"
@@ -788,7 +790,7 @@ function ProfileBlock({
           <div>
             <div className="text-xs font-semibold">Display name</div>
             <input
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+              className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="e.g. Sam"
@@ -798,7 +800,7 @@ function ProfileBlock({
           <div>
             <div className="text-xs font-semibold">Nationality</div>
             <select
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none bg-white"
+              className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none"
               value={nationality || ""}
               onChange={(e) => setNationality(e.target.value)}
             >
@@ -816,7 +818,7 @@ function ProfileBlock({
           <div>
             <div className="text-xs font-semibold">Declared handicap</div>
             <input
-              className="mt-1 w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+              className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
               value={declaredHandicap}
               onChange={(e) => setDeclaredHandicap(e.target.value)}
               inputMode="decimal"
@@ -865,7 +867,7 @@ function ProfileBlock({
           <button
             onClick={onSave}
             disabled={saving || uploadingProfilePhoto}
-            className="w-full rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            className="w-full rounded-xl bg-brand-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
             {saving ? "Saving…" : saved ? "Saved" : "Save"}
           </button>
@@ -877,10 +879,10 @@ function ProfileBlock({
               <img
                 src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${member.profile_photo_path}`}
                 alt="Profile"
-                className="h-24 w-24 rounded-full object-cover border border-gray-300"
+                className="h-24 w-24 rounded-full object-cover border border-border"
               />
             ) : (
-              <div className="h-24 w-24 rounded-full border border-gray-300 bg-gray-200 flex items-center justify-center text-lg font-semibold text-gray-700">
+              <div className="h-24 w-24 rounded-full border border-border bg-background flex items-center justify-center text-lg font-semibold text-muted">
                 {getInitials(member)}
               </div>
             )}
@@ -979,11 +981,11 @@ function ImageCropModal({
   onSave: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-4">
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">{title}</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/75 p-4">
+      <div className="w-full max-w-md rounded-xl bg-surface border border-border p-4">
+        <h3 className="mb-4 text-lg font-semibold text-foreground">{title}</h3>
         
-        <div className="relative h-64 w-full bg-gray-100 rounded-lg overflow-hidden">
+        <div className="relative h-64 w-full bg-background rounded-lg overflow-hidden">
           <Cropper
             image={imageSrc}
             crop={crop}
@@ -1006,7 +1008,7 @@ function ImageCropModal({
 
         <div className="mt-4 space-y-3">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-foreground mb-1">
               Zoom
             </label>
             <input
@@ -1023,13 +1025,13 @@ function ImageCropModal({
           <div className="flex gap-2">
             <button
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5"
             >
               Cancel
             </button>
             <button
               onClick={onSave}
-              className="flex-1 rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               Save
             </button>

@@ -145,7 +145,7 @@ export default function JoinPage() {
   if (loadingProfile || isAuthenticated === null) {
     return (
       <div className="mx-auto w-full max-w-md px-4 py-8">
-        <p className="text-sm text-gray-600">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       </div>
     );
   }
@@ -157,26 +157,26 @@ export default function JoinPage() {
         {/* Back button */}
         <button
           onClick={handleBack}
-          className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+          className="mb-4 text-sm text-muted hover:text-foreground flex items-center gap-1"
         >
           ← Back
         </button>
 
         {/* Profile incomplete message */}
-        <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-6 text-center">
-          <h1 className="text-xl font-semibold text-blue-900">Complete your profile first</h1>
-          <p className="mt-2 text-sm text-blue-800">
+        <div className="rounded-xl border-2 border-border bg-surface p-6 text-center">
+          <h1 className="text-xl font-semibold text-foreground">Complete your profile first</h1>
+          <p className="mt-2 text-sm text-muted">
             Add your details so group members recognise you.
           </p>
           <Link
             href="/me/edit?required=true"
-            className="mt-4 block w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+            className="mt-4 block w-full rounded-lg bg-brand-orange px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
           >
             Complete profile
           </Link>
           <Link
             href="/"
-            className="mt-3 block w-full rounded-lg border border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-900 hover:bg-blue-50"
+            className="mt-3 block w-full rounded-lg border border-brand-green bg-surface px-4 py-3 text-sm font-semibold text-brand-green hover:bg-brand-green/5"
           >
             Back
           </Link>
@@ -191,13 +191,13 @@ export default function JoinPage() {
       {/* Back button */}
       <button
         onClick={handleBack}
-        className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+        className="mb-4 text-sm text-muted hover:text-foreground flex items-center gap-1"
       >
         ← Back
       </button>
 
       <h1 className="text-xl font-semibold">Join a group</h1>
-      <p className="mt-2 text-sm text-gray-600">
+      <p className="mt-2 text-sm text-muted">
         Enter the group code (slug). Your request will be submitted for approval.
       </p>
 
@@ -212,7 +212,7 @@ export default function JoinPage() {
       />
 
       <button
-        className="mt-4 w-full rounded-lg bg-black px-4 py-2 text-white disabled:opacity-50"
+        className="mt-4 w-full rounded-lg bg-brand-green px-4 py-2 text-white disabled:opacity-50"
         onClick={submit}
         disabled={status === "submitting"}
       >
@@ -222,7 +222,7 @@ export default function JoinPage() {
       {message && (
         <p
           className={`mt-4 text-sm ${
-            status === "error" ? "text-red-600" : status === "done" ? "text-green-600" : "text-gray-600"
+            status === "error" ? "text-foreground" : status === "done" ? "text-brand-green" : "text-muted"
           }`}
         >
           {message}

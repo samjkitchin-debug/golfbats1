@@ -23,9 +23,9 @@ export default async function MemberLayout({ children }: { children: React.React
   const isSignedIn = true;
 
   return (
-    <div className="min-h-dvh bg-gray-50">
+    <div className="min-h-dvh bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white">
+      <header className="sticky top-0 z-20 bg-surface border-b border-border">
         <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
           <div className="flex w-16 justify-start">
             <MainNav />
@@ -34,10 +34,10 @@ export default async function MemberLayout({ children }: { children: React.React
           <Link href="/" className="flex flex-1 justify-center">
             <Image
               src="/logo.png"
-              alt="GolfBats logo"
-              width={86}
-              height={86}
-              className="h-[86px] w-[86px] rounded-md"
+              alt="Day fore it"
+              width={120}
+              height={60}
+              className="h-auto w-auto max-h-[60px] object-contain"
               priority
             />
           </Link>
@@ -48,7 +48,7 @@ export default async function MemberLayout({ children }: { children: React.React
             ) : (
               <Link
                 href="/login"
-                className="text-sm text-gray-600 hover:text-gray-900"
+                className="text-sm text-muted hover:text-foreground"
               >
                 Sign in
               </Link>
@@ -57,7 +57,7 @@ export default async function MemberLayout({ children }: { children: React.React
         </div>
 
         {/* brand accent */}
-        <div className="h-0.5 w-full bg-brand-red" />
+        <div className="h-0.5 w-full bg-brand-green" />
       </header>
 
       {/* Content */}

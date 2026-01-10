@@ -48,31 +48,31 @@ export default function CoursesPage() {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xl font-semibold text-gray-900">Courses</div>
-          <div className="text-sm text-gray-600">Browse course + tees</div>
+          <div className="text-xl font-semibold text-foreground">Courses</div>
+          <div className="text-sm text-muted">Browse course + tees</div>
         </div>
 
         <Link
           href="/admin/courses"
-          className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          className="rounded-md border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
         >
           Edit (admin)
         </Link>
       </div>
 
       {/* Search Input */}
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <div className="rounded-xl border bg-surface p-4 shadow-sm">
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search courses by name, location, or tee..."
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-border"
         />
         {searchQuery && (
           <button
             onClick={() => setSearchQuery("")}
-            className="mt-2 text-xs text-gray-600 hover:text-gray-900 underline"
+            className="mt-2 text-xs text-muted hover:text-foreground underline"
           >
             Clear search
           </button>
@@ -80,20 +80,20 @@ export default function CoursesPage() {
       </div>
 
       {sorted.length === 0 ? (
-        <div className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="text-sm text-gray-600">No courses yet.</div>
+        <div className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="text-sm text-muted">No courses yet.</div>
         </div>
       ) : (
         <div className="space-y-3">
           {sorted.map((c) => (
-            <div key={c.id} className="rounded-xl border bg-white p-5 shadow-sm">
-              <div className="text-lg font-semibold text-gray-900">{c.name}</div>
-              <div className="mt-1 text-sm text-gray-600">{c.location}</div>
+            <div key={c.id} className="rounded-xl border bg-surface p-5 shadow-sm">
+              <div className="text-lg font-semibold text-foreground">{c.name}</div>
+              <div className="mt-1 text-sm text-muted">{c.location}</div>
 
               {c.website ? (
                 <div className="mt-2 text-sm">
                   <a
-                    className="text-gray-700 underline"
+                    className="text-foreground underline"
                     href={c.website}
                     target="_blank"
                     rel="noreferrer"
@@ -103,7 +103,7 @@ export default function CoursesPage() {
                 </div>
               ) : null}
 
-              <div className="mt-4 text-sm font-medium text-gray-600">Tees</div>
+              <div className="mt-4 text-sm font-medium text-muted">Tees</div>
 
               {c.tees?.length ? (
                 <div className="mt-2 space-y-2">
@@ -112,15 +112,15 @@ export default function CoursesPage() {
                       key={t.id}
                       className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
                     >
-                      <span className="font-medium text-gray-900">{t.label}</span>
-                      <span className="text-gray-700">
+                      <span className="font-medium text-foreground">{t.label}</span>
+                      <span className="text-foreground">
                         {t.meters}m · Par {t.par} · Slope {t.slope}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="mt-2 text-sm text-gray-600">No tees added yet.</div>
+                <div className="mt-2 text-sm text-muted">No tees added yet.</div>
               )}
             </div>
           ))}

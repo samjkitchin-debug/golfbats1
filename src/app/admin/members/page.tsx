@@ -443,18 +443,18 @@ export default function AdminMembersPage() {
   return (
     <main className="mx-auto w-full max-w-5xl px-4 pb-10">
       <div className="mt-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Members</h1>
-        <Link href="/admin" className="text-sm text-gray-700 hover:text-gray-900">
+        <h1 className="text-xl font-semibold text-foreground">Members</h1>
+        <Link href="/admin" className="text-sm text-foreground hover:text-foreground">
           Back to dashboard
         </Link>
       </div>
 
       {error ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-white p-4 text-sm text-red-700">
+        <div className="mt-4 rounded-xl border border-border bg-surface p-4 text-sm text-foreground">
           {error}
         </div>
       ) : loading ? (
-        <div className="mt-4 rounded-xl border bg-white p-4 text-sm text-gray-700">
+        <div className="mt-4 rounded-xl border bg-surface p-4 text-sm text-foreground">
           Loading…
         </div>
       ) : (
@@ -468,12 +468,12 @@ export default function AdminMembersPage() {
               }}
               className={`rounded-xl border p-3 sm:p-4 text-left transition-colors ${
                 activeTab === "pending"
-                  ? "border-gray-900 bg-gray-50"
-                  : "border-gray-200 bg-white hover:border-gray-300"
+                  ? "border-foreground bg-background"
+                  : "border-border bg-surface hover:border-border"
               }`}
             >
-              <div className="text-xs font-medium text-gray-500">Pending approvals</div>
-              <div className="mt-1 text-xl sm:text-2xl font-semibold text-gray-900">{metrics.pending}</div>
+              <div className="text-xs font-medium text-muted">Pending approvals</div>
+              <div className="mt-1 text-xl sm:text-2xl font-semibold text-foreground">{metrics.pending}</div>
             </button>
             <button
               onClick={() => {
@@ -481,10 +481,10 @@ export default function AdminMembersPage() {
                 setSearchQuery("");
                 // Filter by passport missing would need additional logic
               }}
-              className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4 text-left hover:border-gray-300 transition-colors"
+              className="rounded-xl border border-border bg-surface p-3 sm:p-4 text-left hover:border-border transition-colors"
             >
-              <div className="text-xs font-medium text-gray-500">Passport missing</div>
-              <div className="mt-1 text-xl sm:text-2xl font-semibold text-gray-900">{metrics.passportMissing}</div>
+              <div className="text-xs font-medium text-muted">Passport missing</div>
+              <div className="mt-1 text-xl sm:text-2xl font-semibold text-foreground">{metrics.passportMissing}</div>
             </button>
             <button
               onClick={() => {
@@ -492,30 +492,30 @@ export default function AdminMembersPage() {
                 setSearchQuery("");
                 // Filter by inactive would need additional logic
               }}
-              className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4 text-left hover:border-gray-300 transition-colors"
+              className="rounded-xl border border-border bg-surface p-3 sm:p-4 text-left hover:border-border transition-colors"
             >
-              <div className="text-xs font-medium text-gray-500">Inactive</div>
-              <div className="mt-1 text-xl sm:text-2xl font-semibold text-gray-900">{metrics.inactive}</div>
+              <div className="text-xs font-medium text-muted">Inactive</div>
+              <div className="mt-1 text-xl sm:text-2xl font-semibold text-foreground">{metrics.inactive}</div>
             </button>
           </section>
 
           {/* Tabs - Responsive */}
-          <section className="mt-4 rounded-xl border bg-white p-1 shadow-sm">
+          <section className="mt-4 rounded-xl border bg-surface p-1 shadow-sm">
             <div className="flex gap-1">
               <button
                 onClick={() => setActiveTab("pending")}
                 className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
                   activeTab === "pending"
-                    ? "bg-gray-900 text-white"
-                    : "text-gray-700 hover:bg-gray-50"
+                    ? "bg-foreground text-white"
+                    : "text-foreground hover:bg-background"
                 }`}
               >
                 Pending
                 {metrics.pending > 0 && (
                   <span className={`ml-1.5 sm:ml-2 rounded-full px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs ${
                     activeTab === "pending"
-                      ? "bg-white/20 text-white"
-                      : "bg-gray-200 text-gray-700"
+                      ? "bg-surface/20 text-white"
+                      : "bg-background text-foreground"
                   }`}>
                     {metrics.pending}
                   </span>
@@ -525,8 +525,8 @@ export default function AdminMembersPage() {
                 onClick={() => setActiveTab("members")}
                 className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
                   activeTab === "members"
-                    ? "bg-gray-900 text-white"
-                    : "text-gray-700 hover:bg-gray-50"
+                    ? "bg-foreground text-white"
+                    : "text-foreground hover:bg-background"
                 }`}
               >
                 Members
@@ -535,8 +535,8 @@ export default function AdminMembersPage() {
                 onClick={() => setActiveTab("admins")}
                 className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
                   activeTab === "admins"
-                    ? "bg-gray-900 text-white"
-                    : "text-gray-700 hover:bg-gray-50"
+                    ? "bg-foreground text-white"
+                    : "text-foreground hover:bg-background"
                 }`}
               >
                 Admins
@@ -545,19 +545,19 @@ export default function AdminMembersPage() {
           </section>
 
           {/* Search Input - Mobile-first, prominent on mobile */}
-          <section className="mt-4 rounded-xl border bg-white p-4 shadow-sm">
+          <section className="mt-4 rounded-xl border bg-surface p-4 shadow-sm">
             <div className="flex items-center gap-2 sm:gap-3">
               <input
                 type="text"
                 placeholder="Search by name, email, nationality, or handicap..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 sm:py-2 text-sm focus:border-gray-400 focus:outline-none"
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 sm:py-2 text-sm focus:border-border focus:outline-none"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="rounded-lg border border-gray-300 bg-white px-3 sm:px-4 py-2.5 sm:py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="rounded-lg border border-border bg-surface px-3 sm:px-4 py-2.5 sm:py-2 text-sm text-foreground hover:bg-background"
                 >
                   <span className="hidden sm:inline">Clear search</span>
                   <span className="sm:hidden">Clear</span>
@@ -567,11 +567,11 @@ export default function AdminMembersPage() {
           </section>
 
           {/* Tab Content */}
-          <div className="mt-4 rounded-xl border bg-white">
+          <div className="mt-4 rounded-xl border bg-surface">
             {activeTab === "pending" ? (
               /* Pending Tab - Mobile: cards, Desktop: table */
               filteredMembers.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-gray-700">
+                <div className="px-4 py-6 text-sm text-foreground">
                   {searchQuery ? "No pending members match your search." : "No pending approvals."}
                 </div>
               ) : (
@@ -584,9 +584,9 @@ export default function AdminMembersPage() {
                       return (
                         <div key={m.id} className="p-4 space-y-3">
                           <div>
-                            <div className="text-base font-semibold text-gray-900">{name}</div>
+                            <div className="text-base font-semibold text-foreground">{name}</div>
                             {m.declared_handicap !== null && m.declared_handicap !== undefined && (
-                              <div className="mt-1 text-sm text-gray-600">
+                              <div className="mt-1 text-sm text-muted">
                                 HCP {m.declared_handicap}
                               </div>
                             )}
@@ -603,19 +603,19 @@ export default function AdminMembersPage() {
                               }
                               setPendingDetailsOpen(newSet);
                             }}
-                            className="text-sm text-gray-500 hover:text-gray-700"
+                            className="text-sm text-muted hover:text-foreground"
                           >
                             {showDetails ? "Hide details" : "View details"}
                           </button>
                           
                           {/* Hidden metadata */}
                           {showDetails && (
-                            <div className="space-y-1 text-sm text-gray-600">
+                            <div className="space-y-1 text-sm text-muted">
                               {m.email && <div>Email: {m.email}</div>}
                               {m.nationality && <div>Nationality: {m.nationality}</div>}
                               <button
                                 onClick={() => handleViewPassport(m.id)}
-                                className="text-gray-500 hover:text-gray-700"
+                                className="text-muted hover:text-foreground"
                               >
                                 View passport →
                               </button>
@@ -627,14 +627,14 @@ export default function AdminMembersPage() {
                             <button
                               onClick={() => handleApproveMember(m.id, name)}
                               disabled={approvingMemberId === m.id}
-                              className="flex-1 rounded-md bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-white hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {approvingMemberId === m.id ? "Approving..." : "Approve"}
                             </button>
                             <button
                               onClick={() => handleDeleteMember(m.id, name, true)}
                               disabled={deletingMemberId === m.id}
-                              className="flex-1 rounded-md border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="flex-1 rounded-md border border-border bg-surface px-4 py-3 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {deletingMemberId === m.id ? "Rejecting..." : "Reject"}
                             </button>
@@ -654,8 +654,8 @@ export default function AdminMembersPage() {
                         <col className="w-[15%]" />
                         <col className="w-[15%]" />
                       </colgroup>
-                      <thead className="border-b bg-gray-50">
-                        <tr className="text-gray-700">
+                      <thead className="border-b bg-background">
+                        <tr className="text-foreground">
                           <th className="px-4 py-2.5 font-medium">Name</th>
                           <th className="px-4 py-2.5 font-medium">Email</th>
                           <th className="px-4 py-2.5 font-medium">Nationality</th>
@@ -667,18 +667,18 @@ export default function AdminMembersPage() {
                         {filteredMembers.map((m) => {
                           const name = m.display_name || m.full_name || "—";
                           return (
-                            <tr key={m.id} className="border-b last:border-b-0 hover:bg-gray-50">
-                              <td className="px-4 py-2.5 font-medium text-gray-900">{name}</td>
-                              <td className="px-4 py-2.5 text-gray-800">{m.email ?? "—"}</td>
-                              <td className="px-4 py-2.5 text-gray-800">{m.nationality ?? "—"}</td>
-                              <td className="px-4 py-2.5 text-gray-800">
+                            <tr key={m.id} className="border-b last:border-b-0 hover:bg-background">
+                              <td className="px-4 py-2.5 font-medium text-foreground">{name}</td>
+                              <td className="px-4 py-2.5 text-foreground">{m.email ?? "—"}</td>
+                              <td className="px-4 py-2.5 text-foreground">{m.nationality ?? "—"}</td>
+                              <td className="px-4 py-2.5 text-foreground">
                                 {m.declared_handicap ?? "—"}
                               </td>
                               <td className="px-4 py-2.5">
                                 <div className="flex items-center justify-end gap-2">
                                   <Link
                                     href={`/admin/members/${m.id}/passport`}
-                                    className="text-xs text-gray-500 hover:text-gray-700"
+                                    className="text-xs text-muted hover:text-foreground"
                                     onClick={(e) => {
                                       e.preventDefault();
                                       handleViewPassport(m.id);
@@ -689,14 +689,14 @@ export default function AdminMembersPage() {
                                   <button
                                     onClick={() => handleApproveMember(m.id, name)}
                                     disabled={approvingMemberId === m.id}
-                                    className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-white hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     {approvingMemberId === m.id ? "Approving..." : "Approve"}
                                   </button>
                                   <button
                                     onClick={() => handleDeleteMember(m.id, name, true)}
                                     disabled={deletingMemberId === m.id}
-                                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     {deletingMemberId === m.id ? "Rejecting..." : "Reject"}
                                   </button>
@@ -713,7 +713,7 @@ export default function AdminMembersPage() {
             ) : (
               /* Members/Admins Tab - Mobile: cards with overflow menu, Desktop: table */
               filteredMembers.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-gray-700">
+                <div className="px-4 py-6 text-sm text-foreground">
                   {searchQuery
                     ? `No ${activeTab} match your search.`
                     : `No ${activeTab} found.`}
@@ -733,27 +733,27 @@ export default function AdminMembersPage() {
                         <div key={m.id} className="p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
-                              <div className="text-base font-semibold text-gray-900">{name}</div>
-                              <div className="mt-1 text-sm text-gray-600">{m.email ?? "—"}</div>
+                              <div className="text-base font-semibold text-foreground">{name}</div>
+                              <div className="mt-1 text-sm text-muted">{m.email ?? "—"}</div>
                               <div className="mt-2 flex flex-wrap items-center gap-2">
                                 {m.declared_handicap !== null && m.declared_handicap !== undefined && (
-                                  <span className="text-xs text-gray-600">HCP {m.declared_handicap}</span>
+                                  <span className="text-xs text-muted">HCP {m.declared_handicap}</span>
                                 )}
                                 {isActive ? (
-                                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                                  <span className="inline-flex items-center rounded-full bg-brand-green/10 px-2 py-0.5 text-xs font-medium text-brand-green border border-brand-green/30">
                                     Active
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                  <span className="inline-flex items-center rounded-full bg-surface/50 px-2 py-0.5 text-xs font-medium text-muted border border-border">
                                     Pending
                                   </span>
                                 )}
                                 {hasCompletePassport ? (
-                                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                                  <span className="inline-flex items-center rounded-full bg-brand-green/10 px-2 py-0.5 text-xs font-medium text-brand-green border border-brand-green/30">
                                     Passport
                                   </span>
                                 ) : hasPassport ? (
-                                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                  <span className="inline-flex items-center rounded-full bg-surface/50 px-2 py-0.5 text-xs font-medium text-muted border border-border">
                                     Passport incomplete
                                   </span>
                                 ) : null}
@@ -764,7 +764,7 @@ export default function AdminMembersPage() {
                             <div className="relative shrink-0" data-member-menu={m.id}>
                               <button
                                 onClick={() => setOpenMenuMemberId(openMenuMemberId === m.id ? null : m.id)}
-                                className="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                className="rounded-md p-2 text-muted hover:bg-background hover:text-muted"
                                 aria-label="More options"
                               >
                                 <svg
@@ -782,14 +782,14 @@ export default function AdminMembersPage() {
                                 </svg>
                               </button>
                               {openMenuMemberId === m.id && (
-                                <div className="absolute right-0 top-10 z-10 w-48 rounded-lg border border-gray-200 bg-white shadow-lg">
+                                <div className="absolute right-0 top-10 z-10 w-48 rounded-lg border border-border bg-surface shadow-lg">
                                   <div className="py-1">
                                     <button
                                       onClick={() => {
                                         handleViewPassport(m.id);
                                         setOpenMenuMemberId(null);
                                       }}
-                                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                      className="w-full px-4 py-2.5 text-left text-sm text-foreground hover:bg-background"
                                     >
                                       View profile
                                     </button>
@@ -799,7 +799,7 @@ export default function AdminMembersPage() {
                                         setRolesIsAdmin(!!m.is_admin);
                                         setOpenMenuMemberId(null);
                                       }}
-                                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                      className="w-full px-4 py-2.5 text-left text-sm text-foreground hover:bg-background"
                                     >
                                       Manage roles
                                     </button>
@@ -809,7 +809,7 @@ export default function AdminMembersPage() {
                                         setOpenMenuMemberId(null);
                                       }}
                                       disabled={deletingMemberId === m.id}
-                                      className="w-full px-4 py-2.5 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      className="w-full px-4 py-2.5 text-left text-sm text-danger hover:bg-danger-light disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       {deletingMemberId === m.id ? "Deleting..." : "Delete"}
                                     </button>
@@ -835,8 +835,8 @@ export default function AdminMembersPage() {
                         <col className="w-[10%]" />
                         <col className="w-[10%]" />
                       </colgroup>
-                      <thead className="border-b bg-gray-50">
-                        <tr className="text-gray-700">
+                      <thead className="border-b bg-background">
+                        <tr className="text-foreground">
                           <th className="px-4 py-3 font-medium">Name</th>
                           <th className="px-4 py-3 font-medium">Email</th>
                           <th className="px-4 py-3 font-medium">Nat.</th>
@@ -855,35 +855,35 @@ export default function AdminMembersPage() {
                           const isActive = (m.status ?? "pending") === "active";
 
                           return (
-                            <tr key={m.id} className="border-b last:border-b-0 hover:bg-gray-50">
-                              <td className="px-4 py-3 font-medium text-gray-900">{name}</td>
-                              <td className="px-4 py-3 text-gray-800">{m.email ?? "—"}</td>
-                              <td className="px-4 py-3 text-gray-800">{m.nationality ?? "—"}</td>
-                              <td className="px-4 py-3 text-gray-800">
+                            <tr key={m.id} className="border-b last:border-b-0 hover:bg-background">
+                              <td className="px-4 py-3 font-medium text-foreground">{name}</td>
+                              <td className="px-4 py-3 text-foreground">{m.email ?? "—"}</td>
+                              <td className="px-4 py-3 text-foreground">{m.nationality ?? "—"}</td>
+                              <td className="px-4 py-3 text-foreground">
                                 {m.declared_handicap ?? "—"}
                               </td>
                               <td className="px-4 py-3">
                                 {isActive ? (
-                                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                                  <span className="inline-flex items-center rounded-full bg-brand-green-light px-2 py-1 text-xs font-medium text-brand-green">
                                     Active
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                                  <span className="inline-flex items-center rounded-full bg-surface/50 px-2 py-1 text-xs font-medium text-muted">
                                     Pending
                                   </span>
                                 )}
                               </td>
                               <td className="px-4 py-3">
                                 {hasCompletePassport ? (
-                                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                                  <span className="inline-flex items-center rounded-full bg-brand-green-light px-2 py-1 text-xs font-medium text-brand-green">
                                     Complete
                                   </span>
                                 ) : hasPassport ? (
-                                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                                  <span className="inline-flex items-center rounded-full bg-surface/50 px-2 py-1 text-xs font-medium text-muted">
                                     Incomplete
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800">
+                                  <span className="inline-flex items-center rounded-full bg-background px-2 py-1 text-xs font-medium text-foreground">
                                     None
                                   </span>
                                 )}
@@ -892,7 +892,7 @@ export default function AdminMembersPage() {
                                 <div className="relative flex justify-end" data-member-menu={m.id}>
                                   <button
                                     onClick={() => setOpenMenuMemberId(openMenuMemberId === m.id ? null : m.id)}
-                                    className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                    className="rounded-md p-1.5 text-muted hover:bg-background hover:text-muted"
                                     aria-label="More options"
                                   >
                                     <svg
@@ -910,14 +910,14 @@ export default function AdminMembersPage() {
                                     </svg>
                                   </button>
                                   {openMenuMemberId === m.id && (
-                                    <div className="absolute right-0 top-8 z-10 w-48 rounded-lg border border-gray-200 bg-white shadow-lg">
+                                    <div className="absolute right-0 top-8 z-10 w-48 rounded-lg border border-border bg-surface shadow-lg">
                                       <div className="py-1">
                                         <button
                                           onClick={() => {
                                             handleViewPassport(m.id);
                                             setOpenMenuMemberId(null);
                                           }}
-                                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                          className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-background"
                                         >
                                           View profile
                                         </button>
@@ -927,7 +927,7 @@ export default function AdminMembersPage() {
                                             setRolesIsAdmin(!!m.is_admin);
                                             setOpenMenuMemberId(null);
                                           }}
-                                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                          className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-background"
                                         >
                                           Manage roles
                                         </button>
@@ -937,7 +937,7 @@ export default function AdminMembersPage() {
                                             setOpenMenuMemberId(null);
                                           }}
                                           disabled={deletingMemberId === m.id}
-                                          className="w-full px-4 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="w-full px-4 py-2 text-left text-sm text-danger hover:bg-danger-light disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                           {deletingMemberId === m.id ? "Deleting..." : "Delete"}
                                         </button>
@@ -962,45 +962,45 @@ export default function AdminMembersPage() {
       {/* Passport Details Modal */}
       {viewingMemberId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="w-full max-w-2xl rounded-xl border bg-white p-6 shadow-lg">
+          <div className="w-full max-w-2xl rounded-xl border bg-surface p-6 shadow-lg">
             <div className="flex items-start justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Passport Details</h2>
+              <h2 className="text-lg font-semibold text-foreground">Passport Details</h2>
               <button
                 onClick={closePassportModal}
-                className="rounded-md p-1 text-gray-400 hover:text-gray-600"
+                className="rounded-md p-1 text-muted hover:text-muted"
               >
                 ✕
               </button>
             </div>
 
             {loadingPassport ? (
-              <div className="mt-4 text-sm text-gray-600">Loading passport details…</div>
+              <div className="mt-4 text-sm text-muted">Loading passport details…</div>
             ) : passportDetails ? (
               <div className="mt-4 space-y-4">
                 <div>
-                  <div className="text-xs font-semibold text-gray-500">Passport Full Name</div>
-                  <div className="mt-1 text-sm text-gray-900">
+                  <div className="text-xs font-semibold text-muted">Passport Full Name</div>
+                  <div className="mt-1 text-sm text-foreground">
                     {passportDetails.passport_full_name || "—"}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs font-semibold text-gray-500">Passport Number</div>
-                  <div className="mt-1 text-sm text-gray-900">
+                  <div className="text-xs font-semibold text-muted">Passport Number</div>
+                  <div className="mt-1 text-sm text-foreground">
                     {passportDetails.passport_number || "—"}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs font-semibold text-gray-500">Passport Country</div>
-                  <div className="mt-1 text-sm text-gray-900">
+                  <div className="text-xs font-semibold text-muted">Passport Country</div>
+                  <div className="mt-1 text-sm text-foreground">
                     {passportDetails.passport_country || "—"}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs font-semibold text-gray-500">Passport Expiry Date</div>
-                  <div className="mt-1 text-sm text-gray-900">
+                  <div className="text-xs font-semibold text-muted">Passport Expiry Date</div>
+                  <div className="mt-1 text-sm text-foreground">
                     {passportDetails.passport_expiry_date
                       ? new Date(passportDetails.passport_expiry_date).toLocaleDateString("en-GB")
                       : "—"}
@@ -1009,12 +1009,12 @@ export default function AdminMembersPage() {
 
                 {passportDetails.passport_photo_url && (
                   <div>
-                    <div className="text-xs font-semibold text-gray-500">Passport Photo</div>
+                    <div className="text-xs font-semibold text-muted">Passport Photo</div>
                     <div className="mt-2">
                       <img
                         src={passportDetails.passport_photo_url}
                         alt="Passport photo"
-                        className="max-w-full rounded-lg border border-gray-200"
+                        className="max-w-full rounded-lg border border-border"
                         style={{ maxHeight: "400px" }}
                       />
                     </div>
@@ -1024,14 +1024,14 @@ export default function AdminMembersPage() {
                 <div className="mt-6 flex justify-end">
                   <button
                     onClick={closePassportModal}
-                    className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-md bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                   >
                     Close
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="mt-4 text-sm text-gray-600">No passport details found.</div>
+              <div className="mt-4 text-sm text-muted">No passport details found.</div>
             )}
           </div>
         </div>
@@ -1040,12 +1040,12 @@ export default function AdminMembersPage() {
       {/* Roles Modal */}
       {editingRolesMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="w-full max-w-md rounded-xl border bg-white p-6 shadow-lg">
+          <div className="w-full max-w-md rounded-xl border bg-surface p-6 shadow-lg">
             <div className="flex items-start justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Member roles</h2>
+              <h2 className="text-lg font-semibold text-foreground">Member roles</h2>
               <button
                 onClick={() => setEditingRolesMember(null)}
-                className="rounded-md p-1 text-gray-400 hover:text-gray-600"
+                className="rounded-md p-1 text-muted hover:text-muted"
               >
                 ✕
               </button>
@@ -1053,8 +1053,8 @@ export default function AdminMembersPage() {
 
             <div className="mt-4 space-y-4 text-sm">
               <div>
-                <div className="text-xs font-semibold text-gray-500">Member</div>
-                <div className="mt-1 text-gray-900">
+                <div className="text-xs font-semibold text-muted">Member</div>
+                <div className="mt-1 text-foreground">
                   {editingRolesMember.display_name ||
                     editingRolesMember.full_name ||
                     editingRolesMember.email ||
@@ -1062,10 +1062,10 @@ export default function AdminMembersPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2">
                 <div>
-                  <div className="text-xs font-semibold text-gray-700">Admin access</div>
-                  <p className="mt-0.5 text-xs text-gray-600">
+                  <div className="text-xs font-semibold text-foreground">Admin access</div>
+                  <p className="mt-0.5 text-xs text-muted">
                     Admins can access the Admin area and manage trips, courses and members.
                   </p>
                 </div>
@@ -1077,21 +1077,21 @@ export default function AdminMembersPage() {
                     disabled={savingRoles}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"></div>
+                  <div className="w-11 h-6 bg-background peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-brand-green/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-green disabled:opacity-50 disabled:cursor-not-allowed"></div>
                 </label>
               </div>
 
               <div className="mt-4 flex justify-end gap-2">
                 <button
                   onClick={() => setEditingRolesMember(null)}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="rounded-md border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveRoles}
                   disabled={savingRoles}
-                  className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className="rounded-md bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
                 >
                   {savingRoles ? "Saving…" : "Save"}
                 </button>

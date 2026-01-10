@@ -134,7 +134,7 @@ export default function StartPage() {
   return (
     <div className="mx-auto w-full max-w-md px-4 py-8">
       <h1 className="text-xl font-semibold">Get Started</h1>
-      <p className="mt-2 text-sm text-gray-600">
+      <p className="mt-2 text-sm text-muted">
         You need to be part of a group to access the member area. Join an existing group or create a new one.
       </p>
 
@@ -142,23 +142,23 @@ export default function StartPage() {
         <div className="mt-8 space-y-4">
           <Link
             href="/join"
-            className="block w-full rounded-lg border-2 border-black bg-white px-4 py-4 text-center text-sm font-semibold hover:bg-gray-50"
+            className="block w-full rounded-lg border-2 border-border bg-surface px-4 py-4 text-center text-sm font-semibold hover:bg-background"
           >
             Join a group
           </Link>
 
           <button
             onClick={() => setShowCreateForm(true)}
-            className="block w-full rounded-lg border border-black bg-black px-4 py-4 text-center text-sm font-semibold text-white hover:bg-gray-900"
+            className="block w-full rounded-lg border border-brand-green bg-brand-green px-4 py-4 text-center text-sm font-semibold text-white hover:opacity-95"
           >
             Create a group
           </button>
         </div>
       ) : (
-        <div className="mt-8 rounded-lg border border-black p-6">
+        <div className="mt-8 rounded-lg border border-border p-6">
           <div className="mb-4">
             <h2 className="text-lg font-semibold">Create a group</h2>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 text-sm text-muted">
               Create a new group. You'll be added as an admin automatically.
             </p>
           </div>
@@ -184,7 +184,7 @@ export default function StartPage() {
                 placeholder="e.g. golfbats-sg"
                 disabled={status === "submitting"}
               />
-              <p className="mt-1 text-xs text-gray-600">
+              <p className="mt-1 text-xs text-muted">
                 Lowercase letters, numbers, and hyphens only. This code is used by others to join your group.
               </p>
             </div>
@@ -192,10 +192,10 @@ export default function StartPage() {
             {message && (
               <div className={`rounded-lg border p-3 text-sm ${
                 status === "error" 
-                  ? "border-red-500 bg-red-50 text-red-900" 
+                  ? "border-danger bg-danger-light text-danger" 
                   : status === "done"
-                  ? "border-green-500 bg-green-50 text-green-900"
-                  : "border-black bg-white"
+                  ? "border-brand-green bg-brand-green-light text-brand-green"
+                  : "border-border bg-surface"
               }`}>
                 {message}
               </div>
@@ -210,7 +210,7 @@ export default function StartPage() {
                   setMessage("");
                   setStatus("idle");
                 }}
-                className="flex-1 rounded-lg border border-black px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-background disabled:opacity-50"
                 disabled={status === "submitting"}
               >
                 Cancel
@@ -218,7 +218,7 @@ export default function StartPage() {
               <button
                 onClick={handleCreateGroup}
                 disabled={status === "submitting"}
-                className="flex-1 rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {status === "submitting" ? "Creating..." : "Create group"}
               </button>

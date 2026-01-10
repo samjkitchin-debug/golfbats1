@@ -1,12 +1,7 @@
 import Image from "next/image";
-import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import LoginClient from "./LoginClient";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
-
-export const metadata: Metadata = {
-  title: "GolfBats - Login",
-};
 
 export default async function LoginPage() {
   const supabase = await createSupabaseServerClient();
@@ -21,22 +16,23 @@ export default async function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-white px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 flex justify-center">
           <Image
             src="/logo.png"
-            alt="GolfBats logo"
-            width={96}
-            height={96}
+            alt="Day fore it"
+            width={160}
+            height={80}
+            className="h-auto w-auto max-h-[80px] object-contain"
             priority
           />
         </div>
 
         {/* Title */}
-        <h1 className="mb-10 text-center text-3xl font-semibold tracking-tight text-black">
-          Welcome to GolfBats
+        <h1 className="mb-10 text-center text-3xl font-semibold tracking-tight text-foreground">
+          Welcome to Day fore it
         </h1>
 
         {/* Sign-in */}

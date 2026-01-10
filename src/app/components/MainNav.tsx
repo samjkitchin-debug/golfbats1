@@ -30,18 +30,18 @@ export default function MainNav() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Open navigation menu"
-        className="inline-flex items-center justify-center text-gray-700 hover:text-gray-900"
+        className="inline-flex items-center justify-center text-foreground hover:text-brand-green"
       >
         <span className="sr-only">Menu</span>
         <div className="space-y-1">
-          <span className="block h-0.5 w-[1.1rem] rounded bg-gray-800" />
-          <span className="block h-0.5 w-[1.1rem] rounded bg-gray-800" />
-          <span className="block h-0.5 w-[1.1rem] rounded bg-gray-800" />
+          <span className="block h-0.5 w-[1.1rem] rounded bg-foreground" />
+          <span className="block h-0.5 w-[1.1rem] rounded bg-foreground" />
+          <span className="block h-0.5 w-[1.1rem] rounded bg-foreground" />
         </div>
       </button>
 
       {open && (
-        <div className="absolute left-0 top-11 z-30 w-56 rounded-xl border border-gray-200 bg-white shadow-lg">
+        <div className="absolute left-0 top-11 z-30 w-56 rounded-xl border border-border bg-surface">
           <nav className="py-2 text-sm">
             {memberNavItems.map((item) => {
               const active = isActivePath(pathname, item.href);
@@ -52,8 +52,8 @@ export default function MainNav() {
                   onClick={() => setOpen(false)}
                   className={`flex items-center px-3 py-2 ${
                     active
-                      ? "bg-gray-100 font-semibold text-gray-900"
-                      : "text-gray-700 hover:bg-gray-50"
+                      ? "bg-brand-green/10 font-semibold text-brand-green"
+                      : "text-foreground hover:bg-background"
                   }`}
                 >
                   {item.label}

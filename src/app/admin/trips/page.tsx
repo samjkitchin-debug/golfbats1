@@ -129,17 +129,17 @@ export default function AdminTripsPage() {
   return (
     <main className="mx-auto w-full max-w-5xl px-4 pb-10">
       <div className="mt-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Trips</h1>
+        <h1 className="text-xl font-semibold text-foreground">Trips</h1>
 
         <div className="flex items-center gap-2">
           <Link
             href="/admin"
-            className="rounded-lg border bg-white px-3 py-2 text-sm text-gray-800"
+            className="rounded-lg border bg-surface px-3 py-2 text-sm text-foreground"
           >
             Dashboard
           </Link>
           <button
-            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white"
+            className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-white"
             onClick={createNewTrip}
             type="button"
           >
@@ -149,14 +149,14 @@ export default function AdminTripsPage() {
       </div>
 
       {loading ? (
-        <div className="mt-4 rounded-xl border bg-white p-5 text-sm text-gray-600">
+        <div className="mt-4 rounded-xl border bg-surface p-5 text-sm text-muted">
           Loading trips...
         </div>
       ) : (
-        <section className="mt-4 overflow-hidden rounded-xl border bg-white">
+        <section className="mt-4 overflow-hidden rounded-xl border bg-surface">
           <table className="w-full text-left text-sm">
             <thead className="border-b">
-              <tr className="text-gray-700">
+              <tr className="text-foreground">
                 <th className="px-4 py-3">Trip name</th>
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Course</th>
@@ -169,16 +169,16 @@ export default function AdminTripsPage() {
             <tbody>
               {sortedTrips.map((t) => (
                 <tr key={t.id} className="border-b last:border-b-0">
-                  <td className="px-4 py-3 font-medium text-gray-900">{t.name || "Untitled Trip"}</td>
-                  <td className="px-4 py-3 text-gray-800">{t.date}</td>
-                  <td className="px-4 py-3 text-gray-800">{courseName(t)}</td>
-                  <td className="px-4 py-3 text-gray-800">{t.format}</td>
-                  <td className="px-4 py-3 text-gray-800">{t.capacity}</td>
-                  <td className="px-4 py-3 text-gray-700">{tripStatus(t)}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{t.name || "Untitled Trip"}</td>
+                  <td className="px-4 py-3 text-foreground">{t.date}</td>
+                  <td className="px-4 py-3 text-foreground">{courseName(t)}</td>
+                  <td className="px-4 py-3 text-foreground">{t.format}</td>
+                  <td className="px-4 py-3 text-foreground">{t.capacity}</td>
+                  <td className="px-4 py-3 text-foreground">{tripStatus(t)}</td>
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`/admin/trips/${t.id}`}
-                      className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-800"
+                      className="rounded-lg border bg-surface px-3 py-1.5 text-sm text-foreground"
                     >
                       Edit
                     </Link>
@@ -189,7 +189,7 @@ export default function AdminTripsPage() {
           </table>
 
           {sortedTrips.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-gray-700">No trips yet.</div>
+            <div className="px-4 py-6 text-sm text-foreground">No trips yet.</div>
           ) : null}
         </section>
       )}

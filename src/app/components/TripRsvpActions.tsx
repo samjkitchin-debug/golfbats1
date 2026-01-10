@@ -28,9 +28,9 @@ export function TripRsvpActions({
     return (
       <div className={className}>
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1.5">
+          <div className="flex items-center gap-1.5 rounded-full bg-brand-green/10 border border-brand-green/30 px-3 py-1.5">
             <svg
-              className="h-4 w-4 text-green-600"
+              className="h-4 w-4 text-brand-green"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -42,7 +42,7 @@ export function TripRsvpActions({
                 d="M5 13l4 4L19 7"
               />
             </svg>
-            <span className="text-sm font-medium text-green-700">Confirmed</span>
+            <span className="text-sm font-medium text-brand-green">Confirmed</span>
           </div>
           {onLeave && (
             <button
@@ -50,8 +50,8 @@ export function TripRsvpActions({
               disabled={leaveDisabled}
               className={`shrink-0 rounded border px-3 py-1.5 text-sm font-medium ${
                 leaveDisabled
-                  ? "border-gray-300 bg-gray-50 text-gray-400 cursor-not-allowed"
-                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                  ? "border-border bg-background text-muted cursor-not-allowed"
+                  : "border-brand-green bg-surface text-brand-green hover:bg-brand-green/5"
               }`}
             >
               I'm out
@@ -59,7 +59,7 @@ export function TripRsvpActions({
           )}
         </div>
         {showMicrocopy && (
-          <div className="mt-2 text-xs text-gray-500">You're on the attendee list</div>
+          <div className="mt-2 text-xs text-muted">You're on the attendee list</div>
         )}
       </div>
     );
@@ -75,10 +75,10 @@ export function TripRsvpActions({
       <button
         onClick={onJoin}
         disabled={joinDisabled}
-        className={`w-full rounded px-4 py-2 text-sm font-medium text-white hover:opacity-95 ${
+        className={`w-full rounded px-4 py-2 text-sm font-medium text-white ${
           joinDisabled
-            ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-            : "bg-black"
+            ? "bg-border text-muted cursor-not-allowed"
+            : "bg-brand-green hover:opacity-90"
         }`}
       >
         Join

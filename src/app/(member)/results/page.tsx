@@ -162,14 +162,14 @@ export default function ResultsPage() {
     <div className="space-y-4">
       {/* Header */}
       <header>
-        <h1 className="text-xl font-semibold text-brand-black">Results</h1>
-        <p className="text-sm text-gray-600">Leaderboards and bragging rights</p>
+        <h1 className="text-xl font-semibold text-foreground">Results</h1>
+        <p className="text-sm text-muted">Leaderboards and bragging rights</p>
       </header>
 
       {roundsWithResults.length === 0 ? (
-        <div className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="text-sm text-gray-600">No results published yet.</div>
-          <div className="mt-2 text-xs text-gray-500">
+        <div className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="text-sm text-muted">No results published yet.</div>
+          <div className="mt-2 text-xs text-muted">
             Results will appear here once trips are completed and results are published.
           </div>
         </div>
@@ -177,17 +177,17 @@ export default function ResultsPage() {
         <>
           {/* Latest Result */}
           {latestRound && (
-            <section className="rounded-xl border bg-white p-5 shadow-sm">
+            <section className="rounded-xl border bg-surface p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-sm font-medium text-gray-600">Latest</h2>
-                  <p className="mt-1 font-semibold text-brand-black">
+                  <h2 className="text-sm font-medium text-muted">Latest</h2>
+                  <p className="mt-1 font-semibold text-foreground">
                     {latestRound.course} — {latestRound.format}
                   </p>
-                  <p className="text-sm text-gray-600">{latestRound.date}</p>
+                  <p className="text-sm text-muted">{latestRound.date}</p>
                 </div>
 
-                <span className="text-xs rounded-full bg-gray-100 px-2 py-1 text-gray-600">
+                <span className="text-xs rounded-full bg-background px-2 py-1 text-muted">
                   Round #{latestRound.id}
                 </span>
               </div>
@@ -200,7 +200,7 @@ export default function ResultsPage() {
                       {p.name}
                     </span>
 
-                    <span className="text-gray-700">
+                    <span className="text-foreground">
                       {latestRound.format === "Stableford" ? (
                         <>{p.points} pts</>
                       ) : (
@@ -212,16 +212,16 @@ export default function ResultsPage() {
               </ul>
 
               {latestRound.notes ? (
-                <p className="mt-3 text-sm text-gray-600 italic">"{latestRound.notes}"</p>
+                <p className="mt-3 text-sm text-muted italic">"{latestRound.notes}"</p>
               ) : null}
             </section>
           )}
 
           {/* Season Standings */}
           {seasonStandings.length > 0 && (
-            <section className="rounded-xl border bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-medium text-gray-600">Season</h2>
-              <p className="mt-1 font-semibold text-brand-black">Standings</p>
+            <section className="rounded-xl border bg-surface p-5 shadow-sm">
+              <h2 className="text-sm font-medium text-muted">Season</h2>
+              <p className="mt-1 font-semibold text-foreground">Standings</p>
 
               <div className="mt-3 space-y-2">
                 {seasonStandings.map((s, idx) => (
@@ -230,22 +230,22 @@ export default function ResultsPage() {
                     className="flex items-center justify-between rounded-md border p-3"
                   >
                     <div>
-                      <p className="font-semibold text-brand-black">
+                      <p className="font-semibold text-foreground">
                         {idx + 1}. {s.name}
                       </p>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-muted">
                         Wins: {s.wins} · Podiums: {s.podiums}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-brand-black">{s.avgPoints.toFixed(1)}</p>
-                      <p className="text-xs text-gray-500">avg pts</p>
+                      <p className="text-sm font-semibold text-foreground">{s.avgPoints.toFixed(1)}</p>
+                      <p className="text-xs text-muted">avg pts</p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <p className="mt-3 text-xs text-gray-500">
+              <p className="mt-3 text-xs text-muted">
                 (Averages based on recorded rounds here — Golf GameBook remains handicap source.)
               </p>
             </section>
@@ -254,18 +254,18 @@ export default function ResultsPage() {
           {/* Recent Rounds */}
           {recentRounds.length > 0 && (
             <section className="space-y-3">
-              <h2 className="text-sm font-medium text-gray-600">Recent rounds</h2>
+              <h2 className="text-sm font-medium text-muted">Recent rounds</h2>
 
               {recentRounds.map((r) => (
                 <Link
                   key={r.id}
                   href={`/results/${r.id}`}
-                  className="block rounded-xl border bg-white p-4 shadow-sm hover:bg-gray-50"
+                  className="block rounded-xl border bg-surface p-4 shadow-sm hover:bg-background"
                 >
-                  <p className="font-semibold text-brand-black">
+                  <p className="font-semibold text-foreground">
                     {r.course} — {r.format}
                   </p>
-                  <p className="text-sm text-gray-600">{r.date}</p>
+                  <p className="text-sm text-muted">{r.date}</p>
 
                   <div className="mt-3 space-y-1 text-sm">
                     {r.leaderboard.slice(0, 3).map((p, i) => (
@@ -274,7 +274,7 @@ export default function ResultsPage() {
                           <Medal index={i} />
                           {p.name}
                         </span>
-                        <span className="text-gray-700">
+                        <span className="text-foreground">
                           {r.format === "Stableford"
                             ? `${p.points} pts`
                             : `${p.gross} gross`}

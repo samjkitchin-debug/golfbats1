@@ -126,7 +126,7 @@ export default function CreateGroupPage() {
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h1 className="text-xl font-semibold">Create a group</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-muted">
             Create a new group. You'll be added as an admin automatically.
           </p>
         </div>
@@ -139,7 +139,7 @@ export default function CreateGroupPage() {
             }
           }}
           disabled={status === "submitting"}
-          className="rounded-xl border border-black px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Cancel
         </button>
@@ -169,7 +169,7 @@ export default function CreateGroupPage() {
             placeholder="e.g. golfbats-sg"
             disabled={status === "submitting"}
           />
-          <p className="mt-1 text-xs text-gray-600">
+          <p className="mt-1 text-xs text-muted">
             Lowercase letters, numbers, and hyphens only. This code is used by others to join your group.
           </p>
         </div>
@@ -178,10 +178,10 @@ export default function CreateGroupPage() {
           <div
             className={`rounded-lg border p-3 text-sm ${
               status === "error"
-                ? "border-red-500 bg-red-50 text-red-900"
+                ? "border-danger bg-danger-light text-danger"
                 : status === "done"
-                ? "border-green-500 bg-green-50 text-green-900"
-                : "border-black bg-white"
+                ? "border-brand-green bg-brand-green-light text-brand-green"
+                : "border-border bg-surface"
             }`}
           >
             {message}
@@ -191,7 +191,7 @@ export default function CreateGroupPage() {
         <button
           type="submit"
           disabled={status === "submitting"}
-          className="w-full rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          className="w-full rounded-lg bg-brand-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
           {status === "submitting" ? "Creating..." : "Create group"}
         </button>

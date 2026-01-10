@@ -166,23 +166,23 @@ export default function AdminPage() {
     <main>
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-gray-900">Admin dashboard</h1>
+          <h1 className="text-xl font-semibold text-foreground">Admin dashboard</h1>
           <button
-            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white"
+            className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-white"
             onClick={createNewTrip}
           >
             Create trip
           </button>
         </div>
 
-        <section className="rounded-xl border bg-white p-5 shadow-sm" id="trips">
+        <section className="rounded-xl border bg-surface p-5 shadow-sm" id="trips">
           <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Upcoming trips</h2>
-            <div className="text-xs text-gray-500">Signed in as: {currentUser}</div>
+            <h2 className="text-lg font-semibold text-foreground">Upcoming trips</h2>
+            <div className="text-xs text-muted">Signed in as: {currentUser}</div>
           </div>
 
           {upcomingTrips.length === 0 ? (
-            <div className="text-sm text-gray-600">No upcoming trips.</div>
+            <div className="text-sm text-muted">No upcoming trips.</div>
           ) : (
             <ul className="divide-y divide-gray-200">
               {upcomingTrips.map((t) => {
@@ -199,17 +199,17 @@ export default function AdminPage() {
                     {/* Left content */}
                     <div className="flex-1 min-w-0">
                       {/* Trip name - clamp to 1 line */}
-                      <div className="text-sm font-semibold text-gray-900 truncate mb-1">
+                      <div className="text-sm font-semibold text-foreground truncate mb-1">
                         {t.name || "Untitled Trip"}
                       </div>
                       
                       {/* Subline: date + format + confirmed count badge */}
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="text-xs text-gray-600">
+                        <span className="text-xs text-muted">
                           {t.date} · {t.format}
                         </span>
                         {confirmedCount > 0 && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-green/10 text-brand-green border border-brand-green/30">
                             {confirmedCount} going
                           </span>
                         )}
@@ -217,14 +217,14 @@ export default function AdminPage() {
 
                       {/* Course summary - one line, truncated on mobile, can wrap on desktop */}
                       {courseSummary ? (
-                        <div className="text-xs text-gray-500 truncate md:max-w-2xl">
+                        <div className="text-xs text-muted truncate md:max-w-2xl">
                           {courseSummary}
                         </div>
                       ) : courseText.title && courseText.title !== "Course TBD" ? (
-                        <div className="text-xs text-gray-500 truncate md:max-w-2xl">
+                        <div className="text-xs text-muted truncate md:max-w-2xl">
                           {courseText.title}
                           {courseText.detail && (
-                            <span className="text-gray-400"> · {courseText.detail}</span>
+                            <span className="text-muted"> · {courseText.detail}</span>
                           )}
                         </div>
                       ) : null}
@@ -238,7 +238,7 @@ export default function AdminPage() {
                           <div className="relative" data-trip-menu>
                             <button
                               onClick={() => setOpenMenuTripId(isMenuOpen ? null : t.id)}
-                              className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 hover:bg-gray-50 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                              className="rounded-lg border border-border bg-surface p-2 text-muted hover:bg-background min-h-[44px] min-w-[44px] flex items-center justify-center"
                               aria-label="More options"
                             >
                               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -246,13 +246,13 @@ export default function AdminPage() {
                               </svg>
                             </button>
                             {isMenuOpen && (
-                              <div className="absolute right-0 mt-1 w-40 rounded-lg border border-gray-200 bg-white shadow-lg z-50 py-1">
+                              <div className="absolute right-0 mt-1 w-40 rounded-lg border border-border bg-surface shadow-lg z-50 py-1">
                                 <button
                                   onClick={() => {
                                     setOpenMenuTripId(null);
                                     handleDeleteTrip(t.id);
                                   }}
-                                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 min-h-[44px] flex items-center"
+                                  className="w-full text-left px-4 py-2 text-sm text-danger hover:bg-danger-light min-h-[44px] flex items-center"
                                 >
                                   Delete trip
                                 </button>
@@ -261,7 +261,7 @@ export default function AdminPage() {
                           </div>
                         )}
                         <button
-                          className="rounded-lg bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] flex items-center"
+                          className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] flex items-center"
                           onClick={() => router.push(`/admin/trips/${t.id}`)}
                         >
                           Manage
@@ -272,17 +272,17 @@ export default function AdminPage() {
                       <div className="hidden md:flex items-center gap-2">
                         {t.status === "open" && (
                           <button
-                            className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+                            className="rounded-lg border border-danger bg-surface px-3 py-2 text-sm text-danger hover:bg-danger-light"
                             onClick={() => handleDeleteTrip(t.id)}
                           >
                             Delete
                           </button>
                         )}
-                        <div className="text-right text-xs text-gray-500 min-w-[80px]">
+                        <div className="text-right text-xs text-muted min-w-[80px]">
                           {confirmedCount} confirmed
                         </div>
                         <button
-                          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                          className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-background"
                           onClick={() => router.push(`/admin/trips/${t.id}`)}
                         >
                           Manage
@@ -296,11 +296,11 @@ export default function AdminPage() {
           )}
         </section>
 
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-gray-900">Past trips</h2>
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-foreground">Past trips</h2>
 
           {pastTrips.length === 0 ? (
-            <div className="text-sm text-gray-600">No past trips.</div>
+            <div className="text-sm text-muted">No past trips.</div>
           ) : (
             <ul className="space-y-2">
               {pastTrips.map((t) => {
@@ -308,25 +308,25 @@ export default function AdminPage() {
                 return (
                   <li
                     key={t.id}
-                    className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2"
+                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-gray-900 mb-0.5">
+                      <div className="text-sm font-semibold text-foreground mb-0.5">
                         {t.name || "Untitled Trip"}
                       </div>
-                      <div className="text-xs font-medium text-gray-700">
+                      <div className="text-xs font-medium text-foreground">
                         {t.date} • {t.format}
                       </div>
-                      <div className="text-xs text-gray-600">
+                      <div className="text-xs text-muted">
                         {courseText.title}
                         {courseText.detail ? (
-                          <span className="text-gray-500"> • {courseText.detail}</span>
+                          <span className="text-muted"> • {courseText.detail}</span>
                         ) : null}
                       </div>
                     </div>
 
                     <button
-                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm"
+                      className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"
                       onClick={() => router.push(`/admin/trips/${t.id}`)}
                     >
                       View

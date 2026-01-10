@@ -444,34 +444,34 @@ export default function TripsListPage() {
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-xl font-semibold text-gray-900">Trips</div>
-        <div className="text-sm text-gray-600">Upcoming and past outings</div>
+        <div className="text-xl font-semibold text-foreground">Trips</div>
+        <div className="text-sm text-muted">Upcoming and past outings</div>
       </div>
 
       {/* Search Input */}
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <div className="rounded-xl border bg-surface p-4 shadow-sm">
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search trips by name, course, date, format..."
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-border"
         />
         {searchQuery && (
           <button
             onClick={() => setSearchQuery("")}
-            className="mt-2 text-xs text-gray-600 hover:text-gray-900 underline"
+            className="mt-2 text-xs text-muted hover:text-foreground underline"
           >
             Clear search
           </button>
         )}
       </div>
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-3 text-sm font-medium text-gray-600">Upcoming</div>
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="mb-3 text-sm font-medium text-muted">Upcoming</div>
 
         {upcoming.length === 0 ? (
-          <div className="text-sm text-gray-600">No upcoming trips</div>
+          <div className="text-sm text-muted">No upcoming trips</div>
         ) : (
           <ul className="divide-y">
             {upcoming.map((t) => {
@@ -536,8 +536,8 @@ export default function TripsListPage() {
 
       {/* Current Trip (Game Day: trip date passed, round in progress) */}
       {current.length > 0 && (
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="mb-3 text-sm font-medium text-gray-600">Game day</div>
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="mb-3 text-sm font-medium text-muted">Game day</div>
 
           {current.map((t) => {
             const { title, detail } = getTripCourseText(t, courses);
@@ -546,22 +546,22 @@ export default function TripsListPage() {
             
             return (
               <div key={t.id} className="py-4 space-y-2">
-                <div className="text-lg font-semibold text-gray-900">{t.name || "Trip"}</div>
+                <div className="text-lg font-semibold text-foreground">{t.name || "Trip"}</div>
 
                 {/* Logistics Highlight Band - Only for Game Day with logistics */}
                 {showLogisticsBand && (
-                  <div className="rounded-lg border-l-4 border-blue-500 bg-slate-50 px-4 py-3 border border-gray-200">
+                  <div className="rounded-lg border-l-4 border-brand-green bg-surface/50 px-4 py-3 border border-border">
                     <div className="flex items-center gap-2 mb-2">
-                      <svg className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="h-4 w-4 text-brand-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
-                      <span className="text-sm font-semibold text-gray-900">Logistics</span>
+                      <span className="text-sm font-semibold text-foreground">Logistics</span>
                     </div>
                     {logisticsLines && (
-                      <div className="space-y-1 text-sm text-gray-800">
+                      <div className="space-y-1 text-sm text-foreground">
                         {logisticsLines.meetTime && (
-                          <div className="font-medium text-gray-900">Meet {logisticsLines.meetTime}</div>
+                          <div className="font-medium text-foreground">Meet {logisticsLines.meetTime}</div>
                         )}
                         {logisticsLines.meetingPoint && (
                           <div>{logisticsLines.meetingPoint}</div>
@@ -570,7 +570,7 @@ export default function TripsListPage() {
                           <div>Ferry: {logisticsLines.ferryName}</div>
                         )}
                         {logisticsLines.ferryDetailsShort && (
-                          <div className="mt-1 text-xs text-gray-600">{logisticsLines.ferryDetailsShort}</div>
+                          <div className="mt-1 text-xs text-muted">{logisticsLines.ferryDetailsShort}</div>
                         )}
                       </div>
                     )}
@@ -579,29 +579,29 @@ export default function TripsListPage() {
 
                 {/* Logistics placeholder for Game Day without logistics */}
                 {!showLogisticsBand && (
-                  <div className="rounded-lg bg-slate-50 px-4 py-3 border border-gray-200">
-                    <div className="text-xs text-gray-500">Logistics coming soon</div>
+                  <div className="rounded-lg bg-background px-4 py-3 border border-border">
+                    <div className="text-xs text-muted">Logistics coming soon</div>
                   </div>
                 )}
 
-                <div className="text-base font-medium text-gray-800">{title || "Course TBD"}</div>
-                {detail && <div className="text-sm text-gray-600">{detail}</div>}
-                <div className="text-sm text-gray-600">
+                <div className="text-base font-medium text-foreground">{title || "Course TBD"}</div>
+                {detail && <div className="text-sm text-muted">{detail}</div>}
+                <div className="text-sm text-muted">
                   {formatTripDateLong(t.date)}
                   {t.format && <span> · {t.format}</span>}
                 </div>
-                <div className="text-sm text-gray-500">Round in progress</div>
+                <div className="text-sm text-muted">Round in progress</div>
               </div>
             );
           })}
         </section>
       )}
 
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="mb-4 text-sm font-medium text-gray-600">Past</div>
+      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+        <div className="mb-4 text-sm font-medium text-muted">Past</div>
 
         {past.length === 0 ? (
-          <div className="text-sm text-gray-600">No past trips yet</div>
+          <div className="text-sm text-muted">No past trips yet</div>
         ) : (
           <div className="space-y-3">
             {past.map((t) => {
@@ -621,17 +621,17 @@ export default function TripsListPage() {
               const winner = t.result?.leaderboard?.[0];
 
               return (
-                <div key={t.id} className="rounded-lg border border-gray-200 bg-white p-4 hover:border-gray-300 transition-colors">
+                <div key={t.id} className="rounded-lg border border-border bg-surface p-4 hover:border-border transition-colors">
                   {/* 1) Date (primary, visually dominant) */}
-                  <div className="text-xl font-semibold text-gray-900 mb-2">
+                  <div className="text-xl font-semibold text-foreground mb-2">
                     {formatTripDateLong(t.date)}
                   </div>
 
                   {/* 2) Trip title / course (secondary) */}
-                  <div className="text-base font-medium text-gray-800 mb-3">
+                  <div className="text-base font-medium text-foreground mb-3">
                     {t.name || courseName || "Trip"}
                     {t.name && courseName && (
-                      <span className="text-gray-600 font-normal"> · {courseName}</span>
+                      <span className="text-muted font-normal"> · {courseName}</span>
                     )}
                   </div>
 
@@ -640,7 +640,7 @@ export default function TripsListPage() {
                     <div className="mb-2">
                       <Link
                         href={`/results/${t.id}`}
-                        className="inline-flex items-center text-sm font-medium text-gray-700 hover:text-gray-900"
+                        className="inline-flex items-center text-sm font-medium text-foreground hover:text-foreground"
                       >
                         Result posted →
                       </Link>
@@ -651,22 +651,22 @@ export default function TripsListPage() {
                   {t.result && (
                     <div className="mb-2">
                       {winner ? (
-                        <div className="text-sm text-gray-700">
-                          <span className="text-gray-500">Winner:</span>{" "}
+                        <div className="text-sm text-foreground">
+                          <span className="text-muted">Winner:</span>{" "}
                           <span className="font-medium">{winner.name}</span>
                           {winner.points !== undefined && (
-                            <span className="text-gray-500"> ({winner.points})</span>
+                            <span className="text-muted"> ({winner.points})</span>
                           )}
                         </div>
                       ) : top3.length > 0 ? (
-                        <div className="text-sm text-gray-700">
-                          <span className="text-gray-500">Top 3:</span>{" "}
+                        <div className="text-sm text-foreground">
+                          <span className="text-muted">Top 3:</span>{" "}
                           {top3.map((r, i) => (
                             <span key={r.name}>
                               {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}
                               <span className="font-medium">{r.name}</span>
                               {r.points !== undefined && (
-                                <span className="text-gray-500"> ({r.points})</span>
+                                <span className="text-muted"> ({r.points})</span>
                               )}
                               {i < top3.length - 1 ? ", " : ""}
                             </span>
@@ -678,7 +678,7 @@ export default function TripsListPage() {
 
                   {/* 5) Minimal muted context (format + tees only) */}
                   {(t.format || teeLabel) && (
-                    <div className="mt-2 text-xs text-gray-500">
+                    <div className="mt-2 text-xs text-muted">
                       {t.format && teeLabel ? `${t.format} · ${teeLabel}` : t.format || teeLabel}
                     </div>
                   )}

@@ -356,7 +356,7 @@ export default function MeEditPage() {
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-bold">Create your profile</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-muted">
             This helps your mates recognise you and makes organising golf smoother.
           </p>
         </div>
@@ -364,7 +364,7 @@ export default function MeEditPage() {
         {!profileRequired && (
           <Link
             href="/me"
-            className="rounded-xl border border-black px-4 py-2 text-sm font-semibold"
+                    className="rounded-xl border border-border px-4 py-2 text-sm font-semibold"
           >
             Cancel
           </Link>
@@ -373,9 +373,9 @@ export default function MeEditPage() {
 
       {/* Info callout */}
       {profileRequired && (
-        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-          <p className="text-sm font-semibold text-blue-900">Just the basics for now</p>
-          <p className="mt-1 text-sm text-blue-800">
+        <div className="mb-4 rounded-2xl border border-border bg-surface/50 p-4">
+          <p className="text-sm font-semibold text-foreground">Just the basics for now</p>
+          <p className="mt-1 text-sm text-muted">
             Passport details are optional and only needed for certain overseas trips. You can add them later.
           </p>
         </div>
@@ -383,14 +383,14 @@ export default function MeEditPage() {
 
       {/* Error display */}
       {error && (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4">
-          <p className="text-sm font-semibold text-red-900">Error</p>
-          <p className="mt-1 text-sm text-red-800">{error}</p>
+        <div className="mb-4 rounded-2xl border border-danger bg-danger-light p-4">
+          <p className="text-sm font-semibold text-danger">Error</p>
+          <p className="mt-1 text-sm text-danger">{error}</p>
         </div>
       )}
 
       {loading ? (
-        <div className="rounded-2xl border border-black p-8 text-center">
+        <div className="rounded-2xl border border-border p-8 text-center">
           <p className="text-sm">Loading…</p>
         </div>
       ) : (
@@ -402,7 +402,7 @@ export default function MeEditPage() {
           className="space-y-4"
         >
           {/* Basics Card */}
-          <div className="rounded-2xl border border-black p-4 space-y-4">
+          <div className="rounded-2xl border border-border p-4 space-y-4">
             <div>
               <h2 className="text-lg font-semibold">Basics</h2>
             </div>
@@ -415,10 +415,10 @@ export default function MeEditPage() {
                   <img
                     src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${profilePhotoPath}`}
                     alt="Profile"
-                    className="h-16 w-16 rounded-full object-cover border border-gray-300"
+                    className="h-16 w-16 rounded-full object-cover border border-border"
                   />
                 ) : (
-                  <div className="h-16 w-16 rounded-full border border-gray-300 bg-gray-200 flex items-center justify-center text-sm font-semibold text-gray-700">
+                  <div className="h-16 w-16 rounded-full border border-border bg-background flex items-center justify-center text-sm font-semibold text-foreground">
                     {getInitials(member)}
                   </div>
                 )}
@@ -441,14 +441,14 @@ export default function MeEditPage() {
                     type="button"
                     onClick={() => document.getElementById("profile-photo-input")?.click()}
                     disabled={uploadingProfilePhoto}
-                    className="rounded-xl border border-black bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-60"
+                    className="rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold hover:bg-background disabled:opacity-60"
                   >
                     {profilePhotoPath ? "Change Photo" : "Add Photo"}
                   </button>
                   {uploadingProfilePhoto && (
-                    <p className="mt-1 text-xs text-gray-600">Uploading…</p>
+                    <p className="mt-1 text-xs text-muted">Uploading…</p>
                   )}
-                  <p className="mt-1 text-xs text-gray-600">Optional for now, but recommended.</p>
+                  <p className="mt-1 text-xs text-muted">Optional for now, but recommended.</p>
                 </div>
               </div>
             </div>
@@ -456,7 +456,7 @@ export default function MeEditPage() {
             {/* Full Name */}
             <Field label="Full name" required={profileRequired}>
               <input
-                className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="e.g. John Smith"
@@ -467,7 +467,7 @@ export default function MeEditPage() {
             {/* Display Name */}
             <Field label="Display name" required={profileRequired}>
               <input
-                className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="e.g. Sam"
@@ -477,7 +477,7 @@ export default function MeEditPage() {
             {/* Nationality */}
             <Field label="Nationality" required={profileRequired}>
               <select
-                className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none bg-white"
+                className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none bg-surface"
                 value={nationality || ""}
                 onChange={(e) => setNationality(e.target.value)}
               >
@@ -495,13 +495,13 @@ export default function MeEditPage() {
             {/* Declared Handicap */}
             <Field label="Declared handicap" required={profileRequired}>
               <input
-                className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
                 value={declaredHandicap}
                 onChange={(e) => setDeclaredHandicap(e.target.value)}
                 inputMode="decimal"
                 placeholder="e.g. 18.2"
               />
-              <p className="mt-2 text-xs text-gray-600">
+              <p className="mt-2 text-xs text-muted">
                 Used for coordination (not a scoring engine).
               </p>
             </Field>
@@ -510,20 +510,20 @@ export default function MeEditPage() {
 
           {/* Passport Section - Collapsible */}
           {passportEnabled && (
-            <div className="rounded-2xl border border-gray-300 overflow-hidden">
+            <div className="rounded-2xl border border-border overflow-hidden">
               <button
                 type="button"
                 onClick={() => setPassportExpanded(!passportExpanded)}
-                className="w-full px-4 py-3 text-left flex items-center justify-between hover:bg-gray-50"
+                className="w-full px-4 py-3 text-left flex items-center justify-between hover:bg-background"
               >
                 <div>
                   <div className="text-sm font-semibold">Travel documents (optional)</div>
-                  <div className="mt-0.5 text-xs text-gray-600">
+                  <div className="mt-0.5 text-xs text-muted">
                     Only needed for certain overseas trips. You can add this anytime.
                   </div>
                 </div>
                 <svg
-                  className={`w-5 h-5 text-gray-400 transition-transform ${passportExpanded ? "rotate-180" : ""}`}
+                  className={`w-5 h-5 text-muted transition-transform ${passportExpanded ? "rotate-180" : ""}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -533,10 +533,10 @@ export default function MeEditPage() {
               </button>
 
               {passportExpanded && (
-                <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4">
+                <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
                   <Field label="Passport full name">
                     <input
-                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                      className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
                       value={passportFullName}
                       onChange={(e) => setPassportFullName(e.target.value)}
                       placeholder="As shown on your passport"
@@ -545,20 +545,20 @@ export default function MeEditPage() {
 
                   <Field label="Passport number">
                     <input
-                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                      className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
                       value={passportNumber}
                       onChange={(e) => setPassportNumber(e.target.value)}
                       placeholder="Enter passport number"
                       type="text"
                     />
-                    <p className="mt-2 text-xs text-gray-600">
+                    <p className="mt-2 text-xs text-muted">
                       Your passport number is encrypted and stored securely.
                     </p>
                   </Field>
 
                   <Field label="Passport country">
                     <input
-                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                      className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
                       value={passportCountry}
                       onChange={(e) => setPassportCountry(e.target.value)}
                       placeholder="e.g. United Kingdom"
@@ -567,7 +567,7 @@ export default function MeEditPage() {
 
                   <Field label="Passport expiry date">
                     <input
-                      className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
+                      className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
                       value={passportExpiryDate}
                       onChange={(e) => setPassportExpiryDate(e.target.value)}
                       type="date"
@@ -596,18 +596,18 @@ export default function MeEditPage() {
                           document.getElementById("passport-photo-input")?.click()
                         }
                         disabled={uploadingPassportPhoto}
-                        className="inline-flex items-center rounded-full border border-black bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-60"
+                        className="inline-flex items-center rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold hover:bg-background disabled:opacity-60"
                       >
                         {passportPhotoPath ? "Change Photo" : "Add Photo"}
                       </button>
-                      <p className="mt-2 text-xs text-gray-600">
+                      <p className="mt-2 text-xs text-muted">
                         You can use your camera or select an existing file.
                       </p>
                       {uploadingPassportPhoto && (
-                        <p className="mt-2 text-xs text-gray-600">Uploading…</p>
+                        <p className="mt-2 text-xs text-muted">Uploading…</p>
                       )}
                       {passportPhotoPath && !uploadingPassportPhoto && (
-                        <p className="mt-2 text-xs text-green-600">
+                        <p className="mt-2 text-xs text-brand-green">
                           Photo uploaded successfully
                         </p>
                       )}
@@ -622,7 +622,7 @@ export default function MeEditPage() {
           <button
             type="submit"
             disabled={saving || uploadingProfilePhoto || uploadingPassportPhoto}
-            className="w-full rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+            className="w-full rounded-xl bg-brand-orange px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save and continue"}
           </button>
@@ -645,7 +645,7 @@ function Field({
     <div>
       <div className="text-sm font-semibold">
         {label}
-        {required && <span className="text-red-600 ml-1">*</span>}
+        {required && <span className="text-brand-orange ml-1">*</span>}
       </div>
       <div className="mt-2">{children}</div>
     </div>

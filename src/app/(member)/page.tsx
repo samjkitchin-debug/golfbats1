@@ -72,7 +72,7 @@ export default function HomePage() {
 
   // All useEffect hooks - must be before any early returns
   useEffect(() => {
-    document.title = "GolfBats - Home";
+    document.title = "Day fore it - Home";
   }, []);
 
   // Check for approved group memberships
@@ -454,8 +454,8 @@ export default function HomePage() {
 
   if (loadingMemberships || loadingProfile) {
     content = (
-      <div className="rounded-xl border bg-white p-8 text-center">
-        <p className="text-sm text-gray-600">Loading…</p>
+      <div className="rounded-xl border border-border bg-surface p-8 text-center">
+        <p className="text-sm text-muted">Loading…</p>
       </div>
     );
   } else if (!hasApprovedGroup) {
@@ -469,8 +469,8 @@ export default function HomePage() {
       <div className="space-y-6">
         {/* Header section - no border card */}
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Welcome to Day Fore It</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <h1 className="text-2xl font-semibold text-foreground">Welcome to Day fore it</h1>
+          <p className="mt-2 text-sm text-muted">
             Two quick steps and you're in.
           </p>
         </div>
@@ -479,34 +479,34 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             {step1Completed ? (
-              <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center text-xs font-semibold text-white">
+              <div className="h-6 w-6 rounded-full bg-brand-green flex items-center justify-center text-xs font-semibold text-white">
                 ✓
               </div>
             ) : (
               <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                step1Active ? "bg-blue-600 text-white" : "bg-gray-300 text-gray-600"
+                step1Active ? "bg-brand-green text-white" : "bg-border text-muted"
               }`}>
                 1
               </div>
             )}
-            <span className={`text-sm ${step1Active ? "font-medium text-gray-900" : step1Completed ? "text-gray-500" : "text-gray-500"}`}>
+            <span className={`text-sm ${step1Active ? "font-medium text-foreground" : step1Completed ? "text-muted" : "text-muted"}`}>
               Profile
             </span>
           </div>
-          <div className="h-px flex-1 bg-gray-200" />
+          <div className="h-px flex-1 bg-border" />
           <div className="flex items-center gap-2">
             {step2Completed ? (
-              <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center text-xs font-semibold text-white">
+              <div className="h-6 w-6 rounded-full bg-brand-green flex items-center justify-center text-xs font-semibold text-white">
                 ✓
               </div>
             ) : (
               <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                step2Active ? "bg-blue-600 text-white" : "bg-gray-300 text-gray-600"
+                step2Active ? "bg-brand-green text-white" : "bg-border text-muted"
               }`}>
                 2
               </div>
             )}
-            <span className={`text-sm ${step2Active ? "font-medium text-gray-900" : step2Completed ? "text-gray-500" : "text-gray-500"}`}>
+            <span className={`text-sm ${step2Active ? "font-medium text-foreground" : step2Completed ? "text-muted" : "text-muted"}`}>
               Group
             </span>
           </div>
@@ -515,60 +515,60 @@ export default function HomePage() {
         {/* Hero card - conditional content based on profile status */}
         {!profileComplete ? (
           // Profile incomplete: show "Complete your profile" card
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">Complete your profile</h2>
-            <p className="mt-1 text-sm text-gray-600">
+          <div className="rounded-2xl border border-border bg-surface p-6">
+            <h2 className="text-lg font-semibold text-foreground">Complete your profile</h2>
+            <p className="mt-1 text-sm text-muted">
               So your mates know it's you.
             </p>
             <Link
               href="/me/edit?required=true"
-              className="mt-4 block w-full rounded-lg bg-black px-4 py-3 text-sm font-semibold text-white hover:bg-gray-900 text-center"
+              className="mt-4 block w-full rounded-lg bg-brand-orange px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
             >
               Complete profile
             </Link>
 
             {/* Divider */}
-            <div className="my-6 h-px bg-gray-200" />
+            <div className="my-6 h-px bg-border" />
 
             {/* Next section */}
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">
               Next: Create or join a group
             </div>
             <div className="space-y-3">
               <Link
                 href="/me/edit?required=true"
-                className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-500 opacity-60 cursor-not-allowed hover:bg-gray-50 text-center"
+                className="block w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm font-semibold text-muted opacity-60 cursor-not-allowed hover:bg-background text-center"
               >
                 Create a group
               </Link>
               <Link
                 href="/me/edit?required=true"
-                className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-500 opacity-60 cursor-not-allowed hover:bg-gray-50 text-center"
+                className="block w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm font-semibold text-muted opacity-60 cursor-not-allowed hover:bg-background text-center"
               >
                 Join a group
               </Link>
             </div>
-            <p className="mt-4 text-xs text-gray-500 text-center">
+            <p className="mt-4 text-xs text-muted text-center">
               Complete your profile to create or join a group.
             </p>
           </div>
         ) : (
           // Profile complete but no group: show "Create or join a group" card
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">Create or join a group</h2>
-            <p className="mt-1 text-sm text-gray-600">
+          <div className="rounded-2xl border border-border bg-surface p-6">
+            <h2 className="text-lg font-semibold text-foreground">Create or join a group</h2>
+            <p className="mt-1 text-sm text-muted">
               Groups keep trips private to your mates.
             </p>
             <div className="mt-6 space-y-3">
               <Link
                 href="/groups/create"
-                className="block w-full rounded-lg bg-black px-4 py-3 text-sm font-semibold text-white hover:bg-gray-900 text-center"
+                className="block w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
               >
                 Create a group
               </Link>
               <Link
                 href="/join"
-                className="block w-full rounded-lg border border-black bg-white px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50 text-center"
+                className="block w-full rounded-lg border border-brand-green bg-surface px-4 py-3 text-sm font-semibold text-brand-green hover:bg-brand-green/5 text-center"
               >
                 Join a group
               </Link>
@@ -579,13 +579,13 @@ export default function HomePage() {
     );
   } else if (!displayTrip) {
     content = (
-      <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-lg font-semibold text-gray-900">No upcoming trips</div>
-        <div className="mt-2 text-sm text-gray-600">
+      <div className="rounded-xl border border-border bg-surface p-5">
+        <div className="text-lg font-semibold text-foreground">No upcoming trips</div>
+        <div className="mt-2 text-sm text-muted">
           When the admin creates the next outing, it'll appear here.
         </div>
         <div className="mt-4">
-          <Link href="/trips" className="text-sm text-gray-700 hover:text-gray-900">
+          <Link href="/trips" className="text-sm text-muted hover:text-foreground">
             Go to Trips →
           </Link>
         </div>
@@ -612,18 +612,18 @@ export default function HomePage() {
         <div className="grid grid-cols-2 gap-3">
           <Link
             href="/trips"
-            className="rounded-xl border bg-white p-4 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+                className="rounded-xl border border-border bg-surface p-4 text-sm text-foreground hover:bg-background"
           >
-            <div className="font-semibold text-gray-900">Trips</div>
-            <div className="mt-1 text-gray-600">Upcoming + past</div>
+            <div className="font-semibold text-foreground">Trips</div>
+            <div className="mt-1 text-muted">Upcoming + past</div>
           </Link>
 
           <Link
             href="/results"
-            className="rounded-xl border bg-white p-4 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+                className="rounded-xl border border-border bg-surface p-4 text-sm text-foreground hover:bg-background"
           >
-            <div className="font-semibold text-gray-900">Results</div>
-            <div className="mt-1 text-gray-600">Published only</div>
+            <div className="font-semibold text-foreground">Results</div>
+            <div className="mt-1 text-muted">Published only</div>
           </Link>
         </div>
       </div>

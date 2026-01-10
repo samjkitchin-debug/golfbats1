@@ -3,9 +3,9 @@ import MemberLayout from "../(member)/layout";
 function PrivacyContent() {
   return (
     <div className="px-4 pb-24 pt-4">
-      <h1 className="text-2xl font-bold text-gray-900">Privacy</h1>
+      <h1 className="text-2xl font-bold text-foreground">Privacy</h1>
 
-      <div className="mt-4 space-y-4 text-sm leading-relaxed text-gray-800">
+      <div className="mt-4 space-y-4 text-sm leading-relaxed text-foreground">
         <p>
           GolfBats is a private club coordination tool. Personal data is handled carefully,
           deliberately, and only where it serves a clear purpose related to organising golf trips.
@@ -16,9 +16,9 @@ function PrivacyContent() {
         </p>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900">What information is stored</h2>
+          <h2 className="text-base font-semibold text-foreground">What information is stored</h2>
 
-          <h3 className="mt-3 text-xs font-semibold text-gray-900">Member profile data</h3>
+          <h3 className="mt-3 text-xs font-semibold text-foreground">Member profile data</h3>
           <p className="mt-1">
             Each member has a basic profile used for coordination and logistics. This may include:
           </p>
@@ -33,12 +33,12 @@ function PrivacyContent() {
             efficiently.
           </p>
 
-          <h3 className="mt-4 text-xs font-semibold text-gray-900">Passport information (optional)</h3>
+          <h3 className="mt-4 text-xs font-semibold text-foreground">Passport information (optional)</h3>
           <p className="mt-1">
             For certain trips — for example, those involving travel or ferry arrangements — passport
             details may be required.
           </p>
-          <p className="mt-2 text-sm text-gray-800">
+          <p className="mt-2 text-sm text-foreground">
             <span className="font-semibold">Key points:</span>
           </p>
           <ul className="mt-1 list-disc pl-5 space-y-1">
@@ -59,7 +59,7 @@ function PrivacyContent() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900">How your data is protected</h2>
+          <h2 className="text-base font-semibold text-foreground">How your data is protected</h2>
           <p className="mt-2">
             GolfBats applies additional technical controls to sensitive personal data.
           </p>
@@ -80,7 +80,7 @@ function PrivacyContent() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900">How your information is used</h2>
+          <h2 className="text-base font-semibold text-foreground">How your information is used</h2>
           <p className="mt-2">Personal data is used only for:</p>
           <ul className="mt-1 list-disc pl-5 space-y-1">
             <li>Organising and coordinating golf trips</li>
@@ -96,7 +96,7 @@ function PrivacyContent() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900">Data retention</h2>
+          <h2 className="text-base font-semibold text-foreground">Data retention</h2>
           <p className="mt-2">
             Data is retained only for as long as it is reasonably required for coordination purposes.
           </p>
@@ -109,7 +109,7 @@ function PrivacyContent() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900">Access, visibility, and control</h2>
+          <h2 className="text-base font-semibold text-foreground">Access, visibility, and control</h2>
           <p className="mt-2">Members can:</p>
           <ul className="mt-1 list-disc pl-5 space-y-1">
             <li>View and update their own profile information</li>
@@ -125,7 +125,7 @@ function PrivacyContent() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900">Member responsibility</h2>
+          <h2 className="text-base font-semibold text-foreground">Member responsibility</h2>
           <p className="mt-2">Members are asked to:</p>
           <ul className="mt-1 list-disc pl-5 space-y-1">
             <li>Provide accurate information</li>
@@ -138,7 +138,7 @@ function PrivacyContent() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900">Questions or concerns</h2>
+          <h2 className="text-base font-semibold text-foreground">Questions or concerns</h2>
           <p className="mt-2">
             If you have questions about how data is handled, or concerns about a particular trip’s
             requirements, please contact one of the admins.

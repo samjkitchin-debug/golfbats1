@@ -255,11 +255,11 @@ export default function DevNotesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-border bg-surface p-5">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xl font-semibold text-brand-black">Dev Notes</div>
-            <div className="mt-1 text-sm text-gray-600">
+            <div className="text-xl font-semibold text-foreground">Dev Notes</div>
+            <div className="mt-1 text-sm text-muted">
               Track bugs and notes while testing. {unresolvedCount > 0 && (
                 <span className="font-medium">
                   {unresolvedBugs > 0 && `${unresolvedBugs} bug${unresolvedBugs !== 1 ? "s" : ""}`}
@@ -271,27 +271,27 @@ export default function DevNotesPage() {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-gray-500">Production version</div>
-            <div className="text-lg font-semibold text-brand-black">{VERSION}</div>
+            <div className="text-xs text-muted">Production version</div>
+            <div className="text-lg font-semibold text-foreground">{VERSION}</div>
           </div>
         </div>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="rounded-xl border border-border bg-surface/50 p-4 text-sm text-foreground">
           {error}
         </div>
       )}
 
       {loading && (
-        <div className="rounded-xl border bg-white p-5 text-sm text-gray-600 shadow-sm">
+        <div className="rounded-xl border border-border bg-surface p-5 text-sm text-muted">
           Loading notes...
         </div>
       )}
 
       {/* Add/Edit Form */}
-      <section className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-sm font-medium text-gray-700">
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <div className="text-sm font-medium text-foreground">
           {editingId ? "Edit note" : "Add new note"}
         </div>
 
@@ -301,8 +301,8 @@ export default function DevNotesPage() {
               onClick={() => setType("bug")}
               className={`rounded-md px-3 py-2 text-sm font-medium ${
                 type === "bug"
-                  ? "bg-brand-red text-white"
-                  : "border bg-white text-gray-700 hover:bg-gray-50"
+                  ? "bg-brand-orange text-white"
+                  : "border border-border bg-surface text-foreground hover:bg-background"
               }`}
             >
               Bug
@@ -311,8 +311,8 @@ export default function DevNotesPage() {
               onClick={() => setType("note")}
               className={`rounded-md px-3 py-2 text-sm font-medium ${
                 type === "note"
-                  ? "bg-brand-black text-white"
-                  : "border bg-white text-gray-700 hover:bg-gray-50"
+                  ? "bg-foreground text-white"
+                  : "border border-border bg-surface text-foreground hover:bg-background"
               }`}
             >
               Note
@@ -337,14 +337,14 @@ export default function DevNotesPage() {
           <div className="flex gap-2">
             <button
               onClick={editingId ? () => handleUpdate(editingId) : handleAdd}
-              className="rounded-md bg-brand-black px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-md bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               {editingId ? "Update" : "Add"}
             </button>
             {editingId && (
               <button
                 onClick={cancelEdit}
-                className="rounded-md border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="rounded-md border border-brand-green bg-surface px-4 py-2 text-sm text-brand-green hover:bg-brand-green/5"
               >
                 Cancel
               </button>
@@ -355,7 +355,7 @@ export default function DevNotesPage() {
 
       {/* Notes List */}
       {!loading && sorted.length === 0 ? (
-        <div className="rounded-xl border bg-white p-5 text-sm text-gray-600 shadow-sm">
+        <div className="rounded-xl border border-border bg-surface p-5 text-sm text-muted">
           No notes yet.
         </div>
       ) : !loading ? (
@@ -364,7 +364,7 @@ export default function DevNotesPage() {
             <div
               key={note.id}
               className={`rounded-xl border p-5 shadow-sm ${
-                note.resolved ? "bg-gray-50 opacity-75" : "bg-white"
+                note.resolved ? "bg-background opacity-75" : "bg-surface"
               }`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -374,17 +374,17 @@ export default function DevNotesPage() {
                       className={`rounded px-2 py-0.5 text-xs font-medium ${
                         note.type === "bug"
                           ? "bg-brand-red text-white"
-                          : "bg-brand-black text-white"
+                          : "bg-brand-green text-white"
                       }`}
                     >
                       {note.type === "bug" ? "BUG" : "NOTE"}
                     </span>
                     {note.resolved && (
-                      <span className="rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      <span className="rounded bg-background px-2 py-0.5 text-xs font-medium text-foreground">
                         Resolved
                       </span>
                     )}
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted">
                       {new Date(note.createdAt).toLocaleDateString("en-SG", {
                         month: "short",
                         day: "numeric",
@@ -397,7 +397,7 @@ export default function DevNotesPage() {
                   <div className={`mt-2 text-sm font-semibold ${note.resolved ? "line-through" : ""}`}>
                     {note.title}
                   </div>
-                  <div className={`mt-1 text-sm text-gray-700 whitespace-pre-wrap ${note.resolved ? "line-through" : ""}`}>
+                  <div className={`mt-1 text-sm text-foreground whitespace-pre-wrap ${note.resolved ? "line-through" : ""}`}>
                     {note.content}
                   </div>
                 </div>
@@ -406,7 +406,7 @@ export default function DevNotesPage() {
                   {!note.resolved && (
                     <button
                       onClick={() => startEdit(note)}
-                      className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
                     >
                       Edit
                     </button>
@@ -415,15 +415,15 @@ export default function DevNotesPage() {
                     onClick={() => handleToggleResolved(note.id)}
                     className={`rounded-md px-3 py-2 text-sm font-medium ${
                       note.resolved
-                        ? "border bg-white text-gray-700 hover:bg-gray-50"
-                        : "bg-green-600 text-white hover:opacity-95"
+                        ? "border bg-surface text-foreground hover:bg-background"
+                        : "bg-brand-green text-white hover:opacity-90"
                     }`}
                   >
                     {note.resolved ? "Reopen" : "Resolve"}
                   </button>
                   <button
                     onClick={() => handleDelete(note.id)}
-                    className="rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="rounded-md border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
                   >
                     Delete
                   </button>

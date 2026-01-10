@@ -30,7 +30,7 @@ export default function SignOutButton() {
   return (
     <button
       onClick={onSignOut}
-      className="text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50"
+      className="text-sm text-muted hover:text-foreground disabled:opacity-50"
       type="button"
       disabled={busy}
       aria-disabled={busy}
