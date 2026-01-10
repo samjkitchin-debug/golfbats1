@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { COUNTRIES } from "@/app/lib/countries";
 
+const UNIQUE_COUNTRIES = Array.from(new Set(COUNTRIES)).sort((a, b) => a.localeCompare(b));
+
 type MemberRow = {
   id: string;
   email: string | null;
@@ -13,6 +15,7 @@ type MemberRow = {
   display_name: string | null;
   nationality: string | null;
   declared_handicap: number | null;
+  profile_photo_path: string | null;
 };
 
 type SaveBody = {
@@ -21,6 +24,18 @@ type SaveBody = {
   nationality: string;
   declared_handicap: number | null;
 };
+
+function getInitials(member: MemberRow | null): string {
+  if (!member) return "";
+  const fn = member.full_name || "";
+  const dn = member.display_name || "";
+  const name = fn || dn || "";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return name[0]?.toUpperCase() || "";
+}
 
 export default function MeEditPage() {
   const router = useRouter();
@@ -43,11 +58,14 @@ export default function MeEditPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [member, setMember] = useState<MemberRow | null>(null);
 
   const [fullName, setFullName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [nationality, setNationality] = useState("");
   const [declaredHandicap, setDeclaredHandicap] = useState<string>("");
+  const [profilePhotoPath, setProfilePhotoPath] = useState<string | null>(null);
+  const [uploadingProfilePhoto, setUploadingProfilePhoto] = useState(false);
 
   // Passport fields
   const [passportEnabled, setPassportEnabled] = useState(false);
@@ -56,7 +74,8 @@ export default function MeEditPage() {
   const [passportCountry, setPassportCountry] = useState("");
   const [passportExpiryDate, setPassportExpiryDate] = useState("");
   const [passportPhotoPath, setPassportPhotoPath] = useState<string | null>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingPassportPhoto, setUploadingPassportPhoto] = useState(false);
+  const [passportExpanded, setPassportExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +99,7 @@ export default function MeEditPage() {
 
       const { data, error: memberErr } = await supabase
         .from("members")
-        .select("id,email,full_name,display_name,nationality,declared_handicap")
+        .select("id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -93,6 +112,7 @@ export default function MeEditPage() {
       }
 
       const m = (data as MemberRow) ?? null;
+      setMember(m);
 
       setFullName(m?.full_name ?? "");
       setDisplayName(m?.display_name ?? "");
@@ -102,6 +122,7 @@ export default function MeEditPage() {
           ? ""
           : String(m.declared_handicap)
       );
+      setProfilePhotoPath(m?.profile_photo_path ?? null);
 
       // Check if passport feature is enabled (check NEXT_PUBLIC env var)
       // Default to enabled if env var not set (for development/testing)
@@ -109,7 +130,7 @@ export default function MeEditPage() {
         process.env.NEXT_PUBLIC_PASSPORT_ENABLED !== "false";
       setPassportEnabled(passportFeatureEnabled);
 
-      // Load passport data if feature is enabled
+      // Auto-expand passport section if it has data
       if (passportFeatureEnabled && user) {
         const { data: passportData } = await supabase
           .from("member_passports")
@@ -126,6 +147,10 @@ export default function MeEditPage() {
               : ""
           );
           setPassportPhotoPath(passportData.passport_photo_path ?? null);
+          // Auto-expand if there's existing data
+          if (passportData.passport_full_name || passportData.passport_country || passportData.passport_expiry_date) {
+            setPassportExpanded(true);
+          }
           // Note: passport_number is encrypted, we don't load it for display
           // User will need to re-enter it if they want to update
         }
@@ -140,8 +165,48 @@ export default function MeEditPage() {
     };
   }, [supabase]);
 
-  async function handlePhotoUpload(file: File) {
-    setUploadingPhoto(true);
+  async function handleProfilePhotoUpload(file: File) {
+    setUploadingProfilePhoto(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/me/profile-photo/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to upload photo.");
+      }
+
+      setProfilePhotoPath(json.path);
+      
+      // Reload member data to sync state
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from("members")
+          .select("id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (data) {
+          setMember(data as MemberRow);
+        }
+      }
+    } catch (e: any) {
+      setError(e?.message || "Failed to upload photo.");
+    } finally {
+      setUploadingProfilePhoto(false);
+    }
+  }
+
+  async function handlePassportPhotoUpload(file: File) {
+    setUploadingPassportPhoto(true);
     setError(null);
 
     try {
@@ -163,7 +228,7 @@ export default function MeEditPage() {
     } catch (e: any) {
       setError(e?.message || "Failed to upload photo.");
     } finally {
-      setUploadingPhoto(false);
+      setUploadingPassportPhoto(false);
     }
   }
 
@@ -179,29 +244,31 @@ export default function MeEditPage() {
     const handicapNum =
       handicapTrimmed === "" ? Number.NaN : Number(handicapTrimmed);
 
-    // Strict client-side validation to match server:
-    if (!trimmedFullName) {
-      setSaving(false);
-      setError("Please provide your full name.");
-      return;
-    }
+    // Only validate basics fields when required=true
+    if (profileRequired) {
+      if (!trimmedFullName) {
+        setSaving(false);
+        setError("Please provide your full name.");
+        return;
+      }
 
-    if (!trimmedDisplayName) {
-      setSaving(false);
-      setError("Please provide a display name.");
-      return;
-    }
+      if (!trimmedDisplayName) {
+        setSaving(false);
+        setError("Please provide a display name.");
+        return;
+      }
 
-    if (!trimmedNationality) {
-      setSaving(false);
-      setError("Please provide your nationality.");
-      return;
-    }
+      if (!trimmedNationality) {
+        setSaving(false);
+        setError("Please provide your nationality.");
+        return;
+      }
 
-    if (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 36) {
-      setSaving(false);
-      setError("Declared handicap must be a number between 0 and 36.");
-      return;
+      if (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 36) {
+        setSaving(false);
+        setError("Declared handicap must be a number between 0 and 36.");
+        return;
+      }
     }
 
     const body: SaveBody = {
@@ -224,7 +291,7 @@ export default function MeEditPage() {
         throw new Error(json?.error || "Failed to save profile.");
       }
 
-      // Save passport data if feature is enabled
+      // Save passport data if feature is enabled (optional, never blocking)
       if (passportEnabled) {
         const passportBody = {
           passport_full_name: passportFullName.trim(),
@@ -240,18 +307,40 @@ export default function MeEditPage() {
           body: JSON.stringify(passportBody),
         });
 
-        const passportJson = await passportRes.json().catch(() => ({}));
-
-        if (!passportRes.ok) {
-          throw new Error(passportJson?.error || "Failed to save passport data.");
+        // Passport save failures are non-blocking (ignore errors)
+        if (passportRes.ok) {
+          // Success - no action needed
         }
       }
 
-      // If profile was required, redirect to home; otherwise go to profile page
-      if (profileRequired) {
+      // After save, check group membership to determine redirect
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser();
+
+      if (!currentUser) {
+        router.push("/login");
+        return;
+      }
+
+      // Check if user has at least one approved group membership
+      const { data: memberships, error: membershipErr } = await supabase
+        .from("group_members")
+        .select("group_id, status")
+        .eq("user_id", currentUser.id)
+        .eq("status", "approved")
+        .limit(1);
+
+      // If user has zero approved group memberships -> redirect to / (member landing)
+      if (membershipErr || !memberships || memberships.length === 0) {
         router.push("/");
       } else {
-        router.push("/me");
+        // User has approved membership -> redirect based on profileRequired
+        if (profileRequired) {
+          router.push("/");
+        } else {
+          router.push("/me");
+        }
       }
       router.refresh();
     } catch (e: any) {
@@ -263,13 +352,12 @@ export default function MeEditPage() {
 
   return (
     <div className="px-4 pb-24 pt-4">
-      <div className="flex items-start justify-between gap-3">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-2xl font-bold">{profileRequired ? "Create profile" : "Edit profile"}</h1>
-          <p className="mt-1 text-sm">
-            {profileRequired
-              ? "Please complete your basic profile to continue."
-              : "Update your details for GolfBats."}
+          <h1 className="text-2xl font-bold">Create your profile</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            This helps your mates recognise you and makes organising golf smoother.
           </p>
         </div>
 
@@ -283,35 +371,90 @@ export default function MeEditPage() {
         )}
       </div>
 
-      {profileRequired ? (
-        <div className="mt-4 rounded-2xl border-2 border-amber-500 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-900">Profile Required</p>
-          <p className="mt-1 text-sm text-amber-800">
-            Please complete your profile before continuing. Your full name, display name, nationality and declared handicap are required.
-            Passport details are optional now and can be added later, but you’ll need them before you can join a trip.
+      {/* Info callout */}
+      {profileRequired && (
+        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm font-semibold text-blue-900">Just the basics for now</p>
+          <p className="mt-1 text-sm text-blue-800">
+            Passport details are optional and only needed for certain overseas trips. You can add them later.
           </p>
         </div>
-      ) : null}
+      )}
 
-      {error ? (
-        <div className="mt-4 rounded-2xl border border-black p-4">
-          <p className="text-sm font-semibold">Error</p>
-          <p className="mt-1 text-sm">{error}</p>
+      {/* Error display */}
+      {error && (
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-semibold text-red-900">Error</p>
+          <p className="mt-1 text-sm text-red-800">{error}</p>
         </div>
-      ) : null}
+      )}
 
-      <div className="mt-4 rounded-2xl border border-black p-4">
-        {loading ? (
+      {loading ? (
+        <div className="rounded-2xl border border-black p-8 text-center">
           <p className="text-sm">Loading…</p>
-        ) : (
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!saving) onSave();
-            }}
-          >
-            <Field label="Full name">
+        </div>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!saving) onSave();
+          }}
+          className="space-y-4"
+        >
+          {/* Basics Card */}
+          <div className="rounded-2xl border border-black p-4 space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">Basics</h2>
+            </div>
+
+            {/* Profile Photo */}
+            <div>
+              <div className="text-sm font-semibold">Profile photo</div>
+              <div className="mt-2 flex items-center gap-3">
+                {profilePhotoPath ? (
+                  <img
+                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${profilePhotoPath}`}
+                    alt="Profile"
+                    className="h-16 w-16 rounded-full object-cover border border-gray-300"
+                  />
+                ) : (
+                  <div className="h-16 w-16 rounded-full border border-gray-300 bg-gray-200 flex items-center justify-center text-sm font-semibold text-gray-700">
+                    {getInitials(member)}
+                  </div>
+                )}
+                <div className="flex-1">
+                  <input
+                    id="profile-photo-input"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleProfilePhotoUpload(file);
+                      }
+                    }}
+                    className="hidden"
+                    disabled={uploadingProfilePhoto}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById("profile-photo-input")?.click()}
+                    disabled={uploadingProfilePhoto}
+                    className="rounded-xl border border-black bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {profilePhotoPath ? "Change Photo" : "Add Photo"}
+                  </button>
+                  {uploadingProfilePhoto && (
+                    <p className="mt-1 text-xs text-gray-600">Uploading…</p>
+                  )}
+                  <p className="mt-1 text-xs text-gray-600">Optional for now, but recommended.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Full Name */}
+            <Field label="Full name" required={profileRequired}>
               <input
                 className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
                 value={fullName}
@@ -321,7 +464,8 @@ export default function MeEditPage() {
               />
             </Field>
 
-            <Field label="Display name">
+            {/* Display Name */}
+            <Field label="Display name" required={profileRequired}>
               <input
                 className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
                 value={displayName}
@@ -330,7 +474,8 @@ export default function MeEditPage() {
               />
             </Field>
 
-            <Field label="Nationality">
+            {/* Nationality */}
+            <Field label="Nationality" required={profileRequired}>
               <select
                 className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none bg-white"
                 value={nationality || ""}
@@ -339,7 +484,7 @@ export default function MeEditPage() {
                 <option value="" disabled>
                   Select nationality…
                 </option>
-                {COUNTRIES.map((country) => (
+                {UNIQUE_COUNTRIES.map((country) => (
                   <option key={country} value={country}>
                     {country}
                   </option>
@@ -347,7 +492,8 @@ export default function MeEditPage() {
               </select>
             </Field>
 
-            <Field label="Declared handicap">
+            {/* Declared Handicap */}
+            <Field label="Declared handicap" required={profileRequired}>
               <input
                 className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
                 value={declaredHandicap}
@@ -355,17 +501,39 @@ export default function MeEditPage() {
                 inputMode="decimal"
                 placeholder="e.g. 18.2"
               />
-              <p className="mt-2 text-xs">
-                This is your declared handicap for coordination purposes (not a scoring engine).
+              <p className="mt-2 text-xs text-gray-600">
+                Used for coordination (not a scoring engine).
               </p>
             </Field>
+          </div>
+          {/* End Basics Card */}
 
-            {/* Passport Section */}
-            {passportEnabled ? (
-              <>
-                <div className="mt-6 border-t border-gray-200 pt-6">
-                  <div className="text-sm font-semibold mb-4">Passport details</div>
+          {/* Passport Section - Collapsible */}
+          {passportEnabled && (
+            <div className="rounded-2xl border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setPassportExpanded(!passportExpanded)}
+                className="w-full px-4 py-3 text-left flex items-center justify-between hover:bg-gray-50"
+              >
+                <div>
+                  <div className="text-sm font-semibold">Travel documents (optional)</div>
+                  <div className="mt-0.5 text-xs text-gray-600">
+                    Only needed for certain overseas trips. You can add this anytime.
+                  </div>
+                </div>
+                <svg
+                  className={`w-5 h-5 text-gray-400 transition-transform ${passportExpanded ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
 
+              {passportExpanded && (
+                <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4">
                   <Field label="Passport full name">
                     <input
                       className="w-full rounded-xl border border-black px-3 py-2 text-sm outline-none"
@@ -383,7 +551,7 @@ export default function MeEditPage() {
                       placeholder="Enter passport number"
                       type="text"
                     />
-                    <p className="mt-2 text-xs">
+                    <p className="mt-2 text-xs text-gray-600">
                       Your passport number is encrypted and stored securely.
                     </p>
                   </Field>
@@ -416,18 +584,18 @@ export default function MeEditPage() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            handlePhotoUpload(file);
+                            handlePassportPhotoUpload(file);
                           }
                         }}
                         className="hidden"
-                        disabled={uploadingPhoto}
+                        disabled={uploadingPassportPhoto}
                       />
                       <button
                         type="button"
                         onClick={() =>
                           document.getElementById("passport-photo-input")?.click()
                         }
-                        disabled={uploadingPhoto}
+                        disabled={uploadingPassportPhoto}
                         className="inline-flex items-center rounded-full border border-black bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-60"
                       >
                         {passportPhotoPath ? "Change Photo" : "Add Photo"}
@@ -435,10 +603,10 @@ export default function MeEditPage() {
                       <p className="mt-2 text-xs text-gray-600">
                         You can use your camera or select an existing file.
                       </p>
-                      {uploadingPhoto && (
-                        <p className="mt-2 text-xs text-gray-600">Uploading photo…</p>
+                      {uploadingPassportPhoto && (
+                        <p className="mt-2 text-xs text-gray-600">Uploading…</p>
                       )}
-                      {passportPhotoPath && !uploadingPhoto && (
+                      {passportPhotoPath && !uploadingPassportPhoto && (
                         <p className="mt-2 text-xs text-green-600">
                           Photo uploaded successfully
                         </p>
@@ -446,26 +614,20 @@ export default function MeEditPage() {
                     </div>
                   </Field>
                 </div>
-              </>
-            ) : (
-              <div className="mt-6 border-t border-gray-200 pt-6">
-                <div className="text-sm font-semibold mb-2">Passport details</div>
-                <p className="text-sm text-gray-600">
-                  Passport details will be added once appropriate security has been implemented.
-                </p>
-              </div>
-            )}
+              )}
+            </div>
+          )}
 
-            <button
-              type="submit"
-              disabled={saving || uploadingPhoto}
-              className="w-full rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </form>
-        )}
-      </div>
+          {/* Save Button */}
+          <button
+            type="submit"
+            disabled={saving || uploadingProfilePhoto || uploadingPassportPhoto}
+            className="w-full rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {saving ? "Saving…" : "Save and continue"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
@@ -473,13 +635,18 @@ export default function MeEditPage() {
 function Field({
   label,
   children,
+  required,
 }: {
   label: string;
   children: React.ReactNode;
+  required?: boolean;
 }) {
   return (
     <div>
-      <div className="text-sm font-semibold">{label}</div>
+      <div className="text-sm font-semibold">
+        {label}
+        {required && <span className="text-red-600 ml-1">*</span>}
+      </div>
       <div className="mt-2">{children}</div>
     </div>
   );

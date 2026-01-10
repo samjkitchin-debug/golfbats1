@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { loadTrips, joinTrip, leaveTrip, type Trip } from "../lib/tripActions";
@@ -11,10 +12,18 @@ import { PromptModal } from "../components/PromptModal";
 import { TripCard } from "../components/TripCard";
 
 export default function HomePage() {
+  // All state hooks - must be at the top
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [hasMemberships, setHasMemberships] = useState<boolean | null>(null);
+  const [loadingMemberships, setLoadingMemberships] = useState(true);
+  const [isProfileComplete, setIsProfileComplete] = useState<boolean | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profilePhotoPath, setProfilePhotoPath] = useState<string | null>(null);
+  const [memberFullName, setMemberFullName] = useState<string | null>(null);
+  const [memberDisplayName, setMemberDisplayName] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -32,6 +41,7 @@ export default function HomePage() {
     onCancel: () => {},
   });
 
+  // All useMemo hooks - must be before any early returns
   const supabase = useMemo(() => {
     return createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,9 +49,63 @@ export default function HomePage() {
     );
   }, []);
 
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const nextTrip = useMemo(() => {
+    // Upcoming trips: Scheduled, Open for Signups, Signups Closed, Game Day (before trip date or trip date passed but no results yet)
+    const upcoming = [...trips]
+      .filter((t) => t.date >= today && !t.result)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return upcoming[0] ?? null;
+  }, [trips, today]);
+  
+  // Current trip: Game Day (trip date passed, no results yet)
+  const currentTrip = useMemo(() => {
+    const current = [...trips]
+      .filter((t) => t.date < today && !t.result)
+      .sort((a, b) => b.date.localeCompare(a.date)); // Most recent first
+    return current[0] ?? null;
+  }, [trips, today]);
+
+  // Show current trip (Game Day) if no upcoming trip
+  const displayTrip = nextTrip || currentTrip;
+
+  // All useEffect hooks - must be before any early returns
   useEffect(() => {
     document.title = "GolfBats - Home";
   }, []);
+
+  // Check for approved group memberships
+  useEffect(() => {
+    async function checkMemberships() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          setHasMemberships(false);
+          setLoadingMemberships(false);
+          return;
+        }
+
+        const { data: memberships } = await supabase
+          .from("group_members")
+          .select("group_id, status")
+          .eq("user_id", user.id)
+          .eq("status", "approved")
+          .limit(1);
+
+        setHasMemberships(memberships && memberships.length > 0);
+      } catch (error) {
+        console.error("Failed to check memberships:", error);
+        setHasMemberships(false);
+      } finally {
+        setLoadingMemberships(false);
+      }
+    }
+    checkMemberships();
+  }, [supabase]);
 
   useEffect(() => {
     async function loadData() {
@@ -94,71 +158,48 @@ export default function HomePage() {
           setCurrentUserId(user.id);
           const { data: memberData } = await supabase
             .from("members")
-            .select("display_name,full_name")
+            .select("display_name,full_name,nationality,profile_photo_path")
             .eq("id", user.id)
             .maybeSingle();
           const name = memberData?.display_name || memberData?.full_name || null;
           setCurrentUserName(name);
+          setMemberFullName(memberData?.full_name || null);
+          setMemberDisplayName(memberData?.display_name || null);
+          setProfilePhotoPath(memberData?.profile_photo_path || null);
+          
+          // Check profile completeness
+          const complete = !!(memberData?.full_name && memberData?.display_name && memberData?.nationality);
+          setIsProfileComplete(complete);
+        } else {
+          setIsProfileComplete(false);
         }
       } catch (error) {
         console.warn("Failed to load current user:", error);
+        setIsProfileComplete(false);
+      } finally {
+        setLoadingProfile(false);
       }
     }
     loadCurrentUser();
   }, [supabase]);
 
-  const today = new Date().toISOString().slice(0, 10);
-
-  const nextTrip = useMemo(() => {
-    // Upcoming trips: Scheduled, Open for Signups, Signups Closed, Game Day (before trip date or trip date passed but no results yet)
-    const upcoming = [...trips]
-      .filter((t) => t.date >= today && !t.result)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    return upcoming[0] ?? null;
-  }, [trips, today]);
-  
-  // Current trip: Game Day (trip date passed, no results yet)
-  const currentTrip = useMemo(() => {
-    const current = [...trips]
-      .filter((t) => t.date < today && !t.result)
-      .sort((a, b) => b.date.localeCompare(a.date)); // Most recent first
-    return current[0] ?? null;
-  }, [trips, today]);
-
-  // Show current trip (Game Day) if no upcoming trip
-  const displayTrip = nextTrip || currentTrip;
-  
-  if (!displayTrip) {
-    return (
-      <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="text-lg font-semibold text-gray-900">No upcoming trips</div>
-        <div className="mt-2 text-sm text-gray-600">
-          When the admin creates the next outing, it'll appear here.
-        </div>
-        <div className="mt-4">
-          <Link href="/trips" className="text-sm text-gray-700 hover:text-gray-900">
-            Go to Trips →
-          </Link>
-        </div>
-      </div>
-    );
-  }
-  
+  // Computed values (not hooks, but needed for rendering)
   const isCurrentTrip = displayTrip === currentTrip;
 
-  const courseText = getTripCourseText(displayTrip, courses);
-  const course = displayTrip.courseId
+  const courseText = displayTrip ? getTripCourseText(displayTrip, courses) : { title: "Course TBD", detail: null };
+  const course = displayTrip?.courseId
     ? courses.find((c) => c.id === displayTrip.courseId)
     : undefined;
-  const myEntry =
-    currentUserId
-      ? displayTrip.attendees.find((a) => a.memberId && a.memberId === currentUserId)
-      : currentUserName
-      ? displayTrip.attendees.find((a) => a.name === currentUserName)
-      : undefined;
+  const myEntry = displayTrip
+    ? (currentUserId
+        ? displayTrip.attendees.find((a) => a.memberId && a.memberId === currentUserId)
+        : currentUserName
+        ? displayTrip.attendees.find((a) => a.name === currentUserName)
+        : undefined)
+    : undefined;
 
   // Scheduled: open trip, but signups only open within 30 days of trip date
-  const tripDateUtc = new Date(displayTrip.date + "T00:00:00Z").getTime();
+  const tripDateUtc = displayTrip ? new Date(displayTrip.date + "T00:00:00Z").getTime() : NaN;
   const signupOpenUtc = Number.isFinite(tripDateUtc)
     ? tripDateUtc - 30 * 24 * 60 * 60 * 1000
     : NaN;
@@ -166,13 +207,14 @@ export default function HomePage() {
     ? new Date(signupOpenUtc).toISOString().slice(0, 10)
     : null;
   const isScheduled =
+    displayTrip &&
     displayTrip.status === "open" &&
     !displayTrip.result &&
     Number.isFinite(signupOpenUtc) &&
     Date.now() < signupOpenUtc;
   
   // Check if cutoff has passed (11:59pm SGT)
-  const cutoffPassed = displayTrip.cutoffAt ? (() => {
+  const cutoffPassed = displayTrip?.cutoffAt ? (() => {
     const cutoff = new Date(displayTrip.cutoffAt);
     const now = new Date();
     const sgtOffset = 8 * 60 * 60 * 1000;
@@ -180,9 +222,27 @@ export default function HomePage() {
     return nowSGT > cutoff;
   })() : false;
   
-  const joinDisabled = isScheduled || displayTrip.status !== "open" || cutoffPassed || isCurrentTrip;
+  const joinDisabled = !displayTrip || isScheduled || displayTrip.status !== "open" || cutoffPassed || isCurrentTrip;
 
+  // Helper function to generate initials from name
+  function getInitials(fullName: string | null, displayName: string | null): string {
+    const name = displayName?.trim() || fullName?.trim() || "";
+    if (!name) return "?";
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase().slice(0, 2);
+    }
+    return name.toUpperCase().slice(0, 2);
+  }
+
+  // Compute onboarding states (based on real data)
+  const profileComplete = isProfileComplete === true;
+  const hasApprovedGroup = hasMemberships === true;
+
+  // Handler functions
   async function handleImIn() {
+    if (!displayTrip) return;
+    
     // Prevent duplicate joins
     if (myEntry) return;
     if (joinDisabled) {
@@ -367,6 +427,8 @@ export default function HomePage() {
   }
 
   async function handleImOut() {
+    if (!displayTrip) return;
+    
     setConfirmModal({
       isOpen: true,
       title: "Leave this trip?",
@@ -387,41 +449,191 @@ export default function HomePage() {
     });
   }
 
-  return (
-    <div className="space-y-4">
-      <TripCard
-        trip={displayTrip}
-        courseText={courseText}
-        course={course}
-        variant="home"
-        headerLabel={isCurrentTrip ? "Current trip" : "Next trip"}
-        isCurrentTrip={isCurrentTrip}
-        isScheduled={isScheduled}
-        signupOpenDateYmd={signupOpenDateYmd}
-        myEntry={myEntry}
-        joinDisabled={joinDisabled}
-        onJoin={handleImIn}
-        onLeave={handleImOut}
-      />
+  // Build content based on state - no early returns
+  let content: React.ReactNode;
 
-      <div className="grid grid-cols-2 gap-3">
-        <Link
-          href="/trips"
-          className="rounded-xl border bg-white p-4 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
-        >
-          <div className="font-semibold text-gray-900">Trips</div>
-          <div className="mt-1 text-gray-600">Upcoming + past</div>
-        </Link>
-
-        <Link
-          href="/results"
-          className="rounded-xl border bg-white p-4 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
-        >
-          <div className="font-semibold text-gray-900">Results</div>
-          <div className="mt-1 text-gray-600">Published only</div>
-        </Link>
+  if (loadingMemberships || loadingProfile) {
+    content = (
+      <div className="rounded-xl border bg-white p-8 text-center">
+        <p className="text-sm text-gray-600">Loading…</p>
       </div>
+    );
+  } else if (!hasApprovedGroup) {
+    // Compute step states based on real data
+    const step1Active = !profileComplete;
+    const step1Completed = profileComplete;
+    const step2Active = profileComplete && !hasApprovedGroup;
+    const step2Completed = hasApprovedGroup;
 
+    content = (
+      <div className="space-y-6">
+        {/* Header section - no border card */}
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Welcome to Day Fore It</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            Two quick steps and you're in.
+          </p>
+        </div>
+
+        {/* Compact progress indicator row */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {step1Completed ? (
+              <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center text-xs font-semibold text-white">
+                ✓
+              </div>
+            ) : (
+              <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+                step1Active ? "bg-blue-600 text-white" : "bg-gray-300 text-gray-600"
+              }`}>
+                1
+              </div>
+            )}
+            <span className={`text-sm ${step1Active ? "font-medium text-gray-900" : step1Completed ? "text-gray-500" : "text-gray-500"}`}>
+              Profile
+            </span>
+          </div>
+          <div className="h-px flex-1 bg-gray-200" />
+          <div className="flex items-center gap-2">
+            {step2Completed ? (
+              <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center text-xs font-semibold text-white">
+                ✓
+              </div>
+            ) : (
+              <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+                step2Active ? "bg-blue-600 text-white" : "bg-gray-300 text-gray-600"
+              }`}>
+                2
+              </div>
+            )}
+            <span className={`text-sm ${step2Active ? "font-medium text-gray-900" : step2Completed ? "text-gray-500" : "text-gray-500"}`}>
+              Group
+            </span>
+          </div>
+        </div>
+
+        {/* Hero card - conditional content based on profile status */}
+        {!profileComplete ? (
+          // Profile incomplete: show "Complete your profile" card
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">Complete your profile</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              So your mates know it's you.
+            </p>
+            <Link
+              href="/me/edit?required=true"
+              className="mt-4 block w-full rounded-lg bg-black px-4 py-3 text-sm font-semibold text-white hover:bg-gray-900 text-center"
+            >
+              Complete profile
+            </Link>
+
+            {/* Divider */}
+            <div className="my-6 h-px bg-gray-200" />
+
+            {/* Next section */}
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Next: Create or join a group
+            </div>
+            <div className="space-y-3">
+              <Link
+                href="/me/edit?required=true"
+                className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-500 opacity-60 cursor-not-allowed hover:bg-gray-50 text-center"
+              >
+                Create a group
+              </Link>
+              <Link
+                href="/me/edit?required=true"
+                className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-500 opacity-60 cursor-not-allowed hover:bg-gray-50 text-center"
+              >
+                Join a group
+              </Link>
+            </div>
+            <p className="mt-4 text-xs text-gray-500 text-center">
+              Complete your profile to create or join a group.
+            </p>
+          </div>
+        ) : (
+          // Profile complete but no group: show "Create or join a group" card
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">Create or join a group</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Groups keep trips private to your mates.
+            </p>
+            <div className="mt-6 space-y-3">
+              <Link
+                href="/groups/create"
+                className="block w-full rounded-lg bg-black px-4 py-3 text-sm font-semibold text-white hover:bg-gray-900 text-center"
+              >
+                Create a group
+              </Link>
+              <Link
+                href="/join"
+                className="block w-full rounded-lg border border-black bg-white px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50 text-center"
+              >
+                Join a group
+              </Link>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  } else if (!displayTrip) {
+    content = (
+      <div className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="text-lg font-semibold text-gray-900">No upcoming trips</div>
+        <div className="mt-2 text-sm text-gray-600">
+          When the admin creates the next outing, it'll appear here.
+        </div>
+        <div className="mt-4">
+          <Link href="/trips" className="text-sm text-gray-700 hover:text-gray-900">
+            Go to Trips →
+          </Link>
+        </div>
+      </div>
+    );
+  } else {
+    content = (
+      <div className="space-y-4">
+        <TripCard
+          trip={displayTrip}
+          courseText={courseText}
+          course={course}
+          variant="home"
+          headerLabel={isCurrentTrip ? "Current trip" : "Next trip"}
+          isCurrentTrip={isCurrentTrip}
+          isScheduled={isScheduled}
+          signupOpenDateYmd={signupOpenDateYmd}
+          myEntry={myEntry}
+          joinDisabled={joinDisabled}
+          onJoin={handleImIn}
+          onLeave={handleImOut}
+        />
+
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href="/trips"
+            className="rounded-xl border bg-white p-4 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            <div className="font-semibold text-gray-900">Trips</div>
+            <div className="mt-1 text-gray-600">Upcoming + past</div>
+          </Link>
+
+          <Link
+            href="/results"
+            className="rounded-xl border bg-white p-4 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            <div className="font-semibold text-gray-900">Results</div>
+            <div className="mt-1 text-gray-600">Published only</div>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Always return modals + content
+  return (
+    <>
+      {content}
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
@@ -432,7 +644,6 @@ export default function HomePage() {
         onConfirm={confirmModal.onConfirm}
         onCancel={confirmModal.onCancel}
       />
-
       <PromptModal
         isOpen={promptModal.isOpen}
         title={promptModal.title}
@@ -444,6 +655,6 @@ export default function HomePage() {
         onConfirm={promptModal.onConfirm}
         onCancel={promptModal.onCancel}
       />
-    </div>
+    </>
   );
 }

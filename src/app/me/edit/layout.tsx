@@ -1,26 +1,19 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { redirect } from "next/navigation";
-import BottomNav from "../components/BottomNav";
-import SignOutButton from "../components/SignOutButton";
-import { createSupabaseServerClient } from "../lib/supabaseServer";
-import MainNav from "../components/MainNav";
+import SignOutButton from "@/app/components/SignOutButton";
+import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
-function parseAdminEmails(raw: string | undefined) {
-  return (raw ?? "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-export default async function MemberLayout({ children }: { children: React.ReactNode }) {
+export default async function MeEditLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const supabase = await createSupabaseServerClient();
 
-  // Require authenticated user - this is the only gate
+  // Require authenticated user
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-
-  const isSignedIn = true;
 
   return (
     <div className="min-h-dvh bg-gray-50">
@@ -28,7 +21,9 @@ export default async function MemberLayout({ children }: { children: React.React
       <header className="sticky top-0 z-20 bg-white">
         <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
           <div className="flex w-16 justify-start">
-            <MainNav />
+            <Link href="/" className="text-sm font-semibold text-gray-900">
+              GolfBats
+            </Link>
           </div>
 
           <Link href="/" className="flex flex-1 justify-center">
@@ -43,16 +38,7 @@ export default async function MemberLayout({ children }: { children: React.React
           </Link>
 
           <div className="flex w-16 justify-end">
-            {isSignedIn ? (
-              <SignOutButton />
-            ) : (
-              <Link
-                href="/login"
-                className="text-sm text-gray-600 hover:text-gray-900"
-              >
-                Sign in
-              </Link>
-            )}
+            <SignOutButton />
           </div>
         </div>
 
@@ -62,9 +48,6 @@ export default async function MemberLayout({ children }: { children: React.React
 
       {/* Content */}
       <main className="mx-auto w-full max-w-md px-4 py-5">{children}</main>
-
-      {/* Bottom navigation */}
-      <BottomNav />
     </div>
   );
 }
