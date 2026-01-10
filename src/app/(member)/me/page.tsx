@@ -64,6 +64,12 @@ export default function MePage() {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
+  // Account deletion state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   // Passport data (for checking if passport exists - no inline editing)
   // Passport editing is handled on /me/passport page
 
@@ -471,7 +477,119 @@ export default function MePage() {
             </div>
           </div>
         </div>
+
+        {/* Danger zone */}
+        <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-4">
+          <div className="mb-3">
+            <div className="text-sm font-semibold text-red-900">Danger zone</div>
+            <p className="mt-1 text-xs text-red-800">
+              Permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setShowDeleteModal(true);
+              setDeleteConfirmText("");
+              setDeleteError(null);
+            }}
+            disabled={deletingAccount}
+            className="rounded-xl border-2 border-red-600 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Delete my account
+          </button>
+          {deleteError && (
+            <p className="mt-3 text-sm font-medium text-red-900">{deleteError}</p>
+          )}
+        </div>
       </div>
+
+      {/* Delete account confirmation modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">Delete account</h3>
+            <p className="mb-4 text-sm text-gray-600">
+              This will permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+            <p className="mb-4 text-sm font-medium text-gray-900">
+              Type <span className="font-mono text-red-600">DELETE</span> to confirm:
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="Type DELETE to confirm"
+              disabled={deletingAccount}
+              className="mb-6 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText("");
+                  setDeleteError(null);
+                }}
+                disabled={deletingAccount}
+                className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (deleteConfirmText !== "DELETE" || deletingAccount) return;
+
+                  setDeletingAccount(true);
+                  setDeleteError(null);
+
+                  try {
+                    const res = await fetch("/api/me/delete-account", {
+                      method: "POST",
+                    });
+
+                    const json = await res.json().catch(() => ({}));
+
+                    if (res.status === 409 && json.reason === "sole_admin_of_group") {
+                      setDeleteError(
+                        "You're the only admin of a group with other members. Assign another admin before deleting your account."
+                      );
+                      setDeletingAccount(false);
+                      return;
+                    }
+
+                    if (!res.ok) {
+                      setDeleteError(
+                        json.error || "Failed to delete account. Please try again or contact support."
+                      );
+                      setDeletingAccount(false);
+                      return;
+                    }
+
+                    if (json.ok === true) {
+                      // Account deleted successfully - sign out and redirect
+                      await supabase.auth.signOut();
+                      router.replace("/");
+                      return;
+                    }
+
+                    // Unexpected response
+                    setDeleteError("Unexpected response. Please try again or contact support.");
+                    setDeletingAccount(false);
+                  } catch (error) {
+                    console.error("Delete account error:", error);
+                    setDeleteError("An error occurred. Please try again or contact support.");
+                    setDeletingAccount(false);
+                  }
+                }}
+                disabled={deleteConfirmText !== "DELETE" || deletingAccount}
+                className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deletingAccount ? "Deleting..." : "Delete account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

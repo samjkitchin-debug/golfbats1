@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { createSupabaseBrowserClient } from "../../lib/supabaseBrowser";
 
 export default function CreateGroupPage() {
@@ -131,12 +130,19 @@ export default function CreateGroupPage() {
             Create a new group. You'll be added as an admin automatically.
           </p>
         </div>
-        <Link
-          href="/start"
-          className="rounded-xl border border-black px-4 py-2 text-sm font-semibold"
+        <button
+          onClick={() => {
+            if (window.history.length > 1) {
+              router.back();
+            } else {
+              router.replace("/");
+            }
+          }}
+          disabled={status === "submitting"}
+          className="rounded-xl border border-black px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Cancel
-        </Link>
+        </button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">

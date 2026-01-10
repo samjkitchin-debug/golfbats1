@@ -160,7 +160,9 @@ export async function loadTrips(bypassCache = false): Promise<Trip[]> {
   try {
     const url = bypassCache ? "/api/trips?bypassCache=true" : "/api/trips";
     console.log("[loadTrips] Fetching from:", url, "bypassCache:", bypassCache);
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      credentials: "include", // Include cookies for authentication
+    });
     const json = await res.json().catch(() => ({}));
 
     console.log("[loadTrips] Response:", {
@@ -261,6 +263,7 @@ export async function createTrip(
   try {
     const res = await fetch("/api/trips", {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ trip: nextTrip }),
     });
@@ -275,7 +278,9 @@ export async function createTrip(
     const newTripId = json?.id;
     
     // Bypass cache to ensure we get the newly created trip
-    const freshRes = await fetch("/api/trips?bypassCache=true");
+    const freshRes = await fetch("/api/trips?bypassCache=true", {
+      credentials: "include",
+    });
     const freshJson = await freshRes.json().catch(() => ({}));
     
     if (freshRes.ok && freshJson.trips) {
@@ -325,6 +330,7 @@ export async function updateTrip(trips: Trip[], tripId: number, patch: Partial<T
   try {
     const res = await fetch("/api/trips", {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ trip: updated, id: tripId }),
     });
@@ -347,6 +353,7 @@ export async function deleteTrip(trips: Trip[], tripId: number): Promise<Trip[]>
   try {
     const res = await fetch("/api/trips", {
       method: "DELETE",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: tripId }),
     });
@@ -394,6 +401,7 @@ export async function publishTripResult(
   try {
     const res = await fetch(`/api/trips/${tripId}/result`, {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         leaderboard: (payload as any).leaderboard ?? [],
@@ -419,6 +427,7 @@ export async function clearTripResult(trips: Trip[], tripId: number): Promise<Tr
   try {
     const res = await fetch(`/api/trips/${tripId}/result`, {
       method: "DELETE",
+      credentials: "include",
     });
 
     const json = await res.json().catch(() => ({}));
@@ -444,6 +453,7 @@ export async function joinTrip(trips: Trip[], tripId: number, handicap: number |
     console.log("[joinTrip] Starting join for tripId:", tripId, "handicap:", handicap);
     const res = await fetch(`/api/trips/${tripId}/join`, {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ handicap }),
     });
@@ -482,6 +492,7 @@ export async function leaveTrip(trips: Trip[], tripId: number): Promise<Trip[]> 
   try {
     const res = await fetch(`/api/trips/${tripId}/leave`, {
       method: "POST",
+      credentials: "include",
     });
 
     const json = await res.json().catch(() => ({}));
@@ -506,6 +517,7 @@ export async function setMyHandicapForTrip(
   try {
     const res = await fetch(`/api/trips/${tripId}/handicap`, {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ handicap }),
     });
