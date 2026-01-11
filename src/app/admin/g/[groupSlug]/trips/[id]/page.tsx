@@ -1451,7 +1451,7 @@ export default function AdminTripPage() {
   async function onCloseTripAndPostLogistics() {
     // Close trip to new entrants and enable logistics (move to Phase 2)
     try {
-      const updated = await updateTrip(trips, tripIdSafe, { status: "closed" });
+      const updated = await updateTrip(trips, tripIdSafe, groupId, { status: "closed" });
       setTrips(updated);
     } catch (error) {
       console.error("Failed to close trip:", error);
