@@ -1570,44 +1570,6 @@ function ProfileBlock({
             />
           )}
 
-          {/* Passport photo crop modal */}
-          {showPassportCropModal && passportImageSrc && (
-            <ImageCropModal
-              title="Crop Passport Photo"
-              imageSrc={passportImageSrc}
-              crop={passportCrop}
-              zoom={passportZoom}
-              onCropChange={setPassportCrop}
-              onZoomChange={setPassportZoom}
-              onCropComplete={(croppedArea, croppedAreaPixels) => {
-                setPassportCroppedAreaPixels(croppedAreaPixels);
-              }}
-              onCancel={() => {
-                setShowPassportCropModal(false);
-                setPassportImageSrc(null);
-              }}
-              onSave={async () => {
-                if (!passportCroppedAreaPixels || !passportImageSrc) return;
-                
-                setShowPassportCropModal(false);
-                setUploadingPassportPhoto(true);
-                
-                try {
-                  const croppedImage = await getCroppedImg(passportImageSrc, passportCroppedAreaPixels);
-                  const blob = await fetch(croppedImage).then((r) => r.blob());
-                  const file = new File([blob], "passport.jpg", { type: "image/jpeg" });
-                  await handlePassportPhotoUpload(file);
-                  setPassportImageSrc(null);
-                } catch (error: any) {
-                  // Error will be handled by handlePassportPhotoUpload's error handling
-                  console.error("Failed to crop passport image:", error);
-                } finally {
-                  setUploadingPassportPhoto(false);
-                }
-              }}
-            />
-          )}
-
           <button
             onClick={onSave}
             disabled={saving || uploadingProfilePhoto}

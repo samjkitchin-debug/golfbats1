@@ -62,6 +62,7 @@ export default function ResultDetailPage() {
     if (!activeGroupId) return;
 
     async function loadData() {
+      if (!activeGroupId) return;
       try {
         const [tripsData, coursesData] = await Promise.all([
           loadTrips(activeGroupId, false),
