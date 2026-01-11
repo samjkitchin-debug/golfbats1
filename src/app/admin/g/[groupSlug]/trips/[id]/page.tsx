@@ -1243,7 +1243,7 @@ export default function AdminTripPage() {
   async function onOpenForSignups() {
     // Ensure trip is open and reload to move to Open for Signups
     try {
-      const updated = await updateTrip(trips, tripIdSafe, { status: "open" });
+      const updated = await updateTrip(trips, tripIdSafe, groupId, { status: "open" });
       setTrips(updated);
       
       // Reload trips to get fresh data
@@ -1318,7 +1318,7 @@ export default function AdminTripPage() {
         },
       };
       
-      const updated = await updateTrip(trips, tripIdSafe, updates);
+      const updated = await updateTrip(trips, tripIdSafe, groupId, updates);
       setTrips(updated);
       
       // Reload trips to get fresh data
@@ -1380,7 +1380,7 @@ export default function AdminTripPage() {
         },
       };
       
-      const updated = await updateTrip(trips, tripIdSafe, updates);
+      const updated = await updateTrip(trips, tripIdSafe, groupId, updates);
       setTrips(updated);
       
       // Reload trips to get fresh data
@@ -1566,7 +1566,7 @@ export default function AdminTripPage() {
         updates.date = today;
       }
       
-      const updated = await updateTrip(trips, tripIdSafe, updates);
+      const updated = await updateTrip(trips, tripIdSafe, groupId, updates);
       setTrips(updated);
       
       // Reload trips to get fresh phase calculations
