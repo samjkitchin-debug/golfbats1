@@ -248,7 +248,7 @@ export default function DevNotesPage() {
   // Version scheme: 0.MINOR.PATCH
   // MINOR increments every 4 commits, PATCH = commits % 4
   // Auto-updated: run "git log --oneline | Measure-Object -Line" to get current count
-  const COMMIT_COUNT = 118;
+  const COMMIT_COUNT = 120;
   const VERSION_MINOR = Math.floor(COMMIT_COUNT / 4);
   const VERSION_PATCH = COMMIT_COUNT % 4;
   const VERSION = `0.${VERSION_MINOR}.${VERSION_PATCH}`;
