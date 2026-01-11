@@ -6,7 +6,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
 import { loadTrips, joinTrip, leaveTrip, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
-import { isTripUpcoming, pickDefaultExpandedTrip } from "../../lib/tripDates";
+import { isTripUpcoming, pickDefaultExpandedTrip, getEffectiveTripPhase } from "../../lib/tripDates";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";

@@ -35,6 +35,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Top-level admin layout: Only handles auth checks
   // Each route handles its own UI structure:
   // - /admin/page.tsx renders its own minimal header
-  // - /admin/g/[groupId]/layout.tsx renders its own group admin shell
+  // - /admin/g/[groupSlug]/layout.tsx renders its own group admin shell
   return <>{children}</>;
 }
