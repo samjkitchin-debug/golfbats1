@@ -29,11 +29,27 @@ export type Attendee = {
 
 export type TripStatus = "open" | "closed" | "archived" | "cancelled";
 
+/** Transport mode for trip itinerary */
+export type TransportMode = "self" | "plane" | "ferry" | "train" | "car" | "mixed";
+
 export type TripLogistics = {
   meetingPoint?: string;
   meetTime?: string;
+  /** Generic itinerary details (ferry/flight/train info based on transportMode) */
+  itineraryDetails?: string;
+  /** Legacy: ferryDetails kept for backward compatibility, maps to itineraryDetails when transportMode='ferry' */
   ferryDetails?: string;
   notes?: string;
+};
+
+/**
+ * Decision logistics - information needed for members to decide whether to RSVP.
+ * Editable while signups are open.
+ * Fields: meeting point, meet time/tee time
+ */
+export type DecisionLogistics = {
+  meetingPoint?: string;
+  meetTime?: string;
 };
 
 export type TripResult = {
@@ -70,6 +86,13 @@ export type Trip = {
   /** Trip scenario key (e.g. 'local_round', 'away_day', 'overnight_trip', etc.) */
   scenarioKey?: string | null;
 
+  /** Transport mode for itinerary (self/plane/ferry/train/car/mixed) */
+  transportMode?: TransportMode | null;
+
+  /** Decision logistics - editable while signups are open (meet point, meet time) */
+  decisionLogistics?: DecisionLogistics;
+
+  /** Operational logistics - post-close only (detailed ferry itinerary, operational notes) */
   logistics?: TripLogistics;
 
   attendees: Attendee[];
@@ -78,6 +101,18 @@ export type Trip = {
 
   createdAtUtc?: string;
   updatedAtUtc?: string;
+
+  /** Trip origin: 'group' (admin-created) or 'member' (member-hosted) */
+  tripOrigin?: 'group' | 'member';
+
+  /** Member ID who created this trip (for member trips) */
+  createdByMemberId?: string | null;
+
+  /** Whether this member trip is posted to the group feed */
+  isPostedToGroup?: boolean;
+
+  /** Creator name (for member trips, populated by API) */
+  createdByMemberName?: string | null;
 };
 
 /* ================================
@@ -134,6 +169,10 @@ function normalizeTrip(input: any): Trip {
 
     scenarioKey: (t as any).scenarioKey !== undefined ? ((t as any).scenarioKey ?? null) : undefined,
 
+    transportMode: (t as any).transportMode !== undefined ? ((t as any).transportMode ?? null) : undefined,
+
+    decisionLogistics: (t as any).decisionLogistics ?? undefined,
+
     logistics: (t as any).logistics ?? {},
 
     attendees: Array.isArray((t as any).attendees)
@@ -150,6 +189,11 @@ function normalizeTrip(input: any): Trip {
 
     createdAtUtc: (t as any).createdAtUtc ?? undefined,
     updatedAtUtc: (t as any).updatedAtUtc ?? undefined,
+
+    tripOrigin: (t as any).tripOrigin || (t as any).trip_origin || 'group',
+    createdByMemberId: (t as any).createdByMemberId || (t as any).created_by_member_id || null,
+    isPostedToGroup: (t as any).isPostedToGroup !== undefined ? (t as any).isPostedToGroup : ((t as any).is_posted_to_group !== undefined ? (t as any).is_posted_to_group : ((t as any).tripOrigin === 'group' || (t as any).trip_origin === 'group' ? true : false)),
+    createdByMemberName: (t as any).createdByMemberName || (t as any).created_by_member_name || null,
   };
 }
 
@@ -162,8 +206,9 @@ function normalizeTrip(input: any): Trip {
  * No longer uses localStorage - always fetches from server
  * @param groupId - Required group ID to filter trips
  * @param bypassCache - Whether to bypass cache
+ * @param throwOnError - Whether to throw on API errors (default: false, returns empty array)
  */
-export async function loadTrips(groupId: string, bypassCache = false): Promise<Trip[]> {
+export async function loadTrips(groupId: string, bypassCache = false, throwOnError = false): Promise<Trip[]> {
   if (typeof window === "undefined") return [];
 
   if (!groupId) {
@@ -183,11 +228,14 @@ export async function loadTrips(groupId: string, bypassCache = false): Promise<T
     const json = await res.json().catch(() => ({}));
 
     if (!res.ok) {
+      perfMeasure("loadTrips", start);
+      if (throwOnError) {
+        throw new Error(json?.error || `Failed to load trips (HTTP ${res.status})`);
+      }
       // Suppress error logging for 401 Unauthorized (user may have signed out)
       if (res.status !== 401) {
         perfLog("loadTrips: API error", { status: res.status, error: json?.error });
       }
-      perfMeasure("loadTrips", start);
       return [];
     }
 
@@ -276,6 +324,8 @@ export async function createTrip(
     courseId: partial.courseId ?? null,
     teeId: partial.teeId ?? null,
     scenarioKey: partial.scenarioKey !== undefined ? (partial.scenarioKey || null) : null,
+    tripOrigin: partial.tripOrigin ?? 'group', // Default to 'group' for backward compatibility
+    isPostedToGroup: partial.isPostedToGroup ?? (partial.tripOrigin === 'group' ? true : false),
     logistics: partial.logistics ? {
       meetingPoint: partial.logistics.meetingPoint ?? null,
       meetTime: partial.logistics.meetTime ?? null,
@@ -320,6 +370,70 @@ export async function createTrip(
   }
 }
 
+/**
+ * Fetch a single trip directly from Supabase by legacy_id and group_id
+ * Used as fallback when trip is not found in local state
+ */
+async function fetchTripDirectly(tripId: number, groupId: string): Promise<Trip | null> {
+  if (typeof window === "undefined") return null;
+  
+  try {
+    // Import Supabase browser client dynamically to avoid SSR issues
+    const { createSupabaseBrowserClient } = await import("./supabaseBrowser");
+    const supabase = createSupabaseBrowserClient();
+    
+    // Query by legacy_id (numeric) and group_id
+    const { data, error } = await supabase
+      .from("trips")
+      .select("*")
+      .eq("legacy_id", tripId)
+      .eq("group_id", groupId)
+      .maybeSingle();
+
+    if (error) {
+      perfLog("fetchTripDirectly: error", { tripId, groupId, error: error.message });
+      return null;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    // Normalize the trip data to match Trip type
+    return normalizeTrip({
+      id: Number(data.legacy_id),
+      name: data.name || undefined,
+      date: data.trip_date || "",
+      format: data.format || "",
+      course: undefined,
+      ferry: data.ferry || undefined,
+      capacity: Number(data.capacity || 0),
+      status: (data.status as any) || "open",
+      cutoffAt: data.cutoff_at || undefined,
+      courseId: data.course_id || null,
+      teeId: data.tee_id || null,
+      scenarioKey: (data as any).scenario_key || null,
+      decisionLogistics: data.meeting_point && !data.ferry_details ? {
+        meetingPoint: data.meeting_point || undefined,
+        meetTime: data.meet_time || undefined,
+      } : undefined,
+      logistics: {
+        meetingPoint: data.meeting_point || undefined,
+        meetTime: data.meet_time || undefined,
+        ferryDetails: data.ferry_details || undefined,
+        notes: data.notes || undefined,
+      },
+      attendees: [], // Will be loaded separately if needed
+      result: undefined,
+      createdAtUtc: data.created_at || undefined,
+      updatedAtUtc: data.updated_at || undefined,
+    } as any);
+  } catch (error) {
+    perfLog("fetchTripDirectly: exception", { tripId, groupId, error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
+
 export async function updateTrip(trips: Trip[], tripId: number, groupId: string, patch: Partial<Trip>): Promise<Trip[]> {
   if (!groupId) {
     throw new Error("groupId is required to update a trip");
@@ -327,13 +441,19 @@ export async function updateTrip(trips: Trip[], tripId: number, groupId: string,
 
   let base = trips.find((t) => normalizeTrip(t).id === tripId);
   
-  // If trip not found in local array, fetch it from server
+  // If trip not found in local array, try fetching all trips from server first
   if (!base) {
     const fetchedTrips = await loadTrips(groupId, true);
     base = fetchedTrips.find((t) => t.id === tripId);
-    if (!base) {
-      throw new Error(`Trip not found (ID: ${tripId})`);
+  }
+  
+  // If still not found, fetch the trip directly from Supabase (resilient to filtering/race conditions)
+  if (!base) {
+    const fetched = await fetchTripDirectly(tripId, groupId);
+    if (!fetched) {
+      throw new Error(`Trip not found (ID: ${tripId}). It may have been deleted or you may not have access to it.`);
     }
+    base = fetched;
   }
 
   const normalized = normalizeTrip(base);
@@ -351,6 +471,8 @@ export async function updateTrip(trips: Trip[], tripId: number, groupId: string,
     // cutoffAt must be string | undefined (not null)
     cutoffAt: patch.cutoffAt === (null as any) ? undefined : patch.cutoffAt,
 
+    decisionLogistics: patch.decisionLogistics !== undefined ? patch.decisionLogistics : normalized.decisionLogistics,
+    
     logistics: patch.logistics ? { ...(normalized.logistics ?? {}), ...patch.logistics } : normalized.logistics,
 
     updatedAtUtc: nowIsoUtc(),
@@ -607,7 +729,7 @@ export function exportTripCsv(trip: Trip) {
 
   rows.push(["Meeting point", t.logistics?.meetingPoint ?? ""]);
   rows.push(["Meet time", t.logistics?.meetTime ?? ""]);
-  rows.push(["Ferry details", t.logistics?.ferryDetails ?? ""]);
+  rows.push(["Travel details", t.logistics?.itineraryDetails ?? t.logistics?.ferryDetails ?? ""]);
   rows.push(["Notes", t.logistics?.notes ?? ""]);
   rows.push([]);
 
@@ -654,7 +776,7 @@ export function exportTripCsv(trip: Trip) {
 }
 
 /* ================================
-   Travel Agent CSV export (Admin)
+   Organiser / booking contact CSV export (Admin)
    Exports trip details with member names, nationalities, and passport info
 ================================ */
 
@@ -724,7 +846,7 @@ export async function exportTravelAgentCsv(
   rows.push(["Ferry", t.ferry ?? ""]);
   rows.push(["Meeting Point", t.logistics?.meetingPoint ?? ""]);
   rows.push(["Meet Time", t.logistics?.meetTime ?? ""]);
-  rows.push(["Ferry Details", t.logistics?.ferryDetails ?? ""]);
+  rows.push(["Travel Details", t.logistics?.itineraryDetails ?? t.logistics?.ferryDetails ?? ""]);
   rows.push(["Notes", t.logistics?.notes ?? ""]);
   rows.push([]);
   rows.push(...attendeeRows);

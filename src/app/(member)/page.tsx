@@ -12,6 +12,7 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { PromptModal } from "../components/PromptModal";
 import { TripCard } from "../components/TripCard";
 import { perfMark, perfMeasure, perfLog } from "../lib/perf";
+import { getGolfNoun } from "../lib/roundNounHelper";
 
 export default function HomePage() {
   // All state hooks - must be at the top
@@ -428,7 +429,7 @@ export default function HomePage() {
             
             {/* Trip name or course */}
             <div className="mb-2 text-lg sm:text-xl font-semibold text-foreground">
-              {primaryTrip.name || primaryCourseText.title || "Trip"}
+              {primaryTrip.name || primaryCourseText.title || (getGolfNoun(primaryTrip) === "trip" ? "Trip" : "Round")}
             </div>
             
             {/* Date */}
@@ -483,7 +484,7 @@ export default function HomePage() {
             
             {/* Compact trip info - reduced typography */}
             <div className="mb-1 text-sm font-medium text-foreground">
-              {secondaryTrip.name || secondaryCourseText?.title || "Trip"}
+              {secondaryTrip.name || secondaryCourseText?.title || (secondaryTrip ? (getGolfNoun(secondaryTrip) === "trip" ? "Trip" : "Round") : "Round")}
             </div>
             <div className="text-xs text-muted">
               {formatTripDate(secondaryTrip)}

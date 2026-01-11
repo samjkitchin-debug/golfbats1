@@ -9,10 +9,11 @@
  * Scenario truth lives in src/app/lib/scenarios/registry.ts and docs/trips/scenarios.md
  */
 
-import { type Trip, type Attendee } from "./tripActions";
+import { type Trip, type Attendee, type TransportMode } from "./tripActions";
 import { type ScenarioKey, type ScenarioDefinition, type TripSetupStep, getScenario } from "./scenarios/registry";
 import { type TripRecipe } from "./tripIntent";
 import { createSupabaseBrowserClient } from "./supabaseBrowser";
+import { getRequiredItineraryFields } from "./itineraryHelpers";
 
 /**
  * Trip readiness result (canonical type)
@@ -39,7 +40,7 @@ export type TripReadiness = {
   };
   agentItinerary?: {
     done: boolean;
-    missing: Array<"meeting_point" | "meet_time" | "ferry_details">;
+    missing: Array<"meeting_point" | "meet_time" | "itinerary_details">;
   };
   nextAction?: "set_basics" | "collect_roster" | "export_to_agent" | "enter_itinerary" | "done";
 };
@@ -312,8 +313,10 @@ export function getTripReadinessBasic(
                 break;
               }
             }
-            if (field === "ferry_details") {
-              if (!trip.logistics?.ferryDetails || trip.logistics.ferryDetails.trim().length === 0) {
+            if (field === "ferry_details" || field === "itinerary_details") {
+              // Check itinerary_details (new) or ferryDetails (legacy)
+              const itineraryValue = trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails;
+              if (!itineraryValue || itineraryValue.trim().length === 0) {
                 allRequiredPresent = false;
                 break;
               }
@@ -387,7 +390,7 @@ export async function computeBatamReadiness(
       missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap">;
     }>;
   };
-  agentItinerary: { done: boolean; missing: Array<"meeting_point" | "meet_time" | "ferry_details"> };
+  agentItinerary: { done: boolean; missing: Array<"meeting_point" | "meet_time" | "itinerary_details"> };
   nextAction: "set_basics" | "collect_roster" | "export_to_agent" | "enter_itinerary" | "done";
 }> {
   // Check if scenario has requiredForAgentExport (cross_border_agent only)
@@ -419,16 +422,23 @@ export async function computeBatamReadiness(
     missingReasonsBreakdown: rosterStatus.notReadyMembers,
   };
 
-  // Agent itinerary: meeting_point + meet_time + ferry_details (from requiredForReadiness.itinerary)
-  const itineraryRequired = scenario.requiredForReadiness.itinerary || [];
-  const itineraryMissing: Array<"meeting_point" | "meet_time" | "ferry_details"> = [];
+  // Agent itinerary: derive required fields from transportMode, fallback to scenario.requiredForReadiness.itinerary
+  const transportModeFields = getRequiredItineraryFields(trip.transportMode);
+  const scenarioItineraryFields = scenario.requiredForReadiness.itinerary || [];
+  // Use transportMode fields if available, otherwise fall back to scenario fields
+  const itineraryRequired = transportModeFields.length > 0 ? transportModeFields : scenarioItineraryFields;
+  const itineraryMissing: Array<"meeting_point" | "meet_time" | "itinerary_details"> = [];
   for (const field of itineraryRequired) {
     if (field === "meeting_point" && (!trip.logistics?.meetingPoint || trip.logistics.meetingPoint.trim().length === 0)) {
       itineraryMissing.push("meeting_point");
     } else if (field === "meet_time" && (!trip.logistics?.meetTime || trip.logistics.meetTime.trim().length === 0)) {
       itineraryMissing.push("meet_time");
-    } else if (field === "ferry_details" && (!trip.logistics?.ferryDetails || trip.logistics.ferryDetails.trim().length === 0)) {
-      itineraryMissing.push("ferry_details");
+    } else if ((field === "ferry_details" || field === "itinerary_details")) {
+      // Check itinerary_details (new) or ferryDetails (legacy)
+      const itineraryValue = trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails;
+      if (!itineraryValue || itineraryValue.trim().length === 0) {
+        itineraryMissing.push("itinerary_details");
+      }
     }
   }
   const agentItinerary = {

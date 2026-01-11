@@ -3,6 +3,7 @@ import type { Trip, AttendanceStatus } from "../lib/tripActions";
 import type { Course } from "../lib/courseActions";
 import { formatTripDateLong } from "../lib/tripDisplay";
 import { TripRsvpActions } from "./TripRsvpActions";
+import { getGolfNoun } from "../lib/roundNounHelper";
 
 type CourseText = {
   title: string;
@@ -73,14 +74,14 @@ export function TripCard({
     ? golfDetailsSecondaryParts.join(" · ")
     : null;
 
-  // Extract time from meetTime (format might be "8:00am" or "8:00 AM" or similar)
-  const meetTime = trip.logistics?.meetTime?.trim() || null;
+  // Extract time from meetTime - prioritize decision logistics, fall back to operational logistics
+  const meetTime = (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime)?.trim() || null;
 
-  // Get ferry name (from ferry field - only shown in logistics block)
+  // Get ferry name (from ferry field - only shown in logistics block, operational only)
   const ferryName = trip.ferry?.trim() || null;
 
-  // Get meeting point
-  const meetingPoint = trip.logistics?.meetingPoint?.trim() || null;
+  // Get meeting point - prioritize decision logistics, fall back to operational logistics
+  const meetingPoint = (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint)?.trim() || null;
 
   // Trip state: "Open for sign up" + confirmed count (muted)
   const tripStateText =
@@ -114,7 +115,7 @@ export function TripCard({
       {!isHome && (
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className="text-lg font-semibold text-foreground">
-            {trip.name || "Trip"}
+            {trip.name || (getGolfNoun(trip) === "trip" ? "Trip" : "Round")}
           </div>
           <Link
             href={`/trips/${trip.id}`}
@@ -128,7 +129,7 @@ export function TripCard({
       {/* Trip name (Home variant) */}
       {isHome && (
         <div className="text-lg font-semibold text-foreground mb-3">
-          {trip.name || courseName || "Trip"}
+          {trip.name || courseName || (getGolfNoun(trip) === "trip" ? "Trip" : "Round")}
         </div>
       )}
 
@@ -196,7 +197,7 @@ export function TripCard({
       {(meetingPoint || ferryName) && (
         <div className="mb-3 space-y-1 text-sm text-foreground">
           {meetingPoint && <div>{meetingPoint}</div>}
-          {ferryName && <div>Ferry: {ferryName}</div>}
+          {ferryName && <div>{ferryName}</div>}
         </div>
       )}
 

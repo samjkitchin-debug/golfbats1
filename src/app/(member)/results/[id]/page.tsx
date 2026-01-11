@@ -7,6 +7,7 @@ import { loadCourses, type Course } from "../../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay";
 import { loadTrips, type Trip } from "../../../lib/tripActions";
 import { perfMark, perfMeasure, perfLog } from "../../../lib/perf";
+import { getGolfNoun } from "../../../lib/roundNounHelper";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -123,7 +124,7 @@ export default function ResultDetailPage() {
         </Link>
         <div className="rounded-xl border bg-surface p-5 shadow-sm">
           <div className="text-lg font-semibold text-foreground">
-            {courseText?.title ?? "Trip"} — Results
+            {courseText?.title ?? (trip ? (getGolfNoun(trip) === "trip" ? "Trip" : "Round") : "Round")} — Results
           </div>
           <div className="mt-1 text-sm text-muted">{formatTripDateLong(trip.date)}</div>
           <div className="mt-3 text-sm text-foreground">Results have not been published yet.</div>
@@ -151,7 +152,7 @@ export default function ResultDetailPage() {
         </Link>
 
         <div className="mt-2 text-xl font-semibold text-foreground">
-          {courseText?.title ?? "Trip"} — Results
+          {courseText?.title ?? (trip ? (getGolfNoun(trip) === "trip" ? "Trip" : "Round") : "Round")} — Results
         </div>
         {courseText?.detail ? <div className="mt-1 text-sm text-muted">{courseText.detail}</div> : null}
         <div className="mt-2 text-sm text-foreground">{formatTripDateLong(trip.date)}</div>

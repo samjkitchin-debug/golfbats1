@@ -6,6 +6,7 @@ import { loadCourses, type Course } from "../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
 import { loadTrips, type Trip } from "../../lib/tripActions";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
+import { getGolfNoun } from "../../lib/roundNounHelper";
 
 // Get today's date in Singapore time (SGT = UTC+8)
 function getTodaySGT(): string {
@@ -174,7 +175,7 @@ export default function ResultsPage() {
   // Helper component for past trip row (accordion style like Trips page)
   function PastTripRow({ trip, isExpanded, onToggle }: { trip: Trip & { groupName?: string; groupId?: string }; isExpanded: boolean; onToggle: () => void }) {
     const courseText = getTripCourseText(trip, courses);
-    const tripName = trip.name || courseText.title || "Trip";
+    const tripName = trip.name || courseText.title || (getGolfNoun(trip) === "trip" ? "Trip" : "Round");
     const tripDateParts = formatTripRowDate(trip.date);
     const groupName = trip.groupName || "";
     const course = trip.courseId ? courses.find((c) => c.id === trip.courseId) : undefined;

@@ -48,6 +48,25 @@ export type TripSetupStep =
   | "flights";
 
 /**
+ * Logistics subtype enum - determines which logistics editor to render
+ */
+export type LogisticsSubtype =
+  | "meet_at_course"
+  | "pickup_carpool"
+  | "agent_ferry_itinerary";
+
+/**
+ * Helper functions for question conditions
+ */
+const whenTravelCoordinationAndNotAgentBooking = (answers: Partial<ScenarioAnswers>): boolean => {
+  return answers.travelCoordination === true && answers.bookingResponsibility !== "agent";
+};
+
+const whenOrganiserOrAgentBooking = (answers: Partial<ScenarioAnswers>): boolean => {
+  return answers.bookingResponsibility === "organiser" || answers.bookingResponsibility === "agent";
+};
+
+/**
  * Scenario definition - complete configuration for a scenario
  */
 export type ScenarioDefinition = {
@@ -62,7 +81,7 @@ export type ScenarioDefinition = {
   /** Minimal prompts for scenario classification */
   prompts: {
     questions: Array<{
-      id: keyof ScenarioAnswers | "overnight" | "carpool";
+      id: keyof ScenarioAnswers | "overnight" | "carpool" | "requiredMemberInfo";
       text: string;
       options: Array<{ value: any; label: string }>;
       when?: (answers: Partial<ScenarioAnswers>) => boolean;
@@ -84,6 +103,8 @@ export type ScenarioDefinition = {
     itinerary: boolean; // Agent itinerary (cross_border_agent only)
     flights: boolean;
   };
+  /** Logistics subtype - determines which logistics editor to render (only set if modules.logistics === true) */
+  logisticsSubtype?: LogisticsSubtype;
   /** Coordination sequence (ideal step order) */
   steps: TripSetupStep[];
   /** Minimal steps required to create trip */
@@ -116,12 +137,23 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
     prompts: {
       questions: [
         {
-          id: "organiserBooking",
-          text: "Who's handling bookings?",
+          id: "bookingResponsibility",
+          text: "Who is arranging the bookings for this trip?",
           options: [
-            { value: false, label: "Everyone sorts themselves" },
-            { value: true, label: "I'm booking / need a roster" },
+            { value: "everyone", label: "Everyone arranges their own" },
+            { value: "organiser", label: "I'm arranging it for the group" },
+            { value: "agent", label: "An external organiser/agent is arranging it" },
           ],
+        },
+        {
+          id: "requiredMemberInfo",
+          text: "What information do you need from people to make the booking?",
+          options: [
+            { value: [], label: "No special information needed" },
+            { value: ["handicap"], label: "Handicap only" },
+            { value: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"], label: "Passport details and handicap" },
+          ],
+          when: whenOrganiserOrAgentBooking,
         },
         {
           id: "travelCoordination",
@@ -129,14 +161,6 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
           options: [
             { value: false, label: "Meet at course" },
             { value: true, label: "We're travelling together" },
-          ],
-        },
-        {
-          id: "crossBorderAgent",
-          text: "Does this require passports or a travel agent?",
-          options: [
-            { value: false, label: "No" },
-            { value: true, label: "Yes (passport / ferry / agent)" },
           ],
         },
       ],
@@ -155,6 +179,7 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
       itinerary: false,
       flights: false,
     },
+    logisticsSubtype: undefined, // logistics disabled
     steps: ["basics", "course", "signups"],
     requiredForCreate: ["basics", "course"],
     requiredForReadiness: {
@@ -194,12 +219,23 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
     prompts: {
       questions: [
         {
-          id: "organiserBooking",
-          text: "Who's handling bookings?",
+          id: "bookingResponsibility",
+          text: "Who is arranging the bookings for this trip?",
           options: [
-            { value: false, label: "Everyone sorts themselves" },
-            { value: true, label: "I'm booking / need a roster" },
+            { value: "everyone", label: "Everyone arranges their own" },
+            { value: "organiser", label: "I'm arranging it for the group" },
+            { value: "agent", label: "An external organiser/agent is arranging it" },
           ],
+        },
+        {
+          id: "requiredMemberInfo",
+          text: "What information do you need from people to make the booking?",
+          options: [
+            { value: [], label: "No special information needed" },
+            { value: ["handicap"], label: "Handicap only" },
+            { value: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"], label: "Passport details and handicap" },
+          ],
+          when: whenOrganiserOrAgentBooking,
         },
         {
           id: "travelCoordination",
@@ -210,21 +246,13 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
           ],
         },
         {
-          id: "crossBorderAgent",
-          text: "Does this require passports or a travel agent?",
-          options: [
-            { value: false, label: "No" },
-            { value: true, label: "Yes (passport / ferry / agent)" },
-          ],
-        },
-        {
           id: "carpool",
           text: "Are you carpooling?",
           options: [
             { value: true, label: "Yes, we're carpooling (pickup point matters)" },
             { value: false, label: "No" },
           ],
-          when: (answers) => answers.travelCoordination === true && answers.crossBorderAgent !== true,
+          when: whenTravelCoordinationAndNotAgentBooking,
         },
       ],
     },
@@ -283,12 +311,23 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
     prompts: {
       questions: [
         {
-          id: "organiserBooking",
-          text: "Who's handling bookings?",
+          id: "bookingResponsibility",
+          text: "Who is arranging the bookings for this trip?",
           options: [
-            { value: false, label: "Everyone sorts themselves" },
-            { value: true, label: "I'm booking / need a roster" },
+            { value: "everyone", label: "Everyone arranges their own" },
+            { value: "organiser", label: "I'm arranging it for the group" },
+            { value: "agent", label: "An external organiser/agent is arranging it" },
           ],
+        },
+        {
+          id: "requiredMemberInfo",
+          text: "What information do you need from people to make the booking?",
+          options: [
+            { value: [], label: "No special information needed" },
+            { value: ["handicap"], label: "Handicap only" },
+            { value: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"], label: "Passport details and handicap" },
+          ],
+          when: whenOrganiserOrAgentBooking,
         },
         {
           id: "travelCoordination",
@@ -296,14 +335,6 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
           options: [
             { value: false, label: "Meet at course" },
             { value: true, label: "We're travelling together" },
-          ],
-        },
-        {
-          id: "crossBorderAgent",
-          text: "Does this require passports or a travel agent?",
-          options: [
-            { value: false, label: "No" },
-            { value: true, label: "Yes (passport / ferry / agent)" },
           ],
         },
       ],
@@ -322,6 +353,7 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
       itinerary: false,
       flights: false,
     },
+    logisticsSubtype: "pickup_carpool",
     steps: ["basics", "course", "signups", "capacity", "logistics"],
     requiredForCreate: ["basics", "course"],
     requiredForReadiness: {
@@ -363,12 +395,23 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
     prompts: {
       questions: [
         {
-          id: "organiserBooking",
-          text: "Who's handling bookings?",
+          id: "bookingResponsibility",
+          text: "Who is arranging the bookings for this trip?",
           options: [
-            { value: false, label: "Everyone sorts themselves" },
-            { value: true, label: "I'm booking / need a roster" },
+            { value: "everyone", label: "Everyone arranges their own" },
+            { value: "organiser", label: "I'm arranging it for the group" },
+            { value: "agent", label: "An external organiser/agent is arranging it" },
           ],
+        },
+        {
+          id: "requiredMemberInfo",
+          text: "What information do you need from people to make the booking?",
+          options: [
+            { value: [], label: "No special information needed" },
+            { value: ["handicap"], label: "Handicap only" },
+            { value: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"], label: "Passport details and handicap" },
+          ],
+          when: whenOrganiserOrAgentBooking,
         },
         {
           id: "travelCoordination",
@@ -379,21 +422,13 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
           ],
         },
         {
-          id: "crossBorderAgent",
-          text: "Does this require passports or a travel agent?",
-          options: [
-            { value: false, label: "No" },
-            { value: true, label: "Yes (passport / ferry / agent)" },
-          ],
-        },
-        {
           id: "overnight",
           text: "Is this an overnight trip?",
           options: [
             { value: true, label: "Yes, overnight" },
             { value: false, label: "No, day trip" },
           ],
-          when: (answers) => answers.travelCoordination === true && answers.crossBorderAgent !== true,
+          when: whenTravelCoordinationAndNotAgentBooking,
         },
       ],
     },
@@ -411,6 +446,7 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
       itinerary: false,
       flights: false,
     },
+    logisticsSubtype: "pickup_carpool",
     steps: ["basics", "course", "signups", "capacity", "logistics"],
     requiredForCreate: ["basics", "course"],
     requiredForReadiness: {
@@ -448,16 +484,27 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
     key: "organiser_booking",
     label: "Organiser booking",
     shortLabel: "Booking",
-    description: "I'm booking / need a roster",
+    description: "Organiser or agent is arranging bookings",
     prompts: {
       questions: [
         {
-          id: "organiserBooking",
-          text: "Who's handling bookings?",
+          id: "bookingResponsibility",
+          text: "Who is arranging the bookings for this trip?",
           options: [
-            { value: false, label: "Everyone sorts themselves" },
-            { value: true, label: "I'm booking / need a roster" },
+            { value: "everyone", label: "Everyone arranges their own" },
+            { value: "organiser", label: "I'm arranging it for the group" },
+            { value: "agent", label: "An external organiser/agent is arranging it" },
           ],
+        },
+        {
+          id: "requiredMemberInfo",
+          text: "What information do you need from people to make the booking?",
+          options: [
+            { value: [], label: "No special information needed" },
+            { value: ["handicap"], label: "Handicap only" },
+            { value: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"], label: "Passport details and handicap" },
+          ],
+          when: whenOrganiserOrAgentBooking,
         },
       ],
     },
@@ -475,6 +522,7 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
       itinerary: false,
       flights: false,
     },
+    logisticsSubtype: undefined, // logistics disabled
     steps: ["basics", "course", "signups", "capacity", "export"],
     requiredForCreate: ["basics", "course"],
     requiredForReadiness: {
@@ -510,17 +558,28 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
   cross_border_agent: {
     key: "cross_border_agent",
     label: "Cross-border agent",
-    shortLabel: "Batam",
-    description: "Passport / ferry / agent required (e.g., Batam)",
+    shortLabel: "Agent",
+    description: "External agent arranging bookings requiring passport information",
     prompts: {
       questions: [
         {
-          id: "organiserBooking",
-          text: "Who's handling bookings?",
+          id: "bookingResponsibility",
+          text: "Who is arranging the bookings for this trip?",
           options: [
-            { value: false, label: "Everyone sorts themselves" },
-            { value: true, label: "I'm booking / need a roster" },
+            { value: "everyone", label: "Everyone arranges their own" },
+            { value: "organiser", label: "I'm arranging it for the group" },
+            { value: "agent", label: "An external organiser/agent is arranging it" },
           ],
+        },
+        {
+          id: "requiredMemberInfo",
+          text: "What information do you need from people to make the booking?",
+          options: [
+            { value: [], label: "No special information needed" },
+            { value: ["handicap"], label: "Handicap only" },
+            { value: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"], label: "Passport details and handicap" },
+          ],
+          when: whenOrganiserOrAgentBooking,
         },
         {
           id: "travelCoordination",
@@ -528,14 +587,6 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
           options: [
             { value: false, label: "Meet at course" },
             { value: true, label: "We're travelling together" },
-          ],
-        },
-        {
-          id: "crossBorderAgent",
-          text: "Does this require passports or a travel agent?",
-          options: [
-            { value: false, label: "No" },
-            { value: true, label: "Yes (passport / ferry / agent)" },
           ],
         },
       ],
@@ -554,6 +605,7 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
       itinerary: true, // Agent itinerary
       flights: true,
     },
+    logisticsSubtype: "agent_ferry_itinerary",
     steps: ["basics", "course", "signups", "capacity", "logistics", "export", "flights"],
     requiredForCreate: ["basics", "course"], // LOCKED: trip_date + course_id
     requiredForAgentExport: {
@@ -571,9 +623,9 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
       course: ["course_id"],
       signups: ["cutoff_at"],
       capacity: ["capacity"],
-      logistics: ["meeting_point", "meet_time", "ferry_details"], // LOCKED: agent itinerary
+      logistics: ["meeting_point", "meet_time"], // Itinerary details derived from transportMode
       profile: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"], // For all confirmed attendees
-      itinerary: ["meeting_point", "meet_time", "ferry_details"], // LOCKED
+      itinerary: ["meeting_point", "meet_time"], // Itinerary details derived from transportMode
     },
     rules: {
       flightsOnlyAfterSignupsClosed: true, // LOCKED
@@ -614,12 +666,23 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
     prompts: {
       questions: [
         {
-          id: "organiserBooking",
-          text: "Who's handling bookings?",
+          id: "bookingResponsibility",
+          text: "Who is arranging the bookings for this trip?",
           options: [
-            { value: false, label: "Everyone sorts themselves" },
-            { value: true, label: "I'm booking / need a roster" },
+            { value: "everyone", label: "Everyone arranges their own" },
+            { value: "organiser", label: "I'm arranging it for the group" },
+            { value: "agent", label: "An external organiser/agent is arranging it" },
           ],
+        },
+        {
+          id: "requiredMemberInfo",
+          text: "What information do you need from people to make the booking?",
+          options: [
+            { value: [], label: "No special information needed" },
+            { value: ["handicap"], label: "Handicap only" },
+            { value: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"], label: "Passport details and handicap" },
+          ],
+          when: whenOrganiserOrAgentBooking,
         },
         {
           id: "travelCoordination",
@@ -627,14 +690,6 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
           options: [
             { value: false, label: "Meet at course" },
             { value: true, label: "We're travelling together" },
-          ],
-        },
-        {
-          id: "crossBorderAgent",
-          text: "Does this require passports or a travel agent?",
-          options: [
-            { value: false, label: "No" },
-            { value: true, label: "Yes (passport / ferry / agent)" },
           ],
         },
       ],
@@ -653,6 +708,7 @@ export const SCENARIOS: Record<ScenarioKey, ScenarioDefinition> = {
       itinerary: false,
       flights: false,
     },
+    logisticsSubtype: undefined, // logistics disabled
     steps: ["basics", "signups"],
     requiredForCreate: ["basics"],
     requiredForReadiness: {
@@ -696,4 +752,162 @@ export function getScenario(key: ScenarioKey): ScenarioDefinition {
  */
 export function getAllScenarioKeys(): ScenarioKey[] {
   return Object.keys(SCENARIOS) as ScenarioKey[];
+}
+
+/**
+ * Derived variant - overlays booking/organisation details on top of scenario shape
+ */
+export type DerivedVariant = {
+  bookingMode: "self_pay" | "organiser" | "delegate"; // "everyone" -> "self_pay", "organiser" -> "organiser", "agent" -> "delegate"
+  crossBorder: boolean; // courseCountry != homeCountry
+  requiresPassport: boolean; // crossBorder OR requiredMemberInfo includes passport
+  enableExport: boolean; // bookingMode != "self_pay"
+  enableProfile: boolean; // requiresPassport OR requiredMemberInfo non-empty
+  enableItinerary: boolean; // (requiresPassport && (travelAny||overnight)) OR bookingMode=="delegate"
+  enableFlights: boolean; // enableItinerary && requiresPassport
+  logisticsSubtype?: LogisticsSubtype; // overlay rules
+  cutoffRule?: "nightBefore" | "daysBefore"; // overlay rules
+  cutoffDays?: number; // overlay rules (daysBefore=3 when passport+bookingMode!=self_pay)
+};
+
+/**
+ * Derive variant overlay from answers and options
+ */
+export function deriveVariant(
+  answers: Partial<ScenarioAnswers>,
+  opts?: { courseCountry?: string | null; homeCountry?: string }
+): DerivedVariant {
+  const homeCountry = opts?.homeCountry ?? "SG";
+  const courseCountry = opts?.courseCountry;
+  const crossBorder = courseCountry !== null && courseCountry !== undefined && courseCountry !== homeCountry;
+  
+  // Booking mode mapping (computed first for Policy B)
+  const bookingMode = 
+    answers.bookingResponsibility === "organiser" ? "organiser" :
+    answers.bookingResponsibility === "agent" ? "delegate" :
+    "self_pay";
+  
+  // Compute hasPassportInRequiredInfo for Policy B
+  const hasPassportInRequiredInfo = answers.requiredMemberInfo?.some(f => f.includes("passport")) ?? false;
+  
+  // Policy B: Passport gating
+  const cc = (opts?.courseCountry ?? null)?.toUpperCase?.() ?? null;
+  
+  let requiresPassport = false;
+  if (cc === "ID") {
+    requiresPassport = true;
+  } else if (cc === "MY") {
+    requiresPassport = bookingMode !== "self_pay";
+  } else {
+    requiresPassport = hasPassportInRequiredInfo;
+  }
+  
+  // Compute effective travel flags
+  const travelTogether = (answers.travelMode === "together") || (answers.travelCoordination === true);
+  const travelAny = (answers.travelMode === "together" || answers.travelMode === "mixed") || (answers.travelCoordination === true);
+  const overnight = travelTogether && answers.overnight === true;
+  
+  const enableExport = bookingMode !== "self_pay";
+  const enableProfile = requiresPassport || (answers.requiredMemberInfo && answers.requiredMemberInfo.length > 0) || false;
+  const enableItinerary = (requiresPassport && (travelAny || overnight)) || bookingMode === "delegate";
+  const enableFlights = enableItinerary && requiresPassport;
+  
+  // Logistics subtype overlay
+  let logisticsSubtype: LogisticsSubtype | undefined;
+  if (enableItinerary && requiresPassport && bookingMode === "delegate") {
+    logisticsSubtype = "agent_ferry_itinerary";
+  } else if (answers.carpool === true) {
+    logisticsSubtype = "pickup_carpool";
+  } else if (travelAny || overnight) {
+    logisticsSubtype = "meet_at_course";
+  }
+  
+  // Cutoff overlay
+  let cutoffRule: "nightBefore" | "daysBefore" | undefined;
+  let cutoffDays: number | undefined;
+  if (requiresPassport && bookingMode !== "self_pay") {
+    cutoffRule = "daysBefore";
+    cutoffDays = 3;
+  }
+  
+  return {
+    bookingMode,
+    crossBorder,
+    requiresPassport,
+    enableExport,
+    enableProfile,
+    enableItinerary,
+    enableFlights,
+    logisticsSubtype,
+    cutoffRule,
+    cutoffDays,
+  };
+}
+
+/**
+ * Apply variant overlay to scenario definition
+ * Returns a NEW object (does not mutate SCENARIOS registry)
+ */
+export function applyVariant(
+  def: ScenarioDefinition,
+  variant: DerivedVariant
+): ScenarioDefinition & { derivedVariant: DerivedVariant } {
+  // Overlay modules
+  const modules = {
+    ...def.modules,
+    export: def.modules.export || variant.enableExport,
+    profile: def.modules.profile || variant.enableProfile,
+    itinerary: def.modules.itinerary || variant.enableItinerary,
+    flights: def.modules.flights || variant.enableFlights,
+  };
+  
+  // Overlay logistics subtype
+  const logisticsSubtype = variant.logisticsSubtype ?? def.logisticsSubtype;
+  
+  // Overlay defaults
+  const defaults = {
+    ...def.defaults,
+    cutoffRule: variant.cutoffRule ?? def.defaults.cutoffRule,
+    cutoffDays: variant.cutoffDays ?? def.defaults.cutoffDays,
+  };
+  
+  // Overlay requiredForReadiness
+  const requiredForReadiness = { ...def.requiredForReadiness };
+  if (variant.enableProfile && def.requiredForAgentExport) {
+    // Ensure profile step readiness includes passport fields
+    if (!requiredForReadiness.profile) {
+      requiredForReadiness.profile = [];
+    }
+    const existingProfile = requiredForReadiness.profile;
+    const passportFields = def.requiredForAgentExport.passportFields;
+    const newProfileFields = [...existingProfile];
+    for (const field of passportFields) {
+      if (!newProfileFields.includes(field)) {
+        newProfileFields.push(field);
+      }
+    }
+    requiredForReadiness.profile = newProfileFields;
+  }
+  
+  return {
+    ...def,
+    modules,
+    logisticsSubtype,
+    defaults,
+    requiredForReadiness,
+    derivedVariant: variant,
+  };
+}
+
+/**
+ * Get effective scenario (base scenario + variant overlay)
+ */
+export function getEffectiveScenario(
+  key: ScenarioKey,
+  answers: Partial<ScenarioAnswers>,
+  opts?: { courseCountry?: string | null; homeCountry?: string }
+): ScenarioDefinition & { derivedVariant: DerivedVariant } {
+  const def = getScenario(key);
+  const variant = deriveVariant(answers, opts);
+  return applyVariant(def, variant);
 }

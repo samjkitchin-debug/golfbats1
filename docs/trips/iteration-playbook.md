@@ -91,8 +91,12 @@ Checklist:
 
 Implementation:
 1. Add to scenario registry
-2. Add to `scenarios.md`
-3. Do **not** fork UI logic
+2. Update classifier (if shape logic changes)
+3. Update variant overlay logic (if booking/organisation patterns change)
+4. Add to `scenarios.md`
+5. Do **not** fork UI logic
+
+**Note**: Changes to scenario classification or variant overlay must update BOTH the classifier/registry code AND the documentation.
 
 ---
 

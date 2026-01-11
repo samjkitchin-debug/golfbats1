@@ -30,9 +30,9 @@ export function proposeScenarioAnswersFromText(text: string): ScenarioProposal {
     // Empty text - return neutral defaults
     return {
       answers: {
-        organiserBooking: false,
+        bookingResponsibility: undefined,
+        requiredMemberInfo: undefined,
         travelCoordination: false,
-        crossBorderAgent: false,
       },
       confidence: 0.0,
       followupQuestion: "What kind of day is this?",
@@ -41,33 +41,35 @@ export function proposeScenarioAnswersFromText(text: string): ScenarioProposal {
 
   // Initialize answers
   const answers: ScenarioAnswers = {
-    organiserBooking: false,
+    bookingResponsibility: undefined,
+    requiredMemberInfo: undefined,
     travelCoordination: false,
-    crossBorderAgent: false,
   };
 
   let confidence = 0.0;
   let followupQuestion: string | undefined;
 
-  // Check for cross-border agent keywords (high priority)
-  const crossBorderKeywords = [
-    "passport", "ferry", "agent", "batam", "malaysia", "cross border",
-    "border", "international", "overseas", "visa", "immigration",
+  // Check for cross-border agent keywords (passport required)
+  const passportKeywords = [
+    "passport", "visa", "immigration", "cross border", "border",
+    "international", "overseas", "batam", "malaysia",
   ];
-  const hasCrossBorderSignals = crossBorderKeywords.some((keyword) =>
+  const hasPassportSignals = passportKeywords.some((keyword) =>
     lowerText.includes(keyword)
   );
   
-  if (hasCrossBorderSignals) {
-    answers.crossBorderAgent = true;
-    confidence = 0.9;
-    // crossBorderAgent takes priority, no need for other signals
-    return { answers, confidence };
-  }
-
-  // Check for organiser booking keywords
+  // Check for agent/organiser booking keywords
+  const agentKeywords = [
+    "agent", "external organiser", "external organizer",
+    "travel agent", "booking agent", "booking contact",
+  ];
+  const hasAgentSignals = agentKeywords.some((keyword) =>
+    lowerText.includes(keyword)
+  );
+  
   const organiserKeywords = [
     "i'm booking", "i'll book", "i am booking", "i will book",
+    "i'm arranging", "i'll arrange", "i am arranging", "i will arrange",
     "need a roster", "need roster", "booking for", "book for",
     "organiser", "organizer", "coordinator", "arranging",
   ];
@@ -75,9 +77,26 @@ export function proposeScenarioAnswersFromText(text: string): ScenarioProposal {
     lowerText.includes(keyword)
   );
   
+  // Determine booking responsibility
+  if (hasAgentSignals) {
+    answers.bookingResponsibility = "agent";
+    if (hasPassportSignals) {
+      answers.requiredMemberInfo = ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"];
+      confidence = 0.9;
+    } else {
+      confidence = 0.8;
+    }
+    return { answers, confidence };
+  }
+  
   if (hasOrganiserSignals) {
-    answers.organiserBooking = true;
-    confidence = 0.85;
+    answers.bookingResponsibility = "organiser";
+    if (hasPassportSignals) {
+      answers.requiredMemberInfo = ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"];
+      confidence = 0.85;
+    } else {
+      confidence = 0.75;
+    }
     return { answers, confidence };
   }
 

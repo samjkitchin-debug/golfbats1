@@ -18,42 +18,49 @@ import type { ScenarioKey } from "./registry";
  * Minimal prompt answers for scenario classification
  */
 export type ScenarioAnswers = {
-  organiserBooking: boolean; // "I'm booking / need a roster"
-  travelCoordination: boolean; // "We're travelling together"
-  crossBorderAgent: boolean; // "Passport / ferry / agent"
-  overnight?: boolean; // only relevant if travelCoordination
-  carpool?: boolean; // optional refinement when travelCoordination is true
+  bookingResponsibility?: "everyone" | "organiser" | "agent"; // "Who is arranging the bookings?"
+  coordinationOwner?: "self" | "external"; // "Who is coordinating the round?"
+  requiredMemberInfo?: string[]; // Profile fields needed when organiser/agent is arranging
+  travelCoordination?: boolean; // Legacy: "How are people getting there?" - "We're travelling together"
+  travelMode?: "own" | "together" | "mixed" | null; // "How are people getting there?"
+  overnight?: boolean; // only relevant if travelMode === "together"
+  carpool?: boolean; // optional refinement when travelMode === "together"
 };
 
 /**
  * Derive scenario key from minimal prompt answers.
  * 
+ * SHAPE-FIRST CLASSIFICATION: ScenarioKey is determined by travel/coordination shape,
+ * not by booking responsibility. Booking responsibility affects modules via variant overlay.
+ * 
  * Rules (deterministic, priority order matters):
- * 1. If crossBorderAgent -> cross_border_agent
- * 2. Else if organiserBooking -> organiser_booking
- * 3. Else if travelCoordination && overnight -> overnight_trip
- * 4. Else if travelCoordination && carpool -> carpool_round
- * 5. Else if travelCoordination -> away_day
- * 6. Else -> local_round
+ * 1. If coordinationOwner === "external" -> casual_round
+ * 2. Else if overnight -> overnight_trip
+ * 3. Else if carpool -> carpool_round
+ * 4. Else if travelAny -> away_day
+ * 5. Else -> local_round
  * 
  * @param answers - Minimal prompt answers
- * @returns Scenario key
+ * @returns Scenario key (shape)
  */
 export function deriveScenarioKey(answers: ScenarioAnswers): ScenarioKey {
-  // Priority order matters - check more specific scenarios first
-  if (answers.crossBorderAgent) {
-    return "cross_border_agent";
+  // Compute effective travel flags (support both travelMode and legacy travelCoordination)
+  const travelTogether = (answers.travelMode === "together") || (answers.travelCoordination === true);
+  const travelAny = (answers.travelMode === "together" || answers.travelMode === "mixed") || (answers.travelCoordination === true);
+  const overnight = travelTogether && answers.overnight === true;
+  const carpool = travelTogether && answers.carpool === true;
+
+  // Shape-first precedence (ignore bookingResponsibility)
+  if (answers.coordinationOwner === "external") {
+    return "casual_round";
   }
-  if (answers.organiserBooking) {
-    return "organiser_booking";
-  }
-  if (answers.travelCoordination && answers.overnight) {
+  if (overnight) {
     return "overnight_trip";
   }
-  if (answers.travelCoordination && answers.carpool) {
+  if (carpool) {
     return "carpool_round";
   }
-  if (answers.travelCoordination) {
+  if (travelAny) {
     return "away_day";
   }
   return "local_round";

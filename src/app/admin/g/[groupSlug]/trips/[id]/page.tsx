@@ -39,7 +39,15 @@ import {
   getTripReadinessDetailed,
   type TripSetupStep 
 } from "../../../../../lib/tripScenario";
-import { getScenario } from "../../../../../lib/scenarios/registry";
+import { getScenario, type LogisticsSubtype } from "../../../../../lib/scenarios/registry";
+import { LogisticsMeetAtCourseEditor } from "./LogisticsMeetAtCourseEditor";
+import { LogisticsPickupEditor } from "./LogisticsPickupEditor";
+import { LogisticsFerryItineraryEditor } from "./LogisticsFerryItineraryEditor";
+import { FlightItineraryEditor } from "./FlightItineraryEditor";
+import { TrainItineraryEditor } from "./TrainItineraryEditor";
+import { DecisionLogisticsEditor } from "./DecisionLogisticsEditor";
+import { getRequiredItineraryFields, requiresItineraryDetails } from "../../../../../lib/itineraryHelpers";
+import type { TransportMode } from "../../../../../lib/tripActions";
 import { emitTripEvent } from "../../../../../lib/tripInstrumentation";
 
 function toDateValue(isoUtc?: string) {
@@ -276,20 +284,20 @@ function getNextSteps(
   if (currentPhaseId === "signupsClosed") {
     if (!hasLogisticsData) {
       steps.push({
-        label: "Add logistics (ferry, meet time, meeting point)",
+        label: "Add logistics (travel details, meet time, meeting point)",
         status: "todo",
         kind: "required",
         metaText: formatBeforeTripText(trip.date, 4),
       });
     } else {
       steps.push({
-        label: "Add logistics (ferry, meet time, meeting point)",
+        label: "Add logistics (travel details, meet time, meeting point)",
         status: "done",
         kind: "required",
       });
     }
     steps.push({
-      label: "Export for travel agent (CSV)",
+        label: "Export for organiser / booking contact (CSV)",
       status: "todo",
       kind: "optional",
     });
@@ -376,7 +384,7 @@ function getPrimaryNextAction(
   if (currentPhaseId === "signupsClosed") {
     if (!hasLogisticsData) {
       return {
-        label: "Add logistics (ferry, meet time, meeting point)",
+        label: "Add logistics (travel details, meet time, meeting point)",
         actionType: "navigate",
         actionPhase: 2,
         variant: "required",
@@ -436,7 +444,7 @@ function getOptionalActions(
 
   if (currentPhaseId === "signupsClosed") {
     actions.push({
-      label: "Export for travel agent (CSV)",
+        label: "Export for organiser / booking contact (CSV)",
       actionType: "exportCsv",
     });
     if (hasLogisticsData) {
@@ -586,17 +594,35 @@ export default function AdminTripPage() {
   });
   const [phase1FormDirty, setPhase1FormDirty] = useState(false);
   
-  // Signups Closed form state (local, not auto-saved)
-  const [phase2Form, setPhase2Form] = useState<{
-    ferry: string;
+  // Decision logistics form state (editable while signups are open)
+  const [decisionLogisticsForm, setDecisionLogisticsForm] = useState<{
     meetingPoint: string;
     meetTime: string;
-    ferryDetails: string;
+  }>({
+    meetingPoint: "",
+    meetTime: "",
+  });
+  const [decisionLogisticsDirty, setDecisionLogisticsDirty] = useState(false);
+  const [decisionLogisticsPosted, setDecisionLogisticsPosted] = useState(false);
+  const [decisionLogisticsEditing, setDecisionLogisticsEditing] = useState(false);
+  
+  // Signups Closed form state (local, not auto-saved)
+  const [phase2Form, setPhase2Form] = useState<{
+    ferry?: string;
+    flight?: string;
+    train?: string;
+    meetingPoint: string;
+    meetTime: string;
+    itineraryDetails?: string;
+    ferryDetails?: string; // Legacy field name
     notes: string;
   }>({
     ferry: "",
+    flight: "",
+    train: "",
     meetingPoint: "",
     meetTime: "",
+    itineraryDetails: "",
     ferryDetails: "",
     notes: "",
   });
@@ -689,7 +715,8 @@ export default function AdminTripPage() {
               logistics: {
                 meetingPoint: data.meeting_point || undefined,
                 meetTime: data.meet_time || undefined,
-                ferryDetails: data.ferry_details || undefined,
+                itineraryDetails: data.itinerary_details || data.ferry_details || undefined,
+                ferryDetails: data.ferry_details || data.itinerary_details || undefined, // Legacy backward compatibility
                 notes: data.notes || undefined,
               },
               attendees: [],
@@ -776,6 +803,42 @@ export default function AdminTripPage() {
     }
   }, [tripToUse?.id, tripToUse?.name, tripToUse?.date, tripToUse?.format, tripToUse?.capacity, tripToUse?.cutoffAt, tripToUse?.courseId, tripToUse?.teeId, phase1FormDirty]);
   
+  // Initialize decision logistics form from trip data
+  useEffect(() => {
+    if (tripToUse) {
+      // Always sync form data when not dirty or when not editing (to reflect saved changes)
+      if (!decisionLogisticsDirty || (!decisionLogisticsEditing && decisionLogisticsPosted)) {
+        setDecisionLogisticsForm({
+          meetingPoint: tripToUse.decisionLogistics?.meetingPoint ?? tripToUse.logistics?.meetingPoint ?? "",
+          meetTime: tripToUse.decisionLogistics?.meetTime ?? tripToUse.logistics?.meetTime ?? "",
+        });
+      }
+      
+      // Set posted to true if decision logistics exist (already saved)
+      const hasDecisionLogistics = !!(
+        tripToUse.decisionLogistics?.meetingPoint ||
+        tripToUse.decisionLogistics?.meetTime ||
+        (tripToUse.logistics?.meetingPoint && !tripToUse.logistics?.ferryDetails) // Legacy: if logistics has meeting point but no ferry details, treat as decision logistics
+      );
+      
+      if (hasDecisionLogistics) {
+        setDecisionLogisticsPosted(true);
+        if (!decisionLogisticsEditing) {
+          setDecisionLogisticsEditing(false);
+        }
+      } else {
+        setDecisionLogisticsPosted(false);
+      }
+    } else {
+      // Reset form when trip is not loaded yet
+      setDecisionLogisticsForm({
+        meetingPoint: "",
+        meetTime: "",
+      });
+      setDecisionLogisticsPosted(false);
+    }
+  }, [tripToUse?.id, tripToUse?.decisionLogistics, tripToUse?.logistics, decisionLogisticsDirty, decisionLogisticsEditing]);
+  
   // Initialize Signups Closed form from trip data
   useEffect(() => {
     if (tripToUse) {
@@ -783,8 +846,11 @@ export default function AdminTripPage() {
       if (!phase2FormDirty || (!phase2Editing && phase2Posted)) {
         setPhase2Form({
           ferry: tripToUse.ferry ?? "",
+          flight: "",
+          train: "",
           meetingPoint: tripToUse.logistics?.meetingPoint ?? "",
           meetTime: tripToUse.logistics?.meetTime ?? "",
+          itineraryDetails: tripToUse.logistics?.itineraryDetails ?? tripToUse.logistics?.ferryDetails ?? "",
           ferryDetails: tripToUse.logistics?.ferryDetails ?? "",
           notes: tripToUse.logistics?.notes ?? "",
         });
@@ -811,8 +877,11 @@ export default function AdminTripPage() {
       // Reset form when trip is not loaded yet
       setPhase2Form({
         ferry: "",
+        flight: "",
+        train: "",
         meetingPoint: "",
         meetTime: "",
+        itineraryDetails: "",
         ferryDetails: "",
         notes: "",
       });
@@ -1033,7 +1102,7 @@ export default function AdminTripPage() {
         missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap">;
       }>;
     };
-    agentItinerary: { done: boolean; missing: Array<"meeting_point" | "meet_time" | "ferry_details"> };
+    agentItinerary: { done: boolean; missing: Array<"meeting_point" | "meet_time" | "itinerary_details"> };
     nextAction: "set_basics" | "collect_roster" | "export_to_agent" | "enter_itinerary" | "done";
   } | null>(null);
   const [loadingDetailedReadiness, setLoadingDetailedReadiness] = useState(false);
@@ -1263,6 +1332,15 @@ export default function AdminTripPage() {
   
   // Export flags from scenario registry (for cross_border_agent, etc.)
   const exportAgentPackEnabled = recipe?.enabledActions.exportAgentPack === true;
+  
+  // Get logistics subtype from scenario - determines which editor to render (backward compatibility)
+  const logisticsSubtype = scenario?.logisticsSubtype;
+  
+  // Get transport mode from trip (primary) or derive from scenario (fallback)
+  const transportMode: TransportMode | null | undefined = tripToUse?.transportMode ?? 
+    (logisticsSubtype === "agent_ferry_itinerary" ? "ferry" : 
+     logisticsSubtype === "pickup_carpool" ? "car" : 
+     logisticsSubtype === "meet_at_course" ? "self" : null);
   
   // Get primary next action and optional actions
   const primaryActionData = getPrimaryNextAction(
@@ -1573,6 +1651,47 @@ export default function AdminTripPage() {
     }
   }
   
+  // Decision logistics form handlers
+  function updateDecisionLogisticsForm(field: keyof typeof decisionLogisticsForm, value: string) {
+    setDecisionLogisticsForm(prev => ({ ...prev, [field]: value }));
+    setDecisionLogisticsDirty(true);
+  }
+  
+  async function onSaveDecisionLogistics() {
+    if (!groupId) {
+      console.error("Cannot save decision logistics: groupId is not available");
+      return;
+    }
+    try {
+      // Merge directTrip into trips array if available to avoid extra fetching
+      const tripsWithDirect = directTrip && !trips.find(t => t.id === tripIdSafe)
+        ? [...trips, directTrip]
+        : trips;
+      
+      // Save decision logistics
+      const updates: Partial<Trip> = {
+        decisionLogistics: {
+          meetingPoint: decisionLogisticsForm.meetingPoint || undefined,
+          meetTime: decisionLogisticsForm.meetTime || undefined,
+        },
+      };
+      
+      const updated = await updateTrip(tripsWithDirect, tripIdSafe, groupId, updates);
+      setTrips(updated);
+      
+      // Reload trips to get fresh data
+      if (!groupId) return;
+      const freshTrips = await loadTrips(groupId, true);
+      setTrips(freshTrips);
+      setDecisionLogisticsDirty(false);
+      setDecisionLogisticsPosted(true);
+      setDecisionLogisticsEditing(false);
+    } catch (error) {
+      console.error("Failed to save decision logistics:", error);
+      alert(`Failed to save decision logistics: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
   
   // Phase 2 form handlers
   function updatePhase2Form(field: keyof typeof phase2Form, value: string) {
@@ -1586,6 +1705,11 @@ export default function AdminTripPage() {
       return;
     }
     try {
+      // Merge directTrip into trips array if available to avoid extra fetching
+      const tripsWithDirect = directTrip && !trips.find(t => t.id === tripIdSafe)
+        ? [...trips, directTrip]
+        : trips;
+      
       // Save all logistics fields in a single update to avoid race conditions
       const updates: Partial<Trip> = {
         ferry: phase2Form.ferry || undefined,
@@ -1597,7 +1721,7 @@ export default function AdminTripPage() {
         },
       };
       
-      const updated = await updateTrip(trips, tripIdSafe, groupId, updates);
+      const updated = await updateTrip(tripsWithDirect, tripIdSafe, groupId, updates);
       setTrips(updated);
       
       // Reload trips to get fresh data
@@ -1623,9 +1747,12 @@ export default function AdminTripPage() {
     if (trip) {
       setPhase2Form({
         ferry: trip.ferry ?? "",
+        flight: "",
+        train: "",
         meetingPoint: trip.logistics?.meetingPoint ?? "",
         meetTime: trip.logistics?.meetTime ?? "",
-        ferryDetails: trip.logistics?.ferryDetails ?? "",
+        itineraryDetails: trip.logistics?.itineraryDetails ?? trip.logistics?.ferryDetails ?? "",
+        ferryDetails: trip.logistics?.ferryDetails ?? trip.logistics?.itineraryDetails ?? "",
         notes: trip.logistics?.notes ?? "",
       });
     }
@@ -1638,9 +1765,12 @@ export default function AdminTripPage() {
     if (trip) {
       setPhase2Form({
         ferry: trip.ferry ?? "",
+        flight: "",
+        train: "",
         meetingPoint: trip.logistics?.meetingPoint ?? "",
         meetTime: trip.logistics?.meetTime ?? "",
-        ferryDetails: trip.logistics?.ferryDetails ?? "",
+        itineraryDetails: trip.logistics?.itineraryDetails ?? trip.logistics?.ferryDetails ?? "",
+        ferryDetails: trip.logistics?.ferryDetails ?? trip.logistics?.itineraryDetails ?? "",
         notes: trip.logistics?.notes ?? "",
       });
     }
@@ -1933,7 +2063,8 @@ export default function AdminTripPage() {
       if (!groupId) return; const freshTrips = await loadTrips(groupId, true);
       setTrips(freshTrips);
       
-      setSelectedPhase(2); // Navigate to Signups Closed
+      // Do not navigate to Signups Closed phase - stay on current view
+      // Phase decides timing; recipe decides which modules render
     } catch (error) {
       console.error("Failed to close signups:", error);
       alert(`Failed to close signups: ${error instanceof Error ? error.message : String(error)}`);
@@ -2504,7 +2635,7 @@ export default function AdminTripPage() {
                     : "bg-foreground hover:opacity-95"
                 }`}
               >
-                Export for agent
+                Export for organiser / booking contact
               </button>
               {detailedReadiness.rosterPack.missingReasonsBreakdown.length > 0 && (
                 <button
@@ -2524,11 +2655,11 @@ export default function AdminTripPage() {
           <section id="section-logistics" className="rounded-xl border bg-surface p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-foreground mb-3">Agent Itinerary</h3>
             <p className="text-sm text-muted mb-4">
-              Enter confirmed ferry and meeting details from the agent.
+              Enter confirmed travel and meeting details from the organiser / booking contact.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block">
-                <div className="text-sm font-medium text-foreground">Outbound Ferry Details</div>
+                <div className="text-sm font-medium text-foreground">Outbound Travel Details</div>
                 <textarea
                   className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   rows={2}
@@ -2536,7 +2667,7 @@ export default function AdminTripPage() {
                   onChange={(e) => setFerryDetailsInput(e.target.value)}
                   placeholder="e.g. Batam Fast, 7:00 AM, Harbourfront"
                 />
-                {!detailedReadiness.agentItinerary.done && detailedReadiness.agentItinerary.missing.includes("ferry_details") && (
+                {!detailedReadiness.agentItinerary.done && detailedReadiness.agentItinerary.missing.includes("itinerary_details") && (
                   <p className="text-danger text-xs mt-1">Required</p>
                 )}
               </label>
@@ -2546,7 +2677,7 @@ export default function AdminTripPage() {
                   className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
                   value={meetingPointInput}
                   onChange={(e) => setMeetingPointInput(e.target.value)}
-                  placeholder="e.g. Harbourfront Ferry Terminal"
+                  placeholder="e.g. Meet-up location"
                 />
                 {!detailedReadiness.agentItinerary.done && detailedReadiness.agentItinerary.missing.includes("meeting_point") && (
                   <p className="text-danger text-xs mt-1">Required</p>
@@ -3280,6 +3411,76 @@ export default function AdminTripPage() {
             </label>
           </div>
           
+          {/* Decision Logistics - Editable while signups are open */}
+          {logisticsSubtype && logisticsSubtype !== "agent_ferry_itinerary" && (
+            <div className="mt-6 pt-6 border-t border-border">
+              <h3 className="text-base font-semibold text-foreground mb-3">Decision logistics</h3>
+              <p className="mb-4 text-sm text-muted">
+                Add meetup details that help members decide whether to RSVP.
+              </p>
+              <DecisionLogisticsEditor
+                form={decisionLogisticsForm}
+                updateForm={updateDecisionLogisticsForm}
+                posted={decisionLogisticsPosted}
+                editing={decisionLogisticsEditing}
+              />
+              <div className="mt-6 flex items-start justify-between gap-3">
+                <div className="flex flex-col gap-2">
+                  {!decisionLogisticsPosted && (
+                    <button
+                      onClick={onSaveDecisionLogistics}
+                      className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    >
+                      Save logistics
+                    </button>
+                  )}
+                  {decisionLogisticsPosted && !decisionLogisticsEditing && (
+                    <button
+                      disabled
+                      className="rounded-lg bg-border px-4 py-2 text-sm font-medium text-white cursor-not-allowed"
+                    >
+                      Logistics saved
+                    </button>
+                  )}
+                  {decisionLogisticsDirty && !decisionLogisticsPosted && (
+                    <span className="flex items-center text-sm text-muted">Unsaved changes</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {decisionLogisticsPosted && !decisionLogisticsEditing && (
+                    <>
+                      <button
+                        onClick={() => setDecisionLogisticsEditing(true)}
+                        className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
+                      >
+                        Edit
+                      </button>
+                    </>
+                  )}
+                  {decisionLogisticsPosted && decisionLogisticsEditing && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setDecisionLogisticsEditing(false);
+                          setDecisionLogisticsDirty(false);
+                        }}
+                        className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={onSaveDecisionLogistics}
+                        className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                      >
+                        Save changes
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="mt-6 flex justify-end">
             <button
               onClick={moveToSignupsClosed}
@@ -3291,8 +3492,55 @@ export default function AdminTripPage() {
         </section>
       )}
 
-      {/* Signups Closed - Form-based, no auto-save */}
-      {showSignupsClosed && (
+      {/* Signups Closed - Default summary state */}
+      {/* Show logistics editor ONLY if recipe.sections.logistics === true */}
+      {/* Phase decides timing; recipe decides which modules render */}
+      {showSignupsClosed && !recipe?.sections.logistics && (
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="mb-3 flex items-center gap-3">
+            <button
+              onClick={goBackToOpenForSignups}
+              className="text-xs text-muted hover:text-foreground px-2 py-1 rounded border border-border bg-surface hover:bg-background"
+            >
+              ← Back
+            </button>
+            <h2 className="text-lg font-semibold text-foreground">Signups Closed</h2>
+          </div>
+          <div className="mb-4 space-y-2">
+            <p className="text-sm text-muted">
+              Signups are now closed. Attendees can view trip details on the trip page.
+            </p>
+            {tripToUse && (
+              <div className="text-sm text-foreground">
+                <span className="font-medium">
+                  {tripToUse.attendees.filter((a) => a.status === "confirmed").length} confirmed
+                </span>
+                {tripToUse.attendees.filter((a) => a.status === "waitlist").length > 0 && (
+                  <span className="text-muted">
+                    {" "}· {tripToUse.attendees.filter((a) => a.status === "waitlist").length} on waitlist
+                  </span>
+                )}
+              </div>
+            )}
+            {tripToUse && getDaysUntilTrip(tripToUse.date) !== null && (
+              <div className="text-sm text-muted">
+                Trip on {formatDateForDisplay(tripToUse.date)} {getDaysUntilTrip(tripToUse.date) === 0 ? "(today)" : getDaysUntilTrip(tripToUse.date) === 1 ? "(tomorrow)" : `(${getDaysUntilTrip(tripToUse.date)} days away)`}
+              </div>
+            )}
+          </div>
+          <div className="mt-6 flex justify-end">
+            <button
+              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              onClick={moveToGameDay}
+            >
+              Start round →
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Signups Closed - Logistics editor (ONLY if recipe enables logistics) */}
+      {showSignupsClosed && recipe?.sections.logistics === true && logisticsSubtype && (
         <section className="rounded-xl border bg-surface p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-3">
             <button
@@ -3304,92 +3552,52 @@ export default function AdminTripPage() {
             <h2 className="text-lg font-semibold text-foreground">Signups Closed</h2>
           </div>
           <p className="mb-4 text-sm text-muted">
-            Add logistics information that will be displayed on the trip details page for attendees.
+            {logisticsSubtype === "agent_ferry_itinerary" 
+              ? "Add ferry itinerary and operational details that will be displayed after signups close."
+              : "Add operational logistics details (if needed beyond decision logistics already entered)."}
           </p>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="block">
-              <div className="text-sm font-medium text-foreground">Ferry</div>
-              {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
-                  {phase2Form.ferry || "—"}
-                </div>
-              ) : (
-                <input
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
-                  value={phase2Form.ferry}
-                  onChange={(e) => updatePhase2Form("ferry", e.target.value)}
-                  placeholder="e.g. Batam Fast"
-                />
-              )}
-            </label>
-
-            <label className="block">
-              <div className="text-sm font-medium text-foreground">Meet time</div>
-              {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
-                  {phase2Form.meetTime || "—"}
-                </div>
-              ) : (
-                <input
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
-                  value={phase2Form.meetTime}
-                  onChange={(e) => updatePhase2Form("meetTime", e.target.value)}
-                  placeholder="e.g. 6:00am"
-                />
-              )}
-            </label>
-
-            <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-foreground">Meeting point</div>
-              {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground">
-                  {phase2Form.meetingPoint || "—"}
-                </div>
-              ) : (
-                <input
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
-                  value={phase2Form.meetingPoint}
-                  onChange={(e) => updatePhase2Form("meetingPoint", e.target.value)}
-                  placeholder="e.g. Harbourfront Ferry Terminal"
-                />
-              )}
-            </label>
-
-            <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-foreground">Ferry details</div>
-              {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground whitespace-pre-wrap min-h-[3rem]">
-                  {phase2Form.ferryDetails || "—"}
-                </div>
-              ) : (
-                <textarea
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
-                  rows={3}
-                  value={phase2Form.ferryDetails}
-                  onChange={(e) => updatePhase2Form("ferryDetails", e.target.value)}
-                  placeholder="Additional ferry information..."
-                />
-              )}
-            </label>
-
-            <label className="block md:col-span-2">
-              <div className="text-sm font-medium text-foreground">Notes</div>
-              {phase2Posted && !phase2Editing ? (
-                <div className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-background text-foreground whitespace-pre-wrap min-h-[4rem]">
-                  {phase2Form.notes || "—"}
-                </div>
-              ) : (
-                <textarea
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm"
-                  rows={4}
-                  value={phase2Form.notes}
-                  onChange={(e) => updatePhase2Form("notes", e.target.value)}
-                  placeholder="Additional logistics notes..."
-                />
-              )}
-            </label>
-          </div>
+          {/* Render appropriate logistics editor based on transportMode */}
+          {(transportMode === "self" || logisticsSubtype === "meet_at_course") && (
+            <LogisticsMeetAtCourseEditor
+              phase2Form={phase2Form}
+              updatePhase2Form={updatePhase2Form}
+              phase2Posted={phase2Posted}
+              phase2Editing={phase2Editing}
+            />
+          )}
+          {(transportMode === "car" || logisticsSubtype === "pickup_carpool") && (
+            <LogisticsPickupEditor
+              phase2Form={phase2Form}
+              updatePhase2Form={updatePhase2Form}
+              phase2Posted={phase2Posted}
+              phase2Editing={phase2Editing}
+            />
+          )}
+          {(transportMode === "ferry" || logisticsSubtype === "agent_ferry_itinerary") && (
+            <LogisticsFerryItineraryEditor
+              phase2Form={phase2Form}
+              updatePhase2Form={updatePhase2Form}
+              phase2Posted={phase2Posted}
+              phase2Editing={phase2Editing}
+            />
+          )}
+          {transportMode === "plane" && (
+            <FlightItineraryEditor
+              phase2Form={phase2Form}
+              updatePhase2Form={updatePhase2Form}
+              phase2Posted={phase2Posted}
+              phase2Editing={phase2Editing}
+            />
+          )}
+          {transportMode === "train" && (
+            <TrainItineraryEditor
+              phase2Form={phase2Form}
+              updatePhase2Form={updatePhase2Form}
+              phase2Posted={phase2Posted}
+              phase2Editing={phase2Editing}
+            />
+          )}
           
           <div className="mt-6 flex items-start justify-between gap-3">
             <div className="flex flex-col gap-2">
@@ -3419,13 +3627,13 @@ export default function AdminTripPage() {
                     Export roster (coming soon)
                   </button>
                 )}
-                {/* Export for travel agent - show if export is enabled */}
+                {/* Export for organiser / booking contact - show if export is enabled */}
                 {exportEnabled && (
                   <button
                     className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
                     onClick={onExportTravelAgentCsv}
                   >
-                    Export for travel agent (CSV)
+                    Export for organiser / booking contact (CSV)
                   </button>
                 )}
                 {/* Passport export - show if exportAgentPack is enabled (e.g., cross_border_agent) */}

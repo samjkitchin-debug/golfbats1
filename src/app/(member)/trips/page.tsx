@@ -12,6 +12,7 @@ import { PromptModal } from "../../components/PromptModal";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
 import { checkMemberExportReadiness } from "../../lib/memberExportReadiness";
 import { useRouter } from "next/navigation";
+import { getGolfNoun } from "../../lib/roundNounHelper";
 
 // Helper function to check if cutoff has passed (11:59pm SGT on cutoff date)
 function isCutoffPassed(cutoffAt: string | undefined): boolean {
@@ -552,7 +553,7 @@ export default function TripsListPage() {
   // Helper component for aligned trip row (single card with internal expansion)
   function TripRow({ trip, isExpanded, onToggle }: { trip: Trip & { groupName?: string; groupId?: string; maxAttendees?: number }; isExpanded: boolean; onToggle: () => void }) {
     const courseText = getTripCourseText(trip, courses);
-    const tripName = trip.name || courseText.title || "Trip";
+    const tripName = trip.name || courseText.title || (getGolfNoun(trip) === "trip" ? "Trip" : "Round");
     const tripDateParts = formatTripRowDate(trip.date);
     const groupName = trip.groupName || "";
     const groupId = trip.groupId || "";
@@ -869,9 +870,9 @@ export default function TripsListPage() {
       {completionPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
           <div className="w-full max-w-md rounded-xl bg-surface border border-border p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-2">Complete your details for the agent</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Complete your details for the organiser / booking contact</h3>
             <p className="text-sm text-muted mb-4">
-              You're in! To help the organiser export your details to the travel agent, please complete:
+              You're in! To help the organiser export your details to the booking contact, please complete:
             </p>
             <ul className="list-disc list-inside text-sm text-muted mb-4 space-y-1">
               {completionPrompt.missingFields.map((field, idx) => (

@@ -20,6 +20,7 @@ import { TripRsvpActions } from "../../../components/TripRsvpActions";
 import { perfMark, perfMeasure, perfLog } from "../../../lib/perf";
 import { checkMemberExportReadiness } from "../../../lib/memberExportReadiness";
 import { useRouter } from "next/navigation";
+import { getGolfNoun } from "../../../lib/roundNounHelper";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -570,8 +571,11 @@ export default function TripDetailPage() {
     ? golfDetailsSecondaryParts.join(" · ")
     : null;
 
-  // Extract time from meetTime
-  const meetTime = trip.logistics?.meetTime?.trim() || null;
+  // Extract time from meetTime - prioritize decision logistics, fall back to operational logistics
+  const meetTime = (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime)?.trim() || null;
+  
+  // Get meeting point - prioritize decision logistics, fall back to operational logistics
+  const meetingPoint = (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint)?.trim() || null;
 
   // Trip state: "Open for sign up" + confirmed count (muted)
   const tripStateText =
@@ -605,7 +609,7 @@ export default function TripDetailPage() {
 
         {/* Trip name */}
         <div className="mt-2 text-xl font-semibold text-foreground">
-          {trip.name || "Trip"}
+          {trip.name || (getGolfNoun(trip) === "trip" ? "Trip" : "Round")}
         </div>
 
         {/* Cancelled info box */}
@@ -657,6 +661,13 @@ export default function TripDetailPage() {
           )}
         </div>
 
+        {/* 3) Decision logistics block - shown if present */}
+        {(meetingPoint || meetTime) && (
+          <div className="mt-3 space-y-1 text-sm text-foreground">
+            {meetingPoint && <div><span className="text-muted">Meet:</span> {meetingPoint}</div>}
+          </div>
+        )}
+
         {/* 4) Trip state block (muted) */}
         {tripStateText && (
           <div className="mt-2 text-sm text-muted">
@@ -687,7 +698,7 @@ export default function TripDetailPage() {
          exportReadinessNotice?.show && (
           <div className="mt-4 rounded-lg border border-brand-orange/30 bg-brand-orange/5 p-3">
             <div className="text-sm font-medium text-foreground mb-1">
-              This trip requires passport details for the travel agent.
+              This trip requires passport details for the organiser / booking contact.
             </div>
             <div className="text-xs text-muted mb-3">
               Please complete your passport details to enable agent export.
@@ -739,7 +750,7 @@ export default function TripDetailPage() {
       </section>
 
       {/* 3) Logistics block (single coherent group) */}
-      {(trip.logistics?.meetingPoint || trip.ferry || trip.logistics?.ferryDetails || trip.logistics?.notes) && (
+      {(trip.logistics?.meetingPoint || trip.ferry || trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails || trip.logistics?.notes) && (
         <section className="rounded-xl border bg-surface p-5 shadow-sm">
           <div className="mb-3 text-sm font-medium text-muted">Logistics</div>
 
@@ -749,12 +760,12 @@ export default function TripDetailPage() {
             )}
 
             {trip.ferry && (
-              <div>Ferry: {trip.ferry}</div>
+              <div>{trip.ferry}</div>
             )}
 
-            {trip.logistics?.ferryDetails && (
+            {(trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails) && (
               <div className="text-sm text-foreground whitespace-pre-wrap">
-                {trip.logistics.ferryDetails}
+                {trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails}
               </div>
             )}
 

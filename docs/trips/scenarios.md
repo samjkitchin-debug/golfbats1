@@ -196,3 +196,42 @@ What scenarios do **not** decide:
 - Joinability rules (phase handles that)
 
 That separation is intentional.
+
+---
+
+## Shape vs Variant
+
+The scenario system uses a **two-stage classification** approach:
+
+1. **Shape-first classification**: The base scenario archetype is determined by the trip's "shape" (external coordination, overnight, carpool, travel together) — not by booking responsibility.
+2. **Variant overlay**: Additional modules and defaults (e.g., export, profile, itinerary) are overlayed based on booking responsibility, cross-border status, and required member information.
+
+### Shape Precedence
+
+The scenario key (`ScenarioKey`) is chosen using this precedence order:
+
+1. **External coordination** → `casual_round` (someone else is handling everything)
+2. **Overnight** → `overnight_trip`
+3. **Carpool** → `carpool_round`
+4. **Travel together** → `away_day`
+5. **Default** → `local_round`
+
+Booking responsibility (self-pay, organiser, agent) does **not** affect the scenario key — it only affects which modules are enabled via the variant overlay.
+
+### Variant Overlay
+
+The variant overlay (`DerivedVariant`) adds modules and defaults on top of the base scenario:
+
+- **Booking mode**: `self_pay` (everyone sorts themselves), `organiser` (I'm handling bookings), or `delegate` (agent/external is handling bookings)
+- **Cross-border**: Determined from course country vs home country
+- **Passport requirements**: Cross-border OR required member info includes passport fields
+- **Modules enabled**: Export, profile, itinerary, flights — enabled based on booking mode, passport requirements, and travel coordination
+- **Cutoff rules**: Overlaid defaults (e.g., 3 days before when passport + booking mode != self_pay)
+
+The variant overlay is applied to the base scenario definition to produce the **effective scenario** used for:
+- Recipe derivation
+- Readiness checks
+- Module toggles
+- Step requirements
+
+This separation allows the same scenario shape (e.g., `away_day`) to support different booking modes (self-pay vs organiser vs agent) without requiring separate scenario definitions.

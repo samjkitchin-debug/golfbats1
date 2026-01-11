@@ -12,23 +12,35 @@ const CACHE_TAG = "trips";
  */
 async function fetchTripsData(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  groupId: string
+  groupId: string,
+  currentMemberId?: string | null // For filtering member trips visibility
 ) {
   // Get today's date in local timezone (YYYY-MM-DD format)
   // Use UTC date but compare as date strings (YYYY-MM-DD) to avoid timezone issues
   const today = new Date();
   const todayYmd = today.toISOString().slice(0, 10);
   
-  // Fetch trips for the specified group - only upcoming trips (trip_date >= today)
-  // Exclude past-status trips: completed, archived, closed (those belong in Results)
-  // Only select columns we actually use (performance optimization)
-  const { data: tripsDataRaw, error: tripsError } = await supabase
+  // Build base query
+  let query = supabase
     .from("trips")
     .select(
-      "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key"
+      "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group"
     )
     .eq("group_id", groupId)
-    .gte("trip_date", todayYmd) // Only trips with date >= today (upcoming only)
+    .gte("trip_date", todayYmd); // Only trips with date >= today (upcoming only)
+
+  // For member-facing requests, filter member trips by visibility
+  // Show: group trips OR (member trips that are posted OR created by current member)
+  if (currentMemberId !== undefined) {
+    if (currentMemberId) {
+      query = query.or(`trip_origin.eq.group,and(trip_origin.eq.member,or(is_posted_to_group.eq.true,created_by_member_id.eq.${currentMemberId}))`);
+    } else {
+      // No member ID - only show group trips and posted member trips
+      query = query.or(`trip_origin.eq.group,and(trip_origin.eq.member,is_posted_to_group.eq.true)`);
+    }
+  }
+  
+  const { data: tripsDataRaw, error: tripsError } = await query
     .order("trip_date", { ascending: false });
 
   if (tripsError) {
@@ -36,8 +48,9 @@ async function fetchTripsData(
     throw new Error(tripsError.message || "Failed to fetch trips.");
   }
 
-  // Filter out past-status trips in JavaScript (completed, archived, closed belong in Results)
-  const excludedStatuses = ["completed", "archived", "closed"];
+  // Filter out truly inactive statuses (completed, archived belong in Results)
+  // "closed" means signups closed but trip is still upcoming - MUST remain visible
+  const excludedStatuses = ["completed", "archived"];
   const tripsData = (tripsDataRaw || []).filter(
     (trip) => !excludedStatuses.includes(trip.status)
   );
@@ -47,6 +60,30 @@ async function fetchTripsData(
   }
 
   const tripIds = tripsData.map((t) => t.id);
+
+  // Fetch member names for created_by_member_id (for displaying host name)
+  const memberCreatorIds = Array.from(new Set(
+    tripsData
+      .filter(t => (t as any).created_by_member_id)
+      .map(t => (t as any).created_by_member_id)
+  ));
+  
+  const memberCreatorsById: Record<string, { display_name: string | null; full_name: string | null }> = {};
+  if (memberCreatorIds.length > 0) {
+    const { data: creatorsData } = await supabase
+      .from("members")
+      .select("id, display_name, full_name")
+      .in("id", memberCreatorIds);
+    
+    if (creatorsData) {
+      for (const m of creatorsData) {
+        memberCreatorsById[m.id] = {
+          display_name: m.display_name,
+          full_name: m.full_name,
+        };
+      }
+    }
+  }
 
   // Fetch attendees for all trips in parallel with results
   const [attendeesResult, resultsResult] = await Promise.all([
@@ -192,6 +229,12 @@ async function fetchTripsData(
       courseId: trip.course_id,
       teeId: trip.tee_id,
       scenarioKey: (trip as any).scenario_key || null,
+      // Decision logistics: meeting_point/meet_time when ferry_details is null (decision-grade only)
+      // Operational logistics: full logistics object when ferry_details exists
+      decisionLogistics: trip.meeting_point && !trip.ferry_details ? {
+        meetingPoint: trip.meeting_point || undefined,
+        meetTime: trip.meet_time || undefined,
+      } : undefined,
       logistics: {
         meetingPoint: trip.meeting_point || undefined,
         meetTime: trip.meet_time || undefined,
@@ -208,6 +251,15 @@ async function fetchTripsData(
         : undefined,
       createdAtUtc: trip.created_at,
       updatedAtUtc: trip.updated_at,
+      tripOrigin: (trip as any).trip_origin || 'group',
+      createdByMemberId: (trip as any).created_by_member_id || null,
+      isPostedToGroup: (trip as any).is_posted_to_group !== undefined ? (trip as any).is_posted_to_group : true,
+      // Include creator name for member trips (for UI display)
+      createdByMemberName: (trip as any).created_by_member_id 
+        ? (memberCreatorsById[(trip as any).created_by_member_id]?.display_name || 
+           memberCreatorsById[(trip as any).created_by_member_id]?.full_name || 
+           null)
+        : null,
     };
   });
 
@@ -256,7 +308,16 @@ export async function GET(req: Request) {
       );
     }
 
-    const result = await fetchTripsData(supabase, groupId);
+    // Get current member ID for filtering member trips visibility
+    let currentMemberId: string | null = null;
+    const { data: memberData } = await supabase
+      .from("members")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    currentMemberId = memberData?.id || null;
+
+    const result = await fetchTripsData(supabase, groupId, currentMemberId);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Get trips error:", error);
@@ -315,10 +376,15 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check group admin authorization: platform admin OR approved group admin
+    // Determine trip origin from request (if not provided, default to 'group' for backward compatibility)
+    const tripOrigin = trip.tripOrigin === 'member' ? 'member' : 'group';
+    
+    // Authorization: 
+    // - Only admins can create group trips
+    // - Any approved member can create member trips
     const isPlatformAdmin = isEmailAdmin(user.email);
 
-    // Check if user is approved admin of this group
+    // Check group membership
     const { data: groupMember } = await supabase
       .from("group_members")
       .select("role, status")
@@ -330,9 +396,19 @@ export async function POST(req: Request) {
       isPlatformAdmin ||
       (groupMember && groupMember.role === "admin" && groupMember.status === "approved");
 
-    if (!isGroupAdmin) {
+    const isApprovedMember = 
+      groupMember && groupMember.status === "approved";
+
+    if (tripOrigin === 'group' && !isGroupAdmin) {
       return NextResponse.json(
-        { error: "You must be an approved admin of this group to manage trips." },
+        { error: "You must be an approved admin of this group to create group trips." },
+        { status: 403 }
+      );
+    }
+
+    if (tripOrigin === 'member' && !isApprovedMember) {
+      return NextResponse.json(
+        { error: "You must be an approved member of this group to create member trips." },
         { status: 403 }
       );
     }
@@ -428,6 +504,17 @@ export async function POST(req: Request) {
           );
         }
       }
+      // Handle decision logistics (stored in meeting_point/meet_time when no ferry_details)
+      if (trip.decisionLogistics !== undefined) {
+        updateData.meeting_point = trip.decisionLogistics?.meetingPoint || null;
+        updateData.meet_time = trip.decisionLogistics?.meetTime || null;
+        // Decision logistics doesn't include ferry_details, so preserve existing or set to null
+        if (trip.logistics === undefined) {
+          // If logistics not provided, preserve existing ferry_details/notes
+          // Decision logistics only updates meeting_point/meet_time
+        }
+      }
+      // Handle operational logistics (full logistics object, may include ferry_details)
       if (trip.logistics !== undefined) {
         updateData.meeting_point = trip.logistics?.meetingPoint || null;
         updateData.meet_time = trip.logistics?.meetTime || null;
@@ -533,6 +620,34 @@ export async function POST(req: Request) {
         }
       }
 
+      // Determine trip origin and member creator
+      // trip.tripOrigin must be explicitly provided - admin flow = 'group', member flow = 'member'
+      const tripOrigin = trip.tripOrigin === 'member' ? 'member' : 'group';
+      
+      // For member trips, get member ID from user
+      let createdByMemberId: string | null = null;
+      if (tripOrigin === 'member') {
+        // Get member ID from user_id
+        const { data: memberData } = await supabase
+          .from("members")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        
+        if (!memberData) {
+          return NextResponse.json(
+            { error: "Member profile not found. Cannot create member trip." },
+            { status: 403 }
+          );
+        }
+        createdByMemberId = memberData.id;
+      }
+      
+      // Determine is_posted_to_group
+      // Group trips: always true
+      // Member trips: use trip.isPostedToGroup or default to false
+      const isPostedToGroup = tripOrigin === 'group' ? true : (trip.isPostedToGroup ?? false);
+
       // Build INSERT payload with validated fields
       const tripId = crypto.randomUUID();
       const insertData: any = {
@@ -556,6 +671,9 @@ export async function POST(req: Request) {
         meet_time: trip.logistics?.meetTime || null,
         ferry_details: trip.logistics?.ferryDetails || null,
         notes: trip.logistics?.notes || null,
+        trip_origin: tripOrigin,
+        created_by_member_id: createdByMemberId,
+        is_posted_to_group: isPostedToGroup,
         created_at: now,
         updated_at: now,
       };

@@ -15,6 +15,8 @@ import { getTripCourseText } from "../../../../lib/tripDisplay";
 import { createSupabaseBrowserClient } from "../../../../lib/supabaseBrowser";
 import CreateTripFlowModal from "../../../components/CreateTripFlowModal";
 import { ConfirmModal } from "../../../../components/ConfirmModal";
+import { isTripUpcoming } from "../../../../lib/tripDates";
+import { getAdminTripRowStatus, getAdminTripNextStep, formatDateWithProximity } from "../../../../lib/adminTripHelpers";
 
 function todayYmd() {
   const d = new Date();
@@ -22,38 +24,6 @@ function todayYmd() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/**
- * Your Trip type doesn't include isClosed.
- * This derives a display status from common fields if they exist, otherwise "—".
- * It avoids TS errors by probing via unknown + Record<string, unknown>.
- */
-function tripStatus(trip: Trip): "Open" | "Closed" | "—" {
-  const anyTrip = trip as unknown as Record<string, unknown>;
-
-  // Common patterns you may have in your schema:
-  // - closed: boolean
-  // - is_closed: boolean
-  // - closedAt / closed_at: string timestamp
-  // - status: "open" | "closed" | etc
-  const closedBool =
-    (typeof anyTrip.closed === "boolean" && anyTrip.closed) ||
-    (typeof anyTrip.is_closed === "boolean" && anyTrip.is_closed);
-
-  if (closedBool) return "Closed";
-
-  const closedAt =
-    (typeof anyTrip.closedAt === "string" && anyTrip.closedAt.trim() !== "") ||
-    (typeof anyTrip.closed_at === "string" && anyTrip.closed_at.trim() !== "");
-
-  if (closedAt) return "Closed";
-
-  const status = typeof anyTrip.status === "string" ? anyTrip.status.toLowerCase() : "";
-  if (status === "closed") return "Closed";
-  if (status === "open") return "Open";
-
-  // If we found nothing, don't guess.
-  return "—";
-}
 
 export default function GroupAdminTripsPage() {
   const router = useRouter();
@@ -65,6 +35,7 @@ export default function GroupAdminTripsPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteTripId, setDeleteTripId] = useState<number | null>(null);
 
@@ -104,15 +75,18 @@ export default function GroupAdminTripsPage() {
     const currentGroupId = groupId; // Capture for closure
     async function loadData() {
       setLoading(true);
+      setLoadError(null);
       try {
         // Bypass cache on initial load to ensure we get fresh data
-        const [tripsData, coursesData] = await Promise.all([loadTrips(currentGroupId, true), loadCourses()]);
-        console.log("Loaded trips:", tripsData.length, tripsData);
+        const tripsData = await loadTrips(currentGroupId, true, true);
+        const coursesData = await loadCourses();
+        console.log("[AdminTrips] counts", { groupSlug, groupId: currentGroupId, raw: tripsData.length });
         setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
         console.error("Failed to load data:", error);
-        alert(`Failed to load trips: ${error instanceof Error ? error.message : String(error)}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        setLoadError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -120,7 +94,20 @@ export default function GroupAdminTripsPage() {
     loadData();
   }, [groupId]);
 
-  const sortedTrips = useMemo(() => sortTripsByDateAsc(trips), [trips]);
+  // Filter to only upcoming trips and sort
+  const upcomingTrips = useMemo(() => {
+    const now = new Date();
+    return trips.filter(trip => isTripUpcoming(trip, now));
+  }, [trips]);
+  
+  const sortedTrips = useMemo(() => sortTripsByDateAsc(upcomingTrips), [upcomingTrips]);
+
+  // Console instrumentation for upcoming filter
+  useEffect(() => {
+    if (trips.length > 0 || upcomingTrips.length > 0) {
+      console.log("[AdminTrips] upcoming filter", { raw: trips.length, upcoming: upcomingTrips.length });
+    }
+  }, [trips.length, upcomingTrips.length]);
 
   async function handleTripCreated(tripId: number) {
     // Reload trips after creation
@@ -185,7 +172,11 @@ export default function GroupAdminTripsPage() {
           </button>
         </div>
 
-        {sortedTrips.length === 0 ? (
+        {loadError ? (
+          <div className="rounded-xl border bg-surface p-4">
+            <p className="text-sm text-muted">Couldn't load trips. Please refresh.</p>
+          </div>
+        ) : sortedTrips.length === 0 ? (
           <div className="rounded-xl border bg-surface p-8 text-center">
             <p className="text-sm text-muted">No trips yet.</p>
           </div>
@@ -205,32 +196,58 @@ export default function GroupAdminTripsPage() {
               <tbody className="divide-y divide-border">
                 {sortedTrips.map((trip) => {
                   const courseText = getTripCourseText(trip, courses);
+                  const status = getAdminTripRowStatus(trip);
+                  const nextStep = getAdminTripNextStep(trip);
+                  const dateDisplay = formatDateWithProximity(trip.date);
+                  
+                  // Determine if needs setup (for button label)
+                  const needsDetails = status.label === "Needs details";
+                  
                   return (
                     <tr key={trip.id} className="hover:bg-background">
-                      <td className="px-4 py-3 text-sm font-medium text-foreground">
-                        {trip.name || "Untitled Trip"}
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-foreground">
+                          {trip.name || "Untitled Trip"}
+                        </div>
+                        <div className="text-xs text-muted mt-0.5">
+                          {trip.tripOrigin === 'member' 
+                            ? `Member round${trip.createdByMemberName ? ` — hosted by ${trip.createdByMemberName}` : ''}`
+                            : 'Group round'}
+                        </div>
+                        {nextStep && (
+                          <div className="text-xs text-muted mt-0.5">
+                            {nextStep}
+                          </div>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-foreground">{trip.date}</td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-foreground">
+                          {dateDisplay.primary}
+                        </div>
+                        {dateDisplay.secondary && (
+                          <div className="text-xs text-muted">
+                            {dateDisplay.secondary}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-sm text-muted">{trip.format}</td>
                       <td className="px-4 py-3 text-sm text-muted">{courseText.title}</td>
-                      <td className="px-4 py-3 text-sm text-muted">{tripStatus(trip)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-sm ${
+                          status.tone === 'warning' ? 'text-amber-600' :
+                          status.tone === 'good' ? 'text-brand-green' :
+                          'text-muted'
+                        }`}>
+                          {status.label}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-background"
-                            onClick={() => router.push(`/admin/g/${groupSlug}/trips/${trip.id}`)}
-                          >
-                            Manage
-                          </button>
-                          {trip.status === "open" && (
-                            <button
-                              className="rounded-lg border border-danger bg-surface px-3 py-1.5 text-sm text-danger hover:bg-danger-light"
-                              onClick={() => onDeleteTrip(trip.id)}
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
+                        <button
+                          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-background"
+                          onClick={() => router.push(`/admin/g/${groupSlug}/trips/${trip.id}`)}
+                        >
+                          {needsDetails ? "Finish setup" : "Manage"}
+                        </button>
                       </td>
                     </tr>
                   );
@@ -254,8 +271,8 @@ export default function GroupAdminTripsPage() {
 
       <ConfirmModal
         isOpen={deleteTripId !== null}
-        title="Delete trip"
-        message="Are you sure you want to delete this trip? This action cannot be undone."
+        title="Delete round"
+        message="Are you sure you want to delete this round? This action cannot be undone."
         confirmLabel="Delete"
         cancelLabel="Cancel"
         onConfirm={confirmDeleteTrip}
