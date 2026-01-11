@@ -1500,7 +1500,7 @@ export default function AdminTripPage() {
     setShowCancelModal(false);
     
     try {
-      const updated = await updateTrip(trips, tripIdSafe, { status: "cancelled" });
+      const updated = await updateTrip(trips, tripIdSafe, groupId, { status: "cancelled" });
       setTrips(updated);
       
       // Reload trips to get fresh data
