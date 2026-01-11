@@ -101,8 +101,14 @@ export default function CreateTripFlowModal({
   }, [open, groupId]);
 
   async function handleStage1Submit() {
-    if (!tripDate || !tripName.trim()) {
-      setError("Date and name are required.");
+    // Client-side validation (Option B: name is required)
+    const trimmedName = tripName.trim();
+    if (!tripDate) {
+      setError("Date is required.");
+      return;
+    }
+    if (!trimmedName) {
+      setError("Trip name is required.");
       return;
     }
 
@@ -110,17 +116,11 @@ export default function CreateTripFlowModal({
     setError(null);
 
     try {
-      // IMPORTANT: User-entered name and date must never be overridden by defaults or recipe logic.
-      // Create trip with explicit user input - ensure name and date are always passed.
-      const trimmedName = tripName.trim();
-      if (!trimmedName) {
-        setError("Trip name is required.");
-        return;
-      }
-      
+      // IMPORTANT: Trip name is REQUIRED (Option B). User-entered name and date must never be overridden.
+      // The API will also validate, but we validate here for better UX (prevents bad requests).
       const result = await createTrip([], groupId, {
         date: tripDate, // User-selected date - must be preserved
-        name: trimmedName, // User-entered name - must be preserved
+        name: trimmedName, // User-entered name (validated, non-empty) - must be preserved
         format: "Stableford",
         status: "open",
         capacity: 16, // Will be updated in stage 2 if needed

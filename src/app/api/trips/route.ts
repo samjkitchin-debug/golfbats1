@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 import { isEmailAdmin } from "@/app/lib/auth";
+import { requireNonEmptyString, optionalNonEmptyString } from "@/app/lib/validation";
 
 const CACHE_TAG = "trips";
 
@@ -322,23 +323,67 @@ export async function POST(req: Request) {
         );
       }
 
-      // IMPORTANT: User-entered name and date must never be overridden by defaults or recipe logic.
+      // IMPORTANT: PATCH semantics - only update fields that are actually provided (undefined = omit, null = reject for name).
+      // Build sparse update payload conditionally.
       const updateData: any = {
-        name: trip.name !== undefined && trip.name !== null ? String(trip.name).trim() || null : null,
-        trip_date: trip.date,
-        format: trip.format,
-        ferry: trip.ferry || null,
-        capacity: trip.capacity,
-        status: trip.status,
-        cutoff_at: trip.cutoffAt ? new Date(trip.cutoffAt).toISOString() : null,
-        course_id: trip.courseId || null,
-        tee_id: trip.teeId || null,
-        meeting_point: trip.logistics?.meetingPoint || null,
-        meet_time: trip.logistics?.meetTime || null,
-        ferry_details: trip.logistics?.ferryDetails || null,
-        notes: trip.logistics?.notes || null,
         updated_at: now,
       };
+
+      // Handle name field with strict validation
+      if (trip.name !== undefined) {
+        try {
+          const validatedName = optionalNonEmptyString(trip.name);
+          if (validatedName !== undefined) {
+            updateData.name = validatedName;
+          }
+        } catch (err) {
+          return NextResponse.json(
+            { error: err instanceof Error ? err.message : "Trip name cannot be null or empty" },
+            { status: 400 }
+          );
+        }
+      }
+      // If trip.name is undefined, do NOT include it in updateData (preserve existing value)
+
+      // Handle trip_date (if provided, update it)
+      if (trip.date !== undefined) {
+        if (typeof trip.date !== "string" || !trip.date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          return NextResponse.json(
+            { error: "Trip date must be in YYYY-MM-DD format" },
+            { status: 400 }
+          );
+        }
+        updateData.trip_date = trip.date;
+      }
+
+      // Handle other fields (only include if provided)
+      if (trip.format !== undefined) {
+        updateData.format = trip.format;
+      }
+      if (trip.ferry !== undefined) {
+        updateData.ferry = trip.ferry || null;
+      }
+      if (trip.capacity !== undefined) {
+        updateData.capacity = trip.capacity;
+      }
+      if (trip.status !== undefined) {
+        updateData.status = trip.status;
+      }
+      if (trip.cutoffAt !== undefined) {
+        updateData.cutoff_at = trip.cutoffAt ? new Date(trip.cutoffAt).toISOString() : null;
+      }
+      if (trip.courseId !== undefined) {
+        updateData.course_id = trip.courseId || null;
+      }
+      if (trip.teeId !== undefined) {
+        updateData.tee_id = trip.teeId || null;
+      }
+      if (trip.logistics !== undefined) {
+        updateData.meeting_point = trip.logistics?.meetingPoint || null;
+        updateData.meet_time = trip.logistics?.meetTime || null;
+        updateData.ferry_details = trip.logistics?.ferryDetails || null;
+        updateData.notes = trip.logistics?.notes || null;
+      }
 
       const { error: updateError } = await supabase
         .from("trips")
@@ -390,17 +435,48 @@ export async function POST(req: Request) {
         );
       }
 
-      // IMPORTANT: User-entered name and date must never be overridden by defaults or recipe logic.
-      // Build canonical payload - explicitly pass user input, fallback to defaults only if missing.
+      // IMPORTANT: Trip name is REQUIRED (Option B). Users cannot create a trip with null/empty/whitespace name.
+      // Validate required fields
+      let validatedName: string;
+      let validatedDate: string;
+
+      try {
+        validatedName = requireNonEmptyString(trip.name, "Trip name");
+      } catch (err) {
+        return NextResponse.json(
+          { error: err instanceof Error ? err.message : "Trip name is required" },
+          { status: 400 }
+        );
+      }
+
+      // Validate trip_date format (YYYY-MM-DD)
+      if (!trip.date || typeof trip.date !== "string") {
+        return NextResponse.json(
+          { error: "Trip date is required" },
+          { status: 400 }
+        );
+      }
+
+      const dateMatch = trip.date.match(/^\d{4}-\d{2}-\d{2}$/);
+      if (!dateMatch) {
+        return NextResponse.json(
+          { error: "Trip date must be in YYYY-MM-DD format" },
+          { status: 400 }
+        );
+      }
+
+      validatedDate = trip.date;
+
+      // Build INSERT payload with validated fields
       const tripId = crypto.randomUUID();
       const insertData: any = {
         id: tripId,
         club_id: clubData.id, // Legacy field required by schema
         group_id: groupId, // Canonical scope for trips
         legacy_id: nextLegacyId,
-        // User input fields - explicitly pass even if empty (fallback only if truly missing)
-        name: trip.name !== undefined && trip.name !== null ? String(trip.name).trim() || null : null,
-        trip_date: trip.date || new Date().toISOString().slice(0, 10),
+        // Required fields (validated)
+        name: validatedName,
+        trip_date: validatedDate,
         // Other fields with defaults
         format: trip.format || "Stableford",
         ferry: trip.ferry || null,
@@ -567,3 +643,24 @@ export async function DELETE(req: Request) {
   }
 }
 
+
+/**
+ * API Contract: Trip Name Validation (Option B)
+ * 
+ * POST (create):
+ * - name missing/undefined -> 400: "Trip name is required"
+ * - name null -> 400: "Trip name is required"
+ * - name "   " (whitespace) -> 400: "Trip name cannot be empty"
+ * - name "Valid Name" -> 201: success
+ * 
+ * PATCH/PUT (update via POST with id):
+ * - name undefined -> does not change (field omitted from update)
+ * - name null -> 400: "Field cannot be null"
+ * - name "   " (whitespace) -> 400: "Field cannot be empty"
+ * - name "New Name" -> 200: updates name
+ * 
+ * Semantics:
+ * - undefined = field not provided (omit from update, do not change)
+ * - null = explicit null (rejected for name)
+ * - empty/whitespace = rejected for name
+ */

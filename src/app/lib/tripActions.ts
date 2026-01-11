@@ -256,11 +256,13 @@ export async function createTrip(
     throw new Error("groupId is required to create a trip");
   }
 
-  // IMPORTANT: User-entered name and date must never be overridden by defaults or recipe logic.
-  // Ensure name and date are explicitly passed through to the API.
+  // IMPORTANT: Trip name is REQUIRED (Option B). User-entered name and date must never be overridden.
+  // The object passed to fetch() will preserve undefined vs provided semantics:
+  // - If partial.name is undefined -> name key is omitted from JSON (API will reject for POST)
+  // - If partial.name exists -> include it as-is (API will validate)
   const nextTrip: Trip = normalizeTrip({
     id: 0, // Temporary, will be set by server
-    name: partial.name !== undefined ? partial.name : undefined, // Explicitly preserve user input
+    name: partial.name, // Preserve as-is (API validates)
     date: partial.date ?? new Date().toISOString().slice(0, 10), // Date fallback only if missing
     format: partial.format ?? "Stableford",
 

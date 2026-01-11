@@ -44,6 +44,9 @@ type GroupContext = {
 /**
  * Pure function to derive trip recipe from intent.
  * Deterministic rules - no hidden magic.
+ * 
+ * IMPORTANT: Defaults apply ONLY when field is missing from user input.
+ * Never override explicit user input (name, date, etc.) with defaults or recipe logic.
  */
 export function deriveTripRecipe(
   intent: TripIntent,
