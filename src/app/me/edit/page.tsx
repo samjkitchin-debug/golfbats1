@@ -412,7 +412,6 @@ export default function MeEditPage() {
               <div className="text-sm font-semibold">Profile photo</div>
               <div className="mt-2 flex items-center gap-3">
                 {profilePhotoPath ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${profilePhotoPath}`}
                     alt="Profile"
