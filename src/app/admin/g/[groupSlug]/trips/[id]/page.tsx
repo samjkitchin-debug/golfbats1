@@ -1484,8 +1484,8 @@ export default function AdminTripPage() {
     setShowDeleteModal(false);
     
     try {
-      await deleteTrip(trips, tripIdSafe);
-      router.push("/admin/trips");
+      await deleteTrip(trips, tripIdSafe, groupId);
+      router.push(`/admin/g/${group.slug}/trips`);
     } catch (error) {
       console.error("Failed to delete trip:", error);
       alert(`Failed to delete trip: ${error instanceof Error ? error.message : String(error)}`);
