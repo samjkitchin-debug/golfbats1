@@ -6,6 +6,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
 import { loadTrips, joinTrip, leaveTrip, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
+import { isTripUpcoming, pickDefaultExpandedTrip } from "../../lib/tripDates";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
@@ -439,31 +440,14 @@ export default function TripsListPage() {
 
   const [expandedTripId, setExpandedTripId] = useState<number | null>(null);
 
-  // Upcoming trips: ONLY date >= today, no results, not cancelled, not past-status
-  // Past trips are removed - they belong in Results
-  // Exclude completed, archived, closed status trips
-  // Use strict date comparison: only include trips where trip_date >= today
+  // Upcoming trips: Use getEffectiveTripPhase() to determine if trip is upcoming
+  // This ensures trip_date < today => never upcoming, even if status is wrong
   const upcomingTrips = useMemo(() => {
-    const excludedStatuses = ["completed", "archived", "closed", "cancelled"];
-    
-    // Get today's date in YYYY-MM-DD format (local date, not UTC)
-    // This ensures we compare dates correctly regardless of timezone
-    const todayDate = new Date();
-    const todayYmd = todayDate.toISOString().slice(0, 10);
-    
+    const now = new Date();
     return allTripsWithGroups
-      .filter((t) => {
-        // Exclude trips with results (past trips)
-        if (t.result) return false;
-        // Exclude past-status trips
-        if (excludedStatuses.includes(t.status)) return false;
-        // Exclude trips with date < today (past trips) - strict string comparison
-        if (t.date < todayYmd) return false;
-        // Include only upcoming trips (date >= today)
-        return true;
-      })
+      .filter((t) => isTripUpcoming(t, now))
       .sort((a, b) => a.date.localeCompare(b.date)); // Earliest first
-  }, [allTripsWithGroups, today]);
+  }, [allTripsWithGroups]);
 
   // Apply search filter if query exists
   const upcomingFiltered = useMemo(() => {
@@ -491,24 +475,12 @@ export default function TripsListPage() {
     return upcomingTrips;
   }, [upcomingTrips, searchQuery, courses]);
 
-  // Set default expanded trip: earliest joined, or earliest open
+  // Set default expanded trip using centralized helper
   useEffect(() => {
-    if (expandedTripId === null && upcomingFiltered.length > 0 && currentUserId) {
-      // Find earliest joined trip
-      const joinedTrip = upcomingFiltered.find((trip) => {
-        const myEntry = trip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
-        return myEntry?.status === "confirmed";
-      });
-
-      if (joinedTrip) {
-        setExpandedTripId(joinedTrip.id);
-        return;
-      }
-
-      // Find earliest open trip
-      const openTrip = upcomingFiltered.find((trip) => trip.status === "open");
-      if (openTrip) {
-        setExpandedTripId(openTrip.id);
+    if (expandedTripId === null && upcomingFiltered.length > 0) {
+      const defaultTripId = pickDefaultExpandedTrip(upcomingFiltered, currentUserId);
+      if (defaultTripId !== null) {
+        setExpandedTripId(defaultTripId);
       }
     }
   }, [upcomingFiltered, expandedTripId, currentUserId]);

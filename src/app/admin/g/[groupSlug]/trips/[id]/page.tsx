@@ -23,6 +23,7 @@ import { getTripCourseText } from "../../../../../lib/tripDisplay";
 import { createSupabaseBrowserClient } from "../../../../../lib/supabaseBrowser";
 import { ConfirmModal } from "../../../../../components/ConfirmModal";
 import { useGroup } from "../../GroupContext";
+import { deriveRecipeFromTrip, type TripRecipe } from "../../../../../lib/tripIntent";
 
 function toDateValue(isoUtc?: string) {
   if (!isoUtc) return "";
@@ -602,40 +603,96 @@ export default function AdminTripPage() {
 
   const trip = useMemo(() => {
     if (!Number.isFinite(tripId)) return undefined;
-    return trips.find((t) => t.id === tripId);
+    const found = trips.find((t) => t.id === tripId);
+    // If trip not found in filtered list (e.g., it's closed), we'll fetch it directly
+    return found;
   }, [trips, tripId]);
+
+  // If trip not found in filtered list, fetch it directly (for closed/archived trips)
+  const [directTrip, setDirectTrip] = useState<Trip | undefined>(undefined);
+  useEffect(() => {
+    if (!trip && Number.isFinite(tripId) && !directTrip && !loading) {
+      async function fetchDirectTrip() {
+        try {
+          // Query by legacy_id (numeric) since tripId from params is the legacy_id
+          const { data, error } = await supabase
+            .from("trips")
+            .select("*")
+            .eq("legacy_id", tripId)
+            .eq("group_id", groupId)
+            .maybeSingle();
+
+          if (error) {
+            console.error("Failed to fetch trip directly:", error);
+            return;
+          }
+
+          if (data) {
+            // Normalize the trip data to match Trip type
+            const normalized: Trip = {
+              id: Number(data.legacy_id),
+              name: data.name || undefined,
+              date: data.trip_date || "",
+              format: data.format || "",
+              capacity: Number(data.capacity || 0),
+              status: (data.status as any) || "open",
+              cutoffAt: data.cutoff_at || undefined,
+              courseId: data.course_id || null,
+              teeId: data.tee_id || null,
+              logistics: {
+                meetingPoint: data.meeting_point || undefined,
+                meetTime: data.meet_time || undefined,
+                ferryDetails: data.ferry_details || undefined,
+                notes: data.notes || undefined,
+              },
+              attendees: [],
+              createdAtUtc: data.created_at || undefined,
+              updatedAtUtc: data.updated_at || undefined,
+            };
+            setDirectTrip(normalized);
+          }
+        } catch (err) {
+          console.error("Error fetching trip directly:", err);
+        }
+      }
+      fetchDirectTrip();
+    }
+  }, [trip, tripId, directTrip, loading, supabase, groupId]);
+
+  // Use directTrip if trip is not found in filtered list
+  const tripToUse = trip || directTrip;
 
   // Keep Trip Name input in sync with loaded trip, but avoid patching on every keypress
   useEffect(() => {
-    setTripNameInput(trip?.name ?? "");
-    setFormatInput(trip?.format ?? "");
-    setCapacityInput(String(trip?.capacity ?? ""));
-    setCutoffDateInput(toDateValue(trip?.cutoffAt));
-    setMeetingPointInput(trip?.logistics?.meetingPoint ?? "");
-    setMeetTimeInput(trip?.logistics?.meetTime ?? "");
-    setFerryDetailsInput(trip?.logistics?.ferryDetails ?? "");
-    setLogisticsNotesInput(trip?.logistics?.notes ?? "");
-  }, [trip?.id, trip?.name]);
+    setTripNameInput(tripToUse?.name ?? "");
+    setFormatInput(tripToUse?.format ?? "");
+    setCapacityInput(String(tripToUse?.capacity ?? ""));
+    setCutoffDateInput(toDateValue(tripToUse?.cutoffAt));
+    setMeetingPointInput(tripToUse?.logistics?.meetingPoint ?? "");
+    setMeetTimeInput(tripToUse?.logistics?.meetTime ?? "");
+    setFerryDetailsInput(tripToUse?.logistics?.ferryDetails ?? "");
+    setLogisticsNotesInput(tripToUse?.logistics?.notes ?? "");
+  }, [tripToUse?.id, tripToUse?.name]);
   
   // Initialize Scheduled form from trip data when trip loads or changes
   useEffect(() => {
-    if (trip) {
+    if (tripToUse) {
       // Always sync form data when not dirty or when not editing (to reflect saved changes)
       // This ensures form persists even when navigating between phases
       if (!phase0FormDirty || (!phase0Editing && phase0Posted)) {
         setPhase0Form({
-          date: trip.date ?? "",
-          cutoffDate: toDateValue(trip.cutoffAt),
-          format: trip.format ?? "",
-          courseId: trip.courseId ?? null,
-          teeId: trip.teeId ?? null,
-          tripName: trip.name ?? "",
+          date: tripToUse.date ?? "",
+          cutoffDate: toDateValue(tripToUse.cutoffAt),
+          format: tripToUse.format ?? "",
+          courseId: tripToUse.courseId ?? null,
+          teeId: tripToUse.teeId ?? null,
+          tripName: tripToUse.name ?? "",
         });
       }
       
       // Set phase0Posted to true if trip already has date and course (already posted)
       // Check this regardless of phase0FormDirty so it's always accurate
-      if (trip.date && trip.courseId) {
+      if (tripToUse.date && tripToUse.courseId) {
         setPhase0Posted(true);
         if (!phase0Editing) {
           setPhase0Editing(false);
@@ -643,7 +700,7 @@ export default function AdminTripPage() {
       } else {
         setPhase0Posted(false);
       }
-    } else if (!trip) {
+    } else if (!tripToUse) {
       // Reset form when trip is not loaded yet
       setPhase0Form({
         date: "",
@@ -655,44 +712,44 @@ export default function AdminTripPage() {
       });
       setPhase0Posted(false);
     }
-  }, [trip?.id, trip?.date, trip?.courseId, trip?.teeId, trip?.name, trip?.format, trip?.cutoffAt, phase0FormDirty, phase0Editing]);
+  }, [tripToUse?.id, tripToUse?.date, tripToUse?.courseId, tripToUse?.teeId, tripToUse?.name, tripToUse?.format, tripToUse?.cutoffAt, phase0FormDirty, phase0Editing]);
   
   // Initialize Open for Signups form from trip data
   useEffect(() => {
-    if (trip && !phase1FormDirty) {
+    if (tripToUse && !phase1FormDirty) {
       setPhase1Form({
-        tripName: trip.name ?? "",
-        date: trip.date ?? "",
-        format: trip.format ?? "",
-        capacity: trip.capacity ?? 16,
-        cutoffDate: toDateValue(trip.cutoffAt),
-        courseId: trip.courseId ?? null,
-        teeId: trip.teeId ?? null,
+        tripName: tripToUse.name ?? "",
+        date: tripToUse.date ?? "",
+        format: tripToUse.format ?? "",
+        capacity: tripToUse.capacity ?? 16,
+        cutoffDate: toDateValue(tripToUse.cutoffAt),
+        courseId: tripToUse.courseId ?? null,
+        teeId: tripToUse.teeId ?? null,
       });
     }
-  }, [trip?.id, trip?.name, trip?.date, trip?.format, trip?.capacity, trip?.cutoffAt, trip?.courseId, trip?.teeId, phase1FormDirty]);
+  }, [tripToUse?.id, tripToUse?.name, tripToUse?.date, tripToUse?.format, tripToUse?.capacity, tripToUse?.cutoffAt, tripToUse?.courseId, tripToUse?.teeId, phase1FormDirty]);
   
   // Initialize Signups Closed form from trip data
   useEffect(() => {
-    if (trip) {
+    if (tripToUse) {
       // Always sync form data when not dirty or when not editing (to reflect saved changes)
       if (!phase2FormDirty || (!phase2Editing && phase2Posted)) {
         setPhase2Form({
-          ferry: trip.ferry ?? "",
-          meetingPoint: trip.logistics?.meetingPoint ?? "",
-          meetTime: trip.logistics?.meetTime ?? "",
-          ferryDetails: trip.logistics?.ferryDetails ?? "",
-          notes: trip.logistics?.notes ?? "",
+          ferry: tripToUse.ferry ?? "",
+          meetingPoint: tripToUse.logistics?.meetingPoint ?? "",
+          meetTime: tripToUse.logistics?.meetTime ?? "",
+          ferryDetails: tripToUse.logistics?.ferryDetails ?? "",
+          notes: tripToUse.logistics?.notes ?? "",
         });
       }
       
       // Set phase2Posted to true if logistics exist (already posted)
       const hasLogistics = !!(
-        trip.ferry ||
-        trip.logistics?.meetingPoint ||
-        trip.logistics?.meetTime ||
-        trip.logistics?.ferryDetails ||
-        trip.logistics?.notes
+        tripToUse.ferry ||
+        tripToUse.logistics?.meetingPoint ||
+        tripToUse.logistics?.meetTime ||
+        tripToUse.logistics?.ferryDetails ||
+        tripToUse.logistics?.notes
       );
       
       if (hasLogistics) {
@@ -703,7 +760,7 @@ export default function AdminTripPage() {
       } else {
         setPhase2Posted(false);
       }
-    } else if (!trip) {
+    } else if (!tripToUse) {
       // Reset form when trip is not loaded yet
       setPhase2Form({
         ferry: "",
@@ -714,17 +771,17 @@ export default function AdminTripPage() {
       });
       setPhase2Posted(false);
     }
-  }, [trip?.id, trip?.ferry, trip?.logistics, phase2FormDirty, phase2Editing]);
+  }, [tripToUse?.id, tripToUse?.ferry, tripToUse?.logistics, phase2FormDirty, phase2Editing]);
   
   // Initialize Results form from trip data
   useEffect(() => {
-    if (trip && !phase3FormDirty) {
+    if (tripToUse && !phase3FormDirty) {
       setPhase3Form({
-        leaderboard: trip.result?.leaderboard.map(r => `${r.name},${r.points}`).join("\n") ?? "",
-        notes: trip.result?.notes ?? "",
+        leaderboard: tripToUse.result?.leaderboard.map(r => `${r.name},${r.points}`).join("\n") ?? "",
+        notes: tripToUse.result?.notes ?? "",
       });
     }
-  }, [trip?.id, trip?.result, phase3FormDirty]);
+  }, [tripToUse?.id, tripToUse?.result, phase3FormDirty]);
 
   // Click outside handler for actions dropdown
   useEffect(() => {
@@ -744,9 +801,9 @@ export default function AdminTripPage() {
   }, [showActionsDropdown]);
 
   const course = useMemo(() => {
-    if (!trip) return undefined;
-    return courses.find((c) => c.id === trip.courseId);
-  }, [courses, trip]);
+    if (!tripToUse) return undefined;
+    return courses.find((c) => c.id === tripToUse.courseId);
+  }, [courses, tripToUse]);
 
   const tees: Tee[] = course?.tees ?? [];
   
@@ -788,14 +845,14 @@ export default function AdminTripPage() {
 
   // Keep editor inputs synced when trip/result changes
   useEffect(() => {
-    if (!trip?.result) {
+    if (!tripToUse?.result) {
       setLeaderboardText("");
       setResultNotes("");
       return;
     }
-    setLeaderboardText(trip.result.leaderboard.map((r) => `${r.name},${r.points}`).join("\n"));
-    setResultNotes(trip.result.notes ?? "");
-  }, [trip?.id, trip?.result]);
+    setLeaderboardText(tripToUse.result.leaderboard.map((r) => `${r.name},${r.points}`).join("\n"));
+    setResultNotes(tripToUse.result.notes ?? "");
+  }, [tripToUse?.id, tripToUse?.result]);
 
   // Load attendees with member details
   useEffect(() => {
@@ -882,19 +939,29 @@ export default function AdminTripPage() {
     loadAttendees();
   }, [trip?.id, trip?.attendees, supabase]);
 
+  // Derive recipe from trip data (heuristic fallback when intent not stored)
+  // Must be before any early returns to satisfy Rules of Hooks
+  const recipe = useMemo(() => {
+    if (!trip) return null;
+    return deriveRecipeFromTrip({
+      cutoffAt: trip.cutoffAt,
+      capacity: trip.capacity,
+      logistics: trip.logistics,
+    });
+  }, [trip]);
+
   // Calculate phase-related values before early returns (for hook consistency)
   const phaseCalculations = useMemo(() => {
-    if (!trip || !Number.isFinite(tripId)) {
+    if (!tripToUse || !Number.isFinite(tripId)) {
       return null;
     }
 
-    const tripSafe = trip;
     const now = Date.now();
-    const tripDate = new Date(tripSafe.date + "T00:00:00").getTime();
-    const hasResults = !!tripSafe.result;
+    const tripDate = new Date(tripToUse.date + "T00:00:00").getTime();
+    const hasResults = !!tripToUse.result;
     const tripDatePassed = now >= tripDate;
     const signupOpenAt = tripDate - 30 * 24 * 60 * 60 * 1000;
-    const cutoffPassed = isCutoffPassed(tripSafe.cutoffAt);
+    const cutoffPassed = isCutoffPassed(tripToUse.cutoffAt);
 
     // Archived (results published) - Check first (highest priority)
     const isArchived = hasResults;
@@ -908,29 +975,29 @@ export default function AdminTripPage() {
     // Trip is Scheduled if it has courseId but is NOT yet within 30 days, OR if it doesn't have courseId yet
     // Only show if not Archived/Results
     const isWithin30Days = Number.isFinite(signupOpenAt) && now >= signupOpenAt;
-    const isScheduled = !isArchived && tripSafe.status === "open" && (
-      !tripSafe.courseId || // No course selected yet
-      (tripSafe.courseId && tripSafe.date && !isWithin30Days) // Has course but not yet within 30 days
+    const isScheduled = !isArchived && tripToUse.status === "open" && (
+      !tripToUse.courseId || // No course selected yet
+      (tripToUse.courseId && tripToUse.date && !isWithin30Days) // Has course but not yet within 30 days
     );
     
     // Open for Signups (trip is open, within 30 days of trip date, before cutoff at 11:59pm SGT)
     // OR trip has been manually opened (but still needs courseId and date)
     // Only show if not Archived/Results or Scheduled
-    const isOpenForSignups = !isArchived && !isScheduled && tripSafe.status === "open" && !tripDatePassed && !cutoffPassed && (
-      (Number.isFinite(signupOpenAt) && now >= signupOpenAt && tripSafe.courseId && tripSafe.date) // Automatic: within 30 days AND has course
+    const isOpenForSignups = !isArchived && !isScheduled && tripToUse.status === "open" && !tripDatePassed && !cutoffPassed && (
+      (Number.isFinite(signupOpenAt) && now >= signupOpenAt && tripToUse.courseId && tripToUse.date) // Automatic: within 30 days AND has course
     );
     
     // Signups Closed (trip is closed, before trip date, after cutoff, or after trip date but no results)
     // Only show if not Archived/Results, Scheduled, or Open for Signups
-    const isSignupsClosed = !isArchived && !isScheduled && !isOpenForSignups && tripSafe.status === "closed" && !hasResults;
+    const isSignupsClosed = !isArchived && !isScheduled && !isOpenForSignups && tripToUse.status === "closed" && !hasResults;
     
     // Game Day (trip date passed, no results yet, trip is closed - represents the round being played)
     // Only show if not Archived/Results, Scheduled, Open for Signups, or Signups Closed
-    const isGameDay = !isArchived && !isScheduled && !isOpenForSignups && !isSignupsClosed && tripDatePassed && !hasResults && tripSafe.status === "closed";
+    const isGameDay = !isArchived && !isScheduled && !isOpenForSignups && !isSignupsClosed && tripDatePassed && !hasResults && tripToUse.status === "closed";
 
     // Get next phase progression info
     let nextPhaseProgression = null;
-    if (tripSafe.status !== "cancelled" && !isArchived) {
+    if (tripToUse.status !== "cancelled" && !isArchived) {
       if (isScheduled) {
         // Scheduled → Open for Signups: 30 days before trip date
         nextPhaseProgression = {
@@ -941,11 +1008,11 @@ export default function AdminTripPage() {
         };
       } else if (isOpenForSignups) {
         // Open for Signups → Signups Closed: 11:59pm SGT on cutoff date
-        if (tripSafe.cutoffAt) {
+        if (tripToUse.cutoffAt) {
           nextPhaseProgression = {
             nextPhase: "Signups Closed",
             nextPhaseLabel: "close for signups",
-            date: tripSafe.cutoffAt,
+            date: tripToUse.cutoffAt,
             time: "11:59pm SGT"
           };
         }
@@ -954,7 +1021,7 @@ export default function AdminTripPage() {
         nextPhaseProgression = {
           nextPhase: "Game Day",
           nextPhaseLabel: "Game Day",
-          date: tripSafe.date,
+          date: tripToUse.date,
           time: "trip date"
         };
       }
@@ -963,7 +1030,7 @@ export default function AdminTripPage() {
     }
 
     return {
-      tripSafe,
+      tripSafe: tripToUse, // Keep name for compatibility with existing code
       isScheduled,
       isOpenForSignups,
       isSignupsClosed,
@@ -976,7 +1043,7 @@ export default function AdminTripPage() {
       tripDatePassed,
       cutoffPassed
     };
-  }, [trip, tripId]);
+  }, [tripToUse, tripId]);
 
   if (!Number.isFinite(tripId)) {
     return (
@@ -986,17 +1053,19 @@ export default function AdminTripPage() {
     );
   }
 
-  if (!trip || !phaseCalculations) {
+  if (!tripToUse || !phaseCalculations) {
     return (
       <main className="rounded-xl border bg-surface p-5 shadow-sm">
-        <div className="text-sm text-foreground">Trip not found.</div>
+        <div className="text-sm text-foreground">
+          {loading ? "Loading trip..." : "Trip not found."}
+        </div>
       </main>
     );
   }
 
   // IMPORTANT: capture stable values for closures (prevents "trip possibly undefined")
-  const tripSafe = phaseCalculations.tripSafe;
-  const tripIdSafe = tripSafe.id;
+  // tripToUse is already defined above and includes directTrip fallback
+  const tripIdSafe = tripToUse.id;
   const isScheduled = Boolean(phaseCalculations.isScheduled);
   const isOpenForSignups = Boolean(phaseCalculations.isOpenForSignups);
   const isSignupsClosed = Boolean(phaseCalculations.isSignupsClosed);
@@ -1007,16 +1076,16 @@ export default function AdminTripPage() {
   const nextPhaseProgression = phaseCalculations.nextPhaseProgression;
   const signupOpenAt = phaseCalculations.signupOpenAt;
 
-  const locked = isTripLocked(tripSafe);
-  const courseText = getTripCourseText(tripSafe, courses);
+  const locked = isTripLocked(tripToUse);
+  const courseText = getTripCourseText(tripToUse, courses);
   
   // Determine current phase and progress info
-  const currentPhaseId = getCurrentPhaseId(tripSafe, isScheduled, isOpenForSignups, isSignupsClosed, isGameDay, isResults, isArchived);
-  const hasLogisticsData = hasLogistics(tripSafe);
+  const currentPhaseId = getCurrentPhaseId(tripToUse, isScheduled, isOpenForSignups, isSignupsClosed, isGameDay, isResults, isArchived);
+  const hasLogisticsData = hasLogistics(tripToUse);
   
   // Get primary next action and optional actions
   const primaryActionData = getPrimaryNextAction(
-    tripSafe,
+    tripToUse,
     currentPhaseId,
     hasLogisticsData,
     formatDateForDisplay,
@@ -1024,14 +1093,14 @@ export default function AdminTripPage() {
   );
   
   const optionalActionsData = getOptionalActions(
-    tripSafe,
+    tripToUse,
     currentPhaseId,
     hasLogisticsData
   );
   
   // Get automation narrative
   const automationNarrative = getAutomationNarrative(
-    tripSafe,
+    tripToUse,
     currentPhaseId,
     nextPhaseProgression,
     formatDateForDisplay
@@ -1106,8 +1175,9 @@ export default function AdminTripPage() {
   }
 
   async function onSetTee(teeId: string | null) {
+    if (!tripToUse) return;
     try {
-      const updated = await setTripCourse(trips, tripIdSafe, groupId, tripSafe.courseId, teeId);
+      const updated = await setTripCourse(trips, tripIdSafe, groupId, tripToUse.courseId, teeId);
       setTrips(updated);
     } catch (error) {
       console.error("Failed to set tee:", error);
@@ -1127,14 +1197,14 @@ export default function AdminTripPage() {
   
   function onCancelPhase0Edit() {
     // Reset form to current trip data
-    if (trip) {
+    if (tripToUse) {
       setPhase0Form({
-        date: trip.date ?? "",
-        cutoffDate: toDateValue(trip.cutoffAt),
-        format: trip.format ?? "",
-        courseId: trip.courseId ?? null,
-        teeId: trip.teeId ?? null,
-        tripName: trip.name ?? "",
+        date: tripToUse.date ?? "",
+        cutoffDate: toDateValue(tripToUse.cutoffAt),
+        format: tripToUse.format ?? "",
+        courseId: tripToUse.courseId ?? null,
+        teeId: tripToUse.teeId ?? null,
+        tripName: tripToUse.name ?? "",
       });
       setPhase0FormDirty(false);
     }
@@ -1473,7 +1543,8 @@ export default function AdminTripPage() {
   }
 
   function onExportCsv() {
-    exportTripCsv(tripSafe);
+    if (!tripToUse) return;
+    exportTripCsv(tripToUse);
   }
   
   function onDeleteTrip() {
@@ -1562,7 +1633,7 @@ export default function AdminTripPage() {
       const updates: Partial<Trip> = { status: "closed" };
       
       // If trip date is in the future, set it to today to trigger Game Day phase
-      if (tripSafe.date > today) {
+      if (tripToUse && tripToUse.date > today) {
         updates.date = today;
       }
       
@@ -1689,7 +1760,8 @@ export default function AdminTripPage() {
       const supabase = createSupabaseBrowserClient();
       
       // Get confirmed attendees
-      const confirmedAttendees = tripSafe.attendees.filter((a) => a.status === "confirmed");
+      if (!tripToUse) return;
+      const confirmedAttendees = tripToUse.attendees.filter((a) => a.status === "confirmed");
       
       // Fetch all members from database
       const { data: members, error } = await supabase
@@ -1767,7 +1839,8 @@ export default function AdminTripPage() {
         };
       });
 
-      await exportTravelAgentCsv(tripSafe, async () => membersForExport);
+      if (!tripToUse) return;
+      await exportTravelAgentCsv(tripToUse, async () => membersForExport);
     } catch (error) {
       alert(`Failed to export: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -1775,22 +1848,56 @@ export default function AdminTripPage() {
 
   return (
     <main className="flex flex-col gap-6">
+      {/* Trip Setup Summary */}
+      {recipe && (
+        <section className="rounded-xl border bg-surface p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-foreground mb-3">Trip setup</h2>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {recipe.sections.signups && (
+              <span className="rounded-md bg-background px-2 py-1 text-muted">
+                Sign-ups {tripToUse.cutoffAt ? "enabled" : "pending"}
+              </span>
+            )}
+            {recipe.sections.logistics && (
+              <span className="rounded-md bg-background px-2 py-1 text-muted">
+                Logistics enabled
+              </span>
+            )}
+            {recipe.enabledActions.exportRoster && (
+              <span className="rounded-md bg-background px-2 py-1 text-muted">
+                Export enabled
+              </span>
+            )}
+            {recipe.defaults.capacity !== null && (
+              <span className="rounded-md bg-background px-2 py-1 text-muted">
+                Capacity: {recipe.defaults.capacity}
+              </span>
+            )}
+            {recipe.defaults.capacity === null && (
+              <span className="rounded-md bg-background px-2 py-1 text-muted">
+                No capacity limit
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="rounded-xl border bg-surface p-5 shadow-sm">
         <div className="flex flex-col gap-4">
           {/* Trip Identity - Primary */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <h1 className="text-xl font-bold text-foreground mb-0.5">
-                {tripSafe.name || "Untitled Trip"}
+                {tripToUse.name || "Untitled Trip"}
               </h1>
               <div className="flex items-center gap-2 text-xs text-muted mb-1">
-                <span>Trip #{tripSafe.id}</span>
+                <span>Trip #{tripToUse.id}</span>
                 <span>•</span>
-                <span>{tripSafe.date ? formatDateForDisplay(tripSafe.date) : "No date"}</span>
-                {tripSafe.format && (
+                <span>{tripToUse.date ? formatDateForDisplay(tripToUse.date) : "No date"}</span>
+                {tripToUse.format && (
                   <>
                     <span>•</span>
-                    <span>{tripSafe.format}</span>
+                    <span>{tripToUse.format}</span>
                   </>
                 )}
               </div>
@@ -1820,7 +1927,7 @@ export default function AdminTripPage() {
                   Round complete →
                 </button>
               )}
-              {!primaryActionData && currentPhaseId === "results" && tripSafe.result && (
+              {!primaryActionData && currentPhaseId === "results" && tripToUse.result && (
                 <button
                   onClick={onPublishResults}
                   disabled={!phase3Form.leaderboard.trim()}
@@ -1865,7 +1972,7 @@ export default function AdminTripPage() {
           </div>
 
           {/* Cancelled state */}
-          {tripSafe.status === "cancelled" && (
+          {tripToUse.status === "cancelled" && (
             <div className="border-t border-border pt-4">
               <div className="inline-flex rounded-full bg-background px-3 py-1.5 text-xs font-medium text-muted">
                 Cancelled
@@ -1874,7 +1981,7 @@ export default function AdminTripPage() {
           )}
 
           {/* NEXT STEP (Primary Section - Mobile: Above progress, Desktop: Current position) */}
-          {tripSafe.status !== "cancelled" && (primaryActionData || (currentPhaseId === "signupsClosed" && hasLogisticsData) || optionalActionsData.length > 0) && (
+          {tripToUse.status !== "cancelled" && (primaryActionData || (currentPhaseId === "signupsClosed" && hasLogisticsData) || optionalActionsData.length > 0) && (
             <div className="border-t border-border pt-4 md:order-1">
               <h3 className="text-sm font-semibold text-foreground mb-3">Next step</h3>
               
@@ -1939,7 +2046,7 @@ export default function AdminTripPage() {
           )}
 
           {/* PROGRESS / STAGES (Stepper - Mobile: Below Next Step, Collapsed by default) */}
-          {tripSafe.status !== "cancelled" && (
+          {tripToUse.status !== "cancelled" && (
             <div className="border-t border-border pt-4 md:order-2">
               {/* Mobile: Collapsed view by default */}
               <div className="md:hidden">
@@ -2090,7 +2197,7 @@ export default function AdminTripPage() {
           )}
 
           {/* WHAT HAPPENS NEXT (Automation Narrative - Mobile: After Progress, Desktop: After Next Step) */}
-          {tripSafe.status !== "cancelled" && automationNarrative.length > 0 && (
+          {tripToUse.status !== "cancelled" && automationNarrative.length > 0 && (
             <div className="border-t border-border pt-4 md:order-3">
               {/* Mobile: Collapsible by default */}
               <button
@@ -2583,7 +2690,7 @@ export default function AdminTripPage() {
           
           <div className="mt-6 flex items-start justify-between gap-3">
             <div className="flex flex-col gap-2">
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
                 {!phase2Posted && (
                   <button
                     onClick={onPostLogistics}
@@ -2598,6 +2705,15 @@ export default function AdminTripPage() {
                     className="rounded-lg bg-border px-4 py-2 text-sm font-medium text-white cursor-not-allowed"
                   >
                     Logistics posted
+                  </button>
+                )}
+                {recipe?.enabledActions.exportRoster && (
+                  <button
+                    disabled
+                    className="rounded-lg bg-border px-4 py-2 text-sm font-medium text-muted cursor-not-allowed"
+                    title="Export roster (coming soon)"
+                  >
+                    Export roster (coming soon)
                   </button>
                 )}
                 <button
@@ -2757,22 +2873,22 @@ export default function AdminTripPage() {
             This trip has been archived. Results are published and visible to members.
           </p>
           
-          {tripSafe.result && (
+          {tripToUse.result && (
             <div className="space-y-3">
               <div>
                 <div className="text-sm font-medium text-foreground">Leaderboard</div>
                 <div className="mt-2 space-y-1">
-                  {tripSafe.result.leaderboard.map((r, idx) => (
+                  {tripToUse.result.leaderboard.map((r, idx) => (
                     <div key={idx} className="text-sm text-foreground">
                       {idx + 1}. {r.name} - {r.points} points
                     </div>
                   ))}
                 </div>
               </div>
-              {tripSafe.result.notes && (
+              {tripToUse.result.notes && (
                 <div>
                   <div className="text-sm font-medium text-foreground">Notes</div>
-                  <div className="mt-1 text-sm text-foreground">{tripSafe.result.notes}</div>
+                  <div className="mt-1 text-sm text-foreground">{tripToUse.result.notes}</div>
                 </div>
               )}
             </div>

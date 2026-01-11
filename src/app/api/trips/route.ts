@@ -322,8 +322,9 @@ export async function POST(req: Request) {
         );
       }
 
+      // IMPORTANT: User-entered name and date must never be overridden by defaults or recipe logic.
       const updateData: any = {
-        name: trip.name || null,
+        name: trip.name !== undefined && trip.name !== null ? String(trip.name).trim() || null : null,
         trip_date: trip.date,
         format: trip.format,
         ferry: trip.ferry || null,
@@ -389,14 +390,18 @@ export async function POST(req: Request) {
         );
       }
 
+      // IMPORTANT: User-entered name and date must never be overridden by defaults or recipe logic.
+      // Build canonical payload - explicitly pass user input, fallback to defaults only if missing.
       const tripId = crypto.randomUUID();
       const insertData: any = {
         id: tripId,
         club_id: clubData.id, // Legacy field required by schema
         group_id: groupId, // Canonical scope for trips
         legacy_id: nextLegacyId,
-        name: trip.name || null,
+        // User input fields - explicitly pass even if empty (fallback only if truly missing)
+        name: trip.name !== undefined && trip.name !== null ? String(trip.name).trim() || null : null,
         trip_date: trip.date || new Date().toISOString().slice(0, 10),
+        // Other fields with defaults
         format: trip.format || "Stableford",
         ferry: trip.ferry || null,
         capacity: trip.capacity || 16,

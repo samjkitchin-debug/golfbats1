@@ -6,13 +6,13 @@ import { useRouter } from "next/navigation";
 
 import { loadCourses, type Course } from "../../../../lib/courseActions";
 import {
-  createTrip,
   deleteTrip,
   loadTrips,
   sortTripsByDateAsc,
   type Trip,
 } from "../../../../lib/tripActions";
 import { useGroup } from "../GroupContext";
+import CreateTripFlowModal from "../../../components/CreateTripFlowModal";
 
 function todayYmd() {
   const d = new Date();
@@ -43,6 +43,7 @@ export default function GroupAdminTripsPage() {
   const [loading, setLoading] = useState(true);
   const [openMenuTripId, setOpenMenuTripId] = useState<number | null>(null);
   const [deletingTripId, setDeletingTripId] = useState<number | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   useEffect(() => {
     document.title = "DayForeIt - Admin Trips";
@@ -69,41 +70,11 @@ export default function GroupAdminTripsPage() {
 
   const sortedTrips = useMemo(() => sortTripsByDateAsc(trips), [trips]);
 
-  async function createNewTrip() {
-    try {
-      const result = await createTrip(trips, groupId, {
-        date: todayYmd(),
-        format: "Stableford",
-        capacity: 16,
-        ferry: "",
-        courseId: null,
-        teeId: null,
-      });
-
-      setTrips(result.trips);
-      
-      // Use the ID returned from the API
-      if (result.newTripId) {
-        router.push(`/admin/g/${group.slug}/trips/${result.newTripId}`);
-      } else {
-        // Fallback: find the newest trip by created_at timestamp
-        const newestTrip = result.trips.reduce((newest, t) => {
-          if (!newest) return t;
-          const newestTime = newest.createdAtUtc ? new Date(newest.createdAtUtc).getTime() : 0;
-          const tTime = t.createdAtUtc ? new Date(t.createdAtUtc).getTime() : 0;
-          return tTime > newestTime ? t : newest;
-        }, null as Trip | null);
-
-        if (newestTrip) {
-          router.push(`/admin/g/${group.slug}/trips/${newestTrip.id}`);
-        } else {
-          alert("Trip created but could not find it. Please refresh the page.");
-        }
-      }
-    } catch (error) {
-      console.error("Failed to create trip:", error);
-      alert(`Failed to create trip: ${error instanceof Error ? error.message : String(error)}`);
-    }
+  async function handleTripCreated(tripId: number) {
+    // Reload trips
+    const tripsData = await loadTrips(groupId, true);
+    setTrips(tripsData);
+    router.push(`/admin/g/${group.slug}/trips/${tripId}`);
   }
 
   function courseName(trip: Trip) {
@@ -153,7 +124,7 @@ export default function GroupAdminTripsPage() {
         <h1 className="text-xl font-semibold text-foreground">Trips</h1>
         <button
           className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
-          onClick={createNewTrip}
+          onClick={() => setCreateModalOpen(true)}
           type="button"
         >
           Create Trip
@@ -167,7 +138,7 @@ export default function GroupAdminTripsPage() {
 
       {/* Mobile: FAB */}
       <button
-        onClick={createNewTrip}
+        onClick={() => setCreateModalOpen(true)}
         type="button"
         className="fixed bottom-6 right-4 sm:hidden z-40 rounded-full bg-foreground text-white p-4 shadow-lg hover:opacity-95 min-w-[56px] min-h-[56px] flex items-center justify-center"
         aria-label="Create trip"
@@ -176,6 +147,16 @@ export default function GroupAdminTripsPage() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
       </button>
+
+      {/* Create Trip Modal */}
+      <CreateTripFlowModal
+        groupId={groupId}
+        groupName={group.name}
+        groupSlug={group.slug}
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={handleTripCreated}
+      />
 
       {loading ? (
         <div className="rounded-xl border bg-surface p-5 text-sm text-muted">

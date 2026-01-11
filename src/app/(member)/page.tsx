@@ -7,6 +7,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { loadTrips, joinTrip, leaveTrip, type Trip } from "../lib/tripActions";
 import { loadCourses, type Course } from "../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../lib/tripDisplay";
+import { isTripUpcoming } from "../lib/tripDates";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { PromptModal } from "../components/PromptModal";
 import { TripCard } from "../components/TripCard";
@@ -53,12 +54,11 @@ export default function HomePage() {
     );
   }, []);
 
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-
   // Find primary trip: If user has RSVP'd "in" to a trip, that's primary. Otherwise, next eligible upcoming trip.
   const primaryTrip = useMemo(() => {
+    const now = new Date();
     const upcoming = allTripsWithGroups
-      .filter((t) => !t.result && t.date >= today && t.status !== "cancelled")
+      .filter((t) => isTripUpcoming(t, now))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // First, check if user has RSVP'd "in" (confirmed) to any upcoming trip
@@ -75,17 +75,17 @@ export default function HomePage() {
 
     // If user has joined a trip, that's the primary. Otherwise, use the next eligible trip.
     return joinedTrip || upcoming[0] || null;
-  }, [allTripsWithGroups, today, currentUserId, currentUserName]);
+  }, [allTripsWithGroups, currentUserId, currentUserName]);
 
   // Find secondary trip: Next upcoming trip after the primary trip
   const secondaryTrip = useMemo(() => {
     if (!primaryTrip) return null;
+    const now = new Date();
     const upcoming = allTripsWithGroups
-      .filter((t) => !t.result && t.date >= today && t.status !== "cancelled")
-      .filter((t) => t.id !== primaryTrip.id)
+      .filter((t) => isTripUpcoming(t, now) && t.id !== primaryTrip.id)
       .sort((a, b) => a.date.localeCompare(b.date));
     return upcoming[0] || null;
-  }, [allTripsWithGroups, today, primaryTrip]);
+  }, [allTripsWithGroups, primaryTrip]);
 
   // Find most recent completed trip (for lightweight past context)
   const lastTrip = useMemo(() => {
