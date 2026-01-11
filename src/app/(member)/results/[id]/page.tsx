@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { loadCourses, type Course } from "../../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay";
 import { loadTrips, type Trip } from "../../../lib/tripActions";
+import { perfMark, perfMeasure, perfLog } from "../../../lib/perf";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -18,11 +19,54 @@ export default function ResultDetailPage() {
 
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [loadingBootstrap, setLoadingBootstrap] = useState(true);
 
+  // Bootstrap: fetch activeGroupId
   useEffect(() => {
+    async function loadBootstrap() {
+      const start = perfMark("bootstrap");
+      try {
+        const res = await fetch("/api/me/bootstrap", { credentials: "include" });
+        if (!res.ok) {
+          if (res.status === 401) {
+            // Not authenticated - redirect handled by layout
+            perfMeasure("bootstrap", start);
+            setLoadingBootstrap(false);
+            return;
+          }
+          throw new Error("Failed to load bootstrap data");
+        }
+
+        const bootstrap = await res.json();
+        setActiveGroupId(bootstrap.activeGroupId);
+        
+        const duration = perfMeasure("bootstrap", start);
+        perfLog("bootstrap: success", {
+          durationMs: duration.toFixed(2),
+          activeGroupId: bootstrap.activeGroupId,
+          membershipCount: bootstrap.approvedGroups?.length || 0,
+        });
+      } catch (error) {
+        perfMeasure("bootstrap", start);
+        perfLog("bootstrap: error", { error: error instanceof Error ? error.message : String(error) });
+      } finally {
+        setLoadingBootstrap(false);
+      }
+    }
+    loadBootstrap();
+  }, []);
+
+  // Load trips and courses once activeGroupId is known
+  useEffect(() => {
+    if (!activeGroupId) return;
+
     async function loadData() {
       try {
-        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        const [tripsData, coursesData] = await Promise.all([
+          loadTrips(activeGroupId, false),
+          loadCourses()
+        ]);
         setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
@@ -30,7 +74,7 @@ export default function ResultDetailPage() {
       }
     }
     loadData();
-  }, []);
+  }, [activeGroupId]);
 
   const trip = useMemo(() => {
     if (!tripId) return undefined;

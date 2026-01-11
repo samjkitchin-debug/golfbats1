@@ -153,7 +153,7 @@ export default function CreateGroupPage() {
             type="text"
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
-            placeholder="e.g. GolfBats Singapore"
+            placeholder="e.g. DayForeIt Singapore"
             disabled={status === "submitting"}
             autoFocus
           />

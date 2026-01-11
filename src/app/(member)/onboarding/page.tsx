@@ -480,7 +480,7 @@ export default function OnboardingPage() {
       {currentStep === "welcome" && (
         <div className="space-y-6">
           <div>
-            <h1 className="text-2xl font-bold">Welcome to Day fore it</h1>
+            <h1 className="text-2xl font-bold">Welcome to DayForeIt</h1>
             <p className="mt-2 text-sm text-muted">
               Let's set up your profile. This will only take a few minutes.
             </p>

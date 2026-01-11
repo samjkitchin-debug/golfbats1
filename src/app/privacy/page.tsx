@@ -7,7 +7,7 @@ function PrivacyContent() {
 
       <div className="mt-4 space-y-4 text-sm leading-relaxed text-foreground">
         <p>
-          GolfBats is a private club coordination tool. Personal data is handled carefully,
+          DayForeIt is a private club coordination tool. Personal data is handled carefully,
           deliberately, and only where it serves a clear purpose related to organising golf trips.
         </p>
 
@@ -61,7 +61,7 @@ function PrivacyContent() {
         <section>
           <h2 className="text-base font-semibold text-foreground">How your data is protected</h2>
           <p className="mt-2">
-            GolfBats applies additional technical controls to sensitive personal data.
+            DayForeIt applies additional technical controls to sensitive personal data.
           </p>
           <p className="mt-2">These include:</p>
           <ul className="mt-1 list-disc pl-5 space-y-1">
@@ -87,7 +87,7 @@ function PrivacyContent() {
             <li>Managing attendance and logistics</li>
             <li>Communicating trip-related information to members</li>
           </ul>
-          <p className="mt-2">GolfBats does not:</p>
+          <p className="mt-2">DayForeIt does not:</p>
           <ul className="mt-1 list-disc pl-5 space-y-1">
             <li>Sell personal data</li>
             <li>Use personal data for advertising</li>

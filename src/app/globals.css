@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Day fore it brand colors — light mode (default) */
+/* DayForeIt brand colors — light mode (default) */
 :root {
   --background: #F8FAF9;
   --foreground: #1F2933;
@@ -85,4 +85,14 @@ button:not(:disabled):active {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+/* Hide scrollbar but keep scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }

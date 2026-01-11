@@ -22,14 +22,14 @@ export default async function MeEditLayout({
         <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
           <div className="flex w-16 justify-start">
             <Link href="/" className="text-sm font-semibold text-foreground">
-              Day fore it
+              DayForeIt
             </Link>
           </div>
 
           <Link href="/" className="flex flex-1 justify-center">
             <Image
               src="/logo.png"
-              alt="Day fore it"
+              alt="DayForeIt"
               width={120}
               height={60}
               className="h-auto w-auto max-h-[60px] object-contain"

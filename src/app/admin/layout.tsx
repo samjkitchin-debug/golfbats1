@@ -1,9 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import SignOutButton from "../components/SignOutButton";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
 import { isEmailAdmin } from "../lib/auth";
-import MembersNavLink from "./components/MembersNavLink";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
@@ -35,54 +32,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/login?error=not_admin");
   }
 
-  return (
-    <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-20 border-b bg-surface border-border">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-sm font-semibold text-foreground">
-              Day fore it
-            </Link>
-            <span className="text-xs text-muted">/ admin</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-            >
-              Back to app
-            </Link>
-            <SignOutButton />
-          </div>
-        </div>
-
-        <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-4 pb-3">
-          <Link
-            href="/admin"
-            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-          >
-            Trips
-          </Link>
-          <Link
-            href="/admin/courses"
-            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-          >
-            Courses
-          </Link>
-          <MembersNavLink />
-          <Link
-            href="/admin/dev-notes"
-            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-          >
-            Dev Notes
-          </Link>
-        </div>
-
-        <div className="h-0.5 w-full bg-brand-green" />
-      </header>
-
-      <main className="mx-auto w-full max-w-5xl px-4 py-6">{children}</main>
-    </div>
-  );
+  // Top-level admin layout: Only handles auth checks
+  // Each route handles its own UI structure:
+  // - /admin/page.tsx renders its own minimal header
+  // - /admin/g/[groupId]/layout.tsx renders its own group admin shell
+  return <>{children}</>;
 }

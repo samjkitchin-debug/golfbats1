@@ -21,7 +21,7 @@ The app icon is a vibrant, stylized golf course illustration showing:
 
 ## Logo
 
-The Day fore it logo is stored at:
+The DayForeIt logo is stored at:
 - `public/logo.png`
 
 Used for:

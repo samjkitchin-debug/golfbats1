@@ -24,6 +24,7 @@ type TripCardProps = {
   joinDisabled?: boolean;
   onJoin?: () => void;
   onLeave?: () => void;
+  onDetailsClick?: () => void; // Optional callback when Details link is clicked
 };
 
 export function TripCard({
@@ -41,6 +42,7 @@ export function TripCard({
   joinDisabled = false,
   onJoin,
   onLeave,
+  onDetailsClick,
 }: TripCardProps) {
   const isHome = variant === "home";
 
@@ -100,6 +102,7 @@ export function TripCard({
           <div className="text-sm text-muted">{headerLabel}</div>
           <Link
             href={`/trips/${trip.id}`}
+            onClick={onDetailsClick}
             className="shrink-0 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-foreground hover:bg-background"
           >
             Details

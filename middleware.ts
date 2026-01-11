@@ -43,7 +43,44 @@ function isAdminPath(pathname: string) {
   return pathname.startsWith("/admin");
 }
 
+/**
+ * Canonical host enforcement: redirect non-canonical hosts to dayforeit.sg
+ */
+function getCanonicalRedirect(req: NextRequest): NextResponse | null {
+  const hostname = req.headers.get("host") || "";
+  const canonicalHost = "dayforeit.sg";
+
+  // Skip canonical enforcement for localhost and Vercel preview domains
+  if (
+    hostname === "localhost" ||
+    hostname.startsWith("localhost:") ||
+    hostname.endsWith(".vercel.app")
+  ) {
+    return null;
+  }
+
+  // Redirect non-canonical hosts to canonical host
+  if (
+    hostname === "www.dayforeit.sg" ||
+    hostname === "golfbats.sg" ||
+    hostname === "www.golfbats.sg"
+  ) {
+    const url = req.nextUrl.clone();
+    // Construct canonical URL: preserve protocol, pathname, and search params
+    const canonicalUrl = new URL(url.pathname + url.search, `${url.protocol}//${canonicalHost}`);
+    return NextResponse.redirect(canonicalUrl, 301);
+  }
+
+  return null;
+}
+
 export async function middleware(req: NextRequest) {
+  // Canonical host enforcement - must happen first
+  const canonicalRedirect = getCanonicalRedirect(req);
+  if (canonicalRedirect) {
+    return canonicalRedirect;
+  }
+
   const res = NextResponse.next();
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

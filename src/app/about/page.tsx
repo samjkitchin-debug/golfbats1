@@ -3,32 +3,32 @@ import MemberLayout from "../(member)/layout";
 function AboutContent() {
   return (
     <div className="px-4 pb-24 pt-4">
-      <h1 className="text-2xl font-bold text-foreground">About GolfBats</h1>
+      <h1 className="text-2xl font-bold text-foreground">About DayForeIt</h1>
 
       <div className="mt-4 space-y-4 text-sm leading-relaxed text-foreground">
         <p>
-          GolfBats is a private noticeboard and coordination tool for our golf group.
+          DayForeIt is a private noticeboard and coordination tool for our golf group.
         </p>
 
         <p>
-          It exists to make organising golf easier — who’s playing, where we’re playing, when we’re
+          It exists to make organising golf easier — who's playing, where we're playing, when we're
           playing, and the practical details around it.
         </p>
 
         <p>
-          GolfBats is not a scoring system and doesn’t try to replace official handicap systems or
-          competition software. It’s simply here to help us organise trips and keep everything in
+          DayForeIt is not a scoring system and doesn't try to replace official handicap systems or
+          competition software. It's simply here to help us organise trips and keep everything in
           one place.
         </p>
 
         <section>
-          <h2 className="text-base font-semibold text-foreground">What you can do on GolfBats</h2>
+          <h2 className="text-base font-semibold text-foreground">What you can do on DayForeIt</h2>
           <div className="mt-2 space-y-3">
             <div>
               <h3 className="text-xs font-semibold text-foreground">As a member, you can:</h3>
               <ul className="mt-1 list-disc pl-5 space-y-1">
                 <li>See upcoming and past trips</li>
-                <li>Indicate whether you’re playing</li>
+                <li>Indicate whether you're playing</li>
                 <li>View trip logistics and notes</li>
                 <li>Keep a simple personal profile</li>
                 <li>View course and tee information</li>
@@ -37,7 +37,7 @@ function AboutContent() {
             </div>
 
             <div>
-              <h3 className="text-xs font-semibold text-foreground">Admins use GolfBats to:</h3>
+              <h3 className="text-xs font-semibold text-foreground">Admins use DayForeIt to:</h3>
               <ul className="mt-1 list-disc pl-5 space-y-1">
                 <li>Set up and manage trips</li>
                 <li>Manage courses and tees</li>
@@ -50,9 +50,9 @@ function AboutContent() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-foreground">How it’s designed</h2>
+          <h2 className="text-base font-semibold text-foreground">How it's designed</h2>
           <p className="mt-2">
-            GolfBats is intentionally:
+            DayForeIt is intentionally:
           </p>
           <ul className="mt-1 list-disc pl-5 space-y-1">
             <li>Private — only for members of the group</li>

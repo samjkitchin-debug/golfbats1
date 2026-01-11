@@ -14,6 +14,8 @@
  * - types match pages (cutoffAt is string | undefined; courseId/teeId are string | null)
  */
 
+import { perfMark, perfMeasure, perfLog } from "./perf";
+
 export type AttendanceStatus = "confirmed" | "waitlist" | "out";
 
 export type Attendee = {
@@ -151,42 +153,54 @@ function normalizeTrip(input: any): Trip {
 ================================ */
 
 /**
- * Load trips from database API
+ * Load trips from database API for a specific group
  * No longer uses localStorage - always fetches from server
+ * @param groupId - Required group ID to filter trips
+ * @param bypassCache - Whether to bypass cache
  */
-export async function loadTrips(bypassCache = false): Promise<Trip[]> {
+export async function loadTrips(groupId: string, bypassCache = false): Promise<Trip[]> {
   if (typeof window === "undefined") return [];
 
+  if (!groupId) {
+    perfLog("loadTrips: error", { error: "groupId is required" });
+    return [];
+  }
+
+  const start = perfMark("loadTrips");
   try {
-    const url = bypassCache ? "/api/trips?bypassCache=true" : "/api/trips";
-    console.log("[loadTrips] Fetching from:", url, "bypassCache:", bypassCache);
+    const url = bypassCache 
+      ? `/api/trips?groupId=${encodeURIComponent(groupId)}&bypassCache=true` 
+      : `/api/trips?groupId=${encodeURIComponent(groupId)}`;
+    
     const res = await fetch(url, {
       credentials: "include", // Include cookies for authentication
     });
     const json = await res.json().catch(() => ({}));
 
-    console.log("[loadTrips] Response:", {
-      ok: res.ok,
-      status: res.status,
-      tripsCount: json.trips?.length ?? 0,
-      error: json.error,
-    });
-
     if (!res.ok) {
       // Suppress error logging for 401 Unauthorized (user may have signed out)
       if (res.status !== 401) {
-        console.error("[loadTrips] API error:", json?.error);
+        perfLog("loadTrips: API error", { status: res.status, error: json?.error });
       }
+      perfMeasure("loadTrips", start);
       return [];
     }
 
     const trips = json.trips || [];
-    console.log("[loadTrips] Received", trips.length, "trips, normalizing...");
     const normalized = trips.map(normalizeTrip);
-    console.log("[loadTrips] Normalized to", normalized.length, "trips");
+    
+    const duration = perfMeasure("loadTrips", start);
+    perfLog("loadTrips: success", {
+      durationMs: duration.toFixed(2),
+      groupId,
+      bypassCache,
+      count: normalized.length,
+    });
+    
     return normalized;
   } catch (error) {
-    console.error("[loadTrips] Exception:", error);
+    perfMeasure("loadTrips", start);
+    perfLog("loadTrips: exception", { error: error instanceof Error ? error.message : String(error) });
     return [];
   }
 }
@@ -235,8 +249,13 @@ export function isTripLocked(trip: Trip) {
 
 export async function createTrip(
   trips: Trip[],
+  groupId: string,
   partial: Partial<Trip> = {}
 ): Promise<{ trips: Trip[]; newTripId: number | null }> {
+  if (!groupId) {
+    throw new Error("groupId is required to create a trip");
+  }
+
   const nextTrip: Trip = normalizeTrip({
     id: 0, // Temporary, will be set by server
     name: partial.name,
@@ -268,7 +287,7 @@ export async function createTrip(
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ trip: nextTrip }),
+      body: JSON.stringify({ trip: nextTrip, groupId }),
     });
 
     const json = await res.json().catch(() => ({}));
@@ -280,31 +299,26 @@ export async function createTrip(
     // The API returns the new trip's legacy_id in json.id
     const newTripId = json?.id;
     
-    // Bypass cache to ensure we get the newly created trip
-    const freshRes = await fetch("/api/trips?bypassCache=true", {
-      credentials: "include",
-    });
-    const freshJson = await freshRes.json().catch(() => ({}));
+    // Reload trips for this group
+    const allTrips = await loadTrips(groupId, true);
     
-    if (freshRes.ok && freshJson.trips) {
-      const allTrips = freshJson.trips.map(normalizeTrip);
-      // Verify the new trip is in the list
-      if (newTripId && !allTrips.find((t: Trip) => t.id === newTripId)) {
-        console.warn("New trip ID", newTripId, "not found in reloaded trips");
-      }
-      return { trips: allTrips, newTripId: newTripId || null };
+    // Verify the new trip is in the list
+    if (newTripId && !allTrips.find((t: Trip) => t.id === newTripId)) {
+      perfLog("createTrip: new trip not found in reload", { newTripId, groupId });
     }
     
-    // Fallback to normal load (shouldn't happen, but just in case)
-    const fallbackTrips = await loadTrips();
-    return { trips: fallbackTrips, newTripId: newTripId || null };
+    return { trips: allTrips, newTripId: newTripId || null };
   } catch (error) {
-    console.error("Failed to create trip:", error);
+    perfLog("createTrip: error", { groupId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
 
-export async function updateTrip(trips: Trip[], tripId: number, patch: Partial<Trip>): Promise<Trip[]> {
+export async function updateTrip(trips: Trip[], tripId: number, groupId: string, patch: Partial<Trip>): Promise<Trip[]> {
+  if (!groupId) {
+    throw new Error("groupId is required to update a trip");
+  }
+
   const base = trips.find((t) => normalizeTrip(t).id === tripId);
   if (!base) {
     throw new Error("Trip not found");
@@ -335,7 +349,7 @@ export async function updateTrip(trips: Trip[], tripId: number, patch: Partial<T
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ trip: updated, id: tripId }),
+      body: JSON.stringify({ trip: updated, id: tripId, groupId }),
     });
 
     const json = await res.json().catch(() => ({}));
@@ -344,21 +358,25 @@ export async function updateTrip(trips: Trip[], tripId: number, patch: Partial<T
       throw new Error(json?.error || "Failed to update trip.");
     }
 
-    // Reload trips from server
-    return await loadTrips();
+    // Reload trips from server for this group
+    return await loadTrips(groupId, true);
   } catch (error) {
-    console.error("Failed to update trip:", error);
+    perfLog("updateTrip: error", { tripId, groupId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
 
-export async function deleteTrip(trips: Trip[], tripId: number): Promise<Trip[]> {
+export async function deleteTrip(trips: Trip[], tripId: number, groupId: string): Promise<Trip[]> {
+  if (!groupId) {
+    throw new Error("groupId is required to delete a trip");
+  }
+
   try {
     const res = await fetch("/api/trips", {
       method: "DELETE",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: tripId }),
+      body: JSON.stringify({ id: tripId, groupId }),
     });
 
     const json = await res.json().catch(() => ({}));
@@ -367,10 +385,10 @@ export async function deleteTrip(trips: Trip[], tripId: number): Promise<Trip[]>
       throw new Error(json?.error || "Failed to delete trip.");
     }
 
-    // Reload trips from server
-    return await loadTrips();
+    // Reload trips from server for this group
+    return await loadTrips(groupId, true);
   } catch (error) {
-    console.error("Failed to delete trip:", error);
+    perfLog("deleteTrip: error", { tripId, groupId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
@@ -378,18 +396,20 @@ export async function deleteTrip(trips: Trip[], tripId: number): Promise<Trip[]>
 export async function setTripCourse(
   trips: Trip[],
   tripId: number,
+  groupId: string,
   courseId: string | null,
   teeId: string | null
 ): Promise<Trip[]> {
-  return updateTrip(trips, tripId, { courseId, teeId });
+  return updateTrip(trips, tripId, groupId, { courseId, teeId });
 }
 
 export async function setTripLogistics(
   trips: Trip[],
   tripId: number,
+  groupId: string,
   logistics: TripLogistics
 ): Promise<Trip[]> {
-  return updateTrip(trips, tripId, { logistics });
+  return updateTrip(trips, tripId, groupId, { logistics });
 }
 
 /* ================================
@@ -421,7 +441,7 @@ export async function publishTripResult(
     // Reload trips from server
     return await loadTrips();
   } catch (error) {
-    console.error("Failed to publish result:", error);
+    perfLog("publishTripResult: error", { tripId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
@@ -442,7 +462,7 @@ export async function clearTripResult(trips: Trip[], tripId: number): Promise<Tr
     // Reload trips from server
     return await loadTrips();
   } catch (error) {
-    console.error("Failed to clear result:", error);
+    perfLog("clearTripResult: error", { tripId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
@@ -451,9 +471,8 @@ export async function clearTripResult(trips: Trip[], tripId: number): Promise<Tr
    RSVP + handicap snapshot (Member)
 ================================ */
 
-export async function joinTrip(trips: Trip[], tripId: number, handicap: number | null = null): Promise<Trip[]> {
+export async function joinTrip(trips: Trip[], tripId: number, handicap: number | null = null, groupId?: string): Promise<Trip[]> {
   try {
-    console.log("[joinTrip] Starting join for tripId:", tripId, "handicap:", handicap);
     const res = await fetch(`/api/trips/${tripId}/join`, {
       method: "POST",
       credentials: "include",
@@ -463,12 +482,6 @@ export async function joinTrip(trips: Trip[], tripId: number, handicap: number |
 
     const json = await res.json().catch(() => ({}));
 
-    console.log("[joinTrip] API response:", {
-      ok: res.ok,
-      status: res.status,
-      body: json,
-    });
-
     if (!res.ok) {
       throw new Error(json?.error || "Failed to join trip.");
     }
@@ -476,22 +489,27 @@ export async function joinTrip(trips: Trip[], tripId: number, handicap: number |
     // Prefer the authoritative trip snapshot returned by the API, if present
     if (json && json.trip) {
       const snapshot = normalizeTrip(json.trip);
-      console.log("[joinTrip] Using snapshot from API for tripId:", snapshot.id);
       const remaining = trips.filter((t) => t.id !== snapshot.id);
       const merged = [...remaining, snapshot];
       return sortTripsByDateAsc(merged);
     }
 
-    console.warn("[joinTrip] No trip snapshot in API response, falling back to reload");
-    const updated = await loadTrips(true);
-    return updated;
+    // Fallback: reload trips if groupId is provided (caller should handle reload)
+    if (groupId) {
+      perfLog("joinTrip: fallback reload", { tripId, groupId });
+      return await loadTrips(groupId, true);
+    }
+
+    // No groupId and no snapshot - return trips as-is (caller should handle reload)
+    perfLog("joinTrip: no snapshot or groupId", { tripId });
+    return trips;
   } catch (error) {
-    console.error("Failed to join trip:", error);
+    perfLog("joinTrip: error", { tripId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
 
-export async function leaveTrip(trips: Trip[], tripId: number): Promise<Trip[]> {
+export async function leaveTrip(trips: Trip[], tripId: number, groupId?: string): Promise<Trip[]> {
   try {
     const res = await fetch(`/api/trips/${tripId}/leave`, {
       method: "POST",
@@ -504,10 +522,16 @@ export async function leaveTrip(trips: Trip[], tripId: number): Promise<Trip[]> 
       throw new Error(json?.error || "Failed to leave trip.");
     }
 
-    // Reload trips from server with cache bypass to ensure we get the updated trip
-    return await loadTrips(true);
+    // Reload trips from server with cache bypass if groupId is provided (caller should handle reload)
+    if (groupId) {
+      return await loadTrips(groupId, true);
+    }
+
+    // No groupId - return trips as-is (caller should handle reload)
+    perfLog("leaveTrip: no groupId", { tripId });
+    return trips;
   } catch (error) {
-    console.error("Failed to leave trip:", error);
+    perfLog("leaveTrip: error", { tripId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
@@ -515,7 +539,8 @@ export async function leaveTrip(trips: Trip[], tripId: number): Promise<Trip[]> 
 export async function setMyHandicapForTrip(
   trips: Trip[],
   tripId: number,
-  handicap: number | null
+  handicap: number | null,
+  groupId?: string
 ): Promise<Trip[]> {
   try {
     const res = await fetch(`/api/trips/${tripId}/handicap`, {
@@ -531,10 +556,16 @@ export async function setMyHandicapForTrip(
       throw new Error(json?.error || "Failed to update handicap.");
     }
 
-    // Reload trips from server
-    return await loadTrips();
+    // Reload trips from server if groupId is provided (caller should handle reload)
+    if (groupId) {
+      return await loadTrips(groupId, true);
+    }
+
+    // No groupId - return trips as-is (caller should handle reload)
+    perfLog("setMyHandicapForTrip: no groupId", { tripId });
+    return trips;
   } catch (error) {
-    console.error("Failed to update handicap:", error);
+    perfLog("setMyHandicapForTrip: error", { tripId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }

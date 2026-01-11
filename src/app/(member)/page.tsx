@@ -6,10 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { loadTrips, joinTrip, leaveTrip, type Trip } from "../lib/tripActions";
 import { loadCourses, type Course } from "../lib/courseActions";
-import { getTripCourseText } from "../lib/tripDisplay";
+import { getTripCourseText, formatTripDateLong } from "../lib/tripDisplay";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { PromptModal } from "../components/PromptModal";
 import { TripCard } from "../components/TripCard";
+import { perfMark, perfMeasure, perfLog } from "../lib/perf";
 
 export default function HomePage() {
   // All state hooks - must be at the top
@@ -18,12 +19,15 @@ export default function HomePage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [hasMemberships, setHasMemberships] = useState<boolean | null>(null);
-  const [loadingMemberships, setLoadingMemberships] = useState(true);
+  const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [isProfileComplete, setIsProfileComplete] = useState<boolean | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
   const [profilePhotoPath, setProfilePhotoPath] = useState<string | null>(null);
   const [memberFullName, setMemberFullName] = useState<string | null>(null);
   const [memberDisplayName, setMemberDisplayName] = useState<string | null>(null);
+  const [declaredHandicap, setDeclaredHandicap] = useState<number | null>(null);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [allTripsWithGroups, setAllTripsWithGroups] = useState<Array<Trip & { groupName: string; groupId: string }>>([]);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -51,178 +55,169 @@ export default function HomePage() {
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const nextTrip = useMemo(() => {
-    // Upcoming trips: Scheduled, Open for Signups, Signups Closed, Game Day (before trip date or trip date passed but no results yet)
-    const upcoming = [...trips]
-      .filter((t) => t.date >= today && !t.result)
+  // Find primary trip: If user has RSVP'd "in" to a trip, that's primary. Otherwise, next eligible upcoming trip.
+  const primaryTrip = useMemo(() => {
+    const upcoming = allTripsWithGroups
+      .filter((t) => !t.result && t.date >= today && t.status !== "cancelled")
       .sort((a, b) => a.date.localeCompare(b.date));
-    return upcoming[0] ?? null;
-  }, [trips, today]);
-  
-  // Current trip: Game Day (trip date passed, no results yet)
-  const currentTrip = useMemo(() => {
-    const current = [...trips]
-      .filter((t) => t.date < today && !t.result)
-      .sort((a, b) => b.date.localeCompare(a.date)); // Most recent first
-    return current[0] ?? null;
-  }, [trips, today]);
 
-  // Show current trip (Game Day) if no upcoming trip
-  const displayTrip = nextTrip || currentTrip;
+    // First, check if user has RSVP'd "in" (confirmed) to any upcoming trip
+    const joinedTrip = upcoming.find((trip) => {
+      if (currentUserId) {
+        const entry = trip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
+        return entry?.status === "confirmed";
+      } else if (currentUserName) {
+        const entry = trip.attendees.find((a) => a.name === currentUserName);
+        return entry?.status === "confirmed";
+      }
+      return false;
+    });
+
+    // If user has joined a trip, that's the primary. Otherwise, use the next eligible trip.
+    return joinedTrip || upcoming[0] || null;
+  }, [allTripsWithGroups, today, currentUserId, currentUserName]);
+
+  // Find secondary trip: Next upcoming trip after the primary trip
+  const secondaryTrip = useMemo(() => {
+    if (!primaryTrip) return null;
+    const upcoming = allTripsWithGroups
+      .filter((t) => !t.result && t.date >= today && t.status !== "cancelled")
+      .filter((t) => t.id !== primaryTrip.id)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return upcoming[0] || null;
+  }, [allTripsWithGroups, today, primaryTrip]);
+
+  // Find most recent completed trip (for lightweight past context)
+  const lastTrip = useMemo(() => {
+    const completed = allTripsWithGroups
+      .filter((t) => t.result) // Has results = completed
+      .sort((a, b) => b.date.localeCompare(a.date)); // Most recent first
+    return completed[0] || null;
+  }, [allTripsWithGroups]);
 
   // All useEffect hooks - must be before any early returns
   useEffect(() => {
-    document.title = "Day fore it - Home";
+    document.title = "DayForeIt - Home";
   }, []);
 
-  // Check for approved group memberships
+  // Bootstrap: fetch user, member profile, and group data in one call
   useEffect(() => {
-    async function checkMemberships() {
+    async function loadBootstrap() {
+      const start = perfMark("bootstrap");
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (!user) {
-          setHasMemberships(false);
-          setLoadingMemberships(false);
-          return;
-        }
-
-        const { data: memberships } = await supabase
-          .from("group_members")
-          .select("group_id, status")
-          .eq("user_id", user.id)
-          .eq("status", "approved")
-          .limit(1);
-
-        setHasMemberships(memberships && memberships.length > 0);
-      } catch (error) {
-        console.error("Failed to check memberships:", error);
-        setHasMemberships(false);
-      } finally {
-        setLoadingMemberships(false);
-      }
-    }
-    checkMemberships();
-  }, [supabase]);
-
-  useEffect(() => {
-    async function loadData() {
-      let retries = 0;
-      const maxRetries = 3;
-      
-      while (retries < maxRetries) {
-        try {
-          // Bypass cache on first load to ensure we get fresh data
-          const [tripsData, coursesData] = await Promise.all([
-            loadTrips(retries === 0), // Bypass cache on first attempt
-            loadCourses()
-          ]);
-          
-          if (tripsData.length === 0 && retries < maxRetries - 1) {
-            // If we got empty data, retry with cache bypass
-            retries++;
-            await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
-            continue;
-          }
-          
-          setTrips(tripsData);
-          setCourses(coursesData);
-          return; // Success, exit retry loop
-        } catch (error) {
-          console.error(`Failed to load data (attempt ${retries + 1}/${maxRetries}):`, error);
-          retries++;
-          
-          if (retries >= maxRetries) {
-            // Final attempt failed - show error to user
-            alert("Failed to load trips. Please refresh the page.");
+        const res = await fetch("/api/me/bootstrap", { credentials: "include" });
+        if (!res.ok) {
+          if (res.status === 401) {
+            // Not authenticated - redirect handled by layout
+            perfMeasure("bootstrap", start);
+            setLoadingBootstrap(false);
             return;
           }
-          
-          // Wait before retry
-          await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+          throw new Error("Failed to load bootstrap data");
         }
+
+        const bootstrap = await res.json();
+        
+        setCurrentUserId(bootstrap.userId);
+        setCurrentUserName(bootstrap.member?.display_name || bootstrap.member?.full_name || null);
+        setMemberFullName(bootstrap.member?.full_name || null);
+        setMemberDisplayName(bootstrap.member?.display_name || null);
+        setProfilePhotoPath(bootstrap.member?.profile_photo_path || null);
+        setDeclaredHandicap(bootstrap.member?.declared_handicap ?? null);
+        setIsProfileComplete(bootstrap.isProfileComplete);
+        setHasMemberships(bootstrap.hasApprovedGroup);
+        setActiveGroupId(bootstrap.activeGroupId);
+        setApprovedGroups(bootstrap.approvedGroups || []);
+        
+        const duration = perfMeasure("bootstrap", start);
+        perfLog("bootstrap: success", {
+          durationMs: duration.toFixed(2),
+          activeGroupId: bootstrap.activeGroupId,
+          membershipCount: bootstrap.approvedGroups?.length || 0,
+        });
+      } catch (error) {
+        perfMeasure("bootstrap", start);
+        perfLog("bootstrap: error", { error: error instanceof Error ? error.message : String(error) });
+        setHasMemberships(false);
+        setIsProfileComplete(false);
+      } finally {
+        setLoadingBootstrap(false);
+      }
+    }
+    loadBootstrap();
+  }, []);
+
+  // Load trips from all approved groups and courses
+  useEffect(() => {
+    if (approvedGroups.length === 0) return;
+
+    async function loadData() {
+      try {
+        // Load trips from all approved groups in parallel, tracking which group each trip belongs to
+        const tripsPromises = approvedGroups.map(async (group) => {
+          const groupTrips = await loadTrips(group.id, false);
+          return groupTrips.map((trip) => ({ ...trip, groupName: group.name, groupId: group.id }));
+        });
+        const [allTripsArrays, coursesData] = await Promise.all([
+          Promise.all(tripsPromises),
+          loadCourses()
+        ]);
+        
+        // Combine all trips from all groups with group information
+        const allTripsWithGroupsData = allTripsArrays.flat();
+        
+        // Store all trips with group info for Home page display
+        setAllTripsWithGroups(allTripsWithGroupsData);
+        
+        // Set trips for active group (for backward compatibility with join/leave handlers)
+        if (activeGroupId) {
+          const activeGroupIndex = approvedGroups.findIndex((g) => g.id === activeGroupId);
+          if (activeGroupIndex >= 0) {
+            const activeGroupTrips = allTripsArrays[activeGroupIndex].map(({ groupName, groupId, ...trip }) => trip);
+            setTrips(activeGroupTrips);
+          } else {
+            // Fallback: use first group's trips if activeGroupId not found
+            const allTripsData = allTripsWithGroupsData.map(({ groupName, groupId, ...trip }) => trip);
+            setTrips(allTripsData);
+          }
+        } else {
+          const allTripsData = allTripsWithGroupsData.map(({ groupName, groupId, ...trip }) => trip);
+          setTrips(allTripsData);
+        }
+        
+        setCourses(coursesData);
+      } catch (error) {
+        console.error("Failed to load data:", error);
       }
     }
     loadData();
-  }, []);
+  }, [approvedGroups, activeGroupId]);
 
-  useEffect(() => {
-    async function loadCurrentUser() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          setCurrentUserId(user.id);
-          const { data: memberData } = await supabase
-            .from("members")
-            .select("display_name,full_name,nationality,profile_photo_path")
-            .eq("id", user.id)
-            .maybeSingle();
-          const name = memberData?.display_name || memberData?.full_name || null;
-          setCurrentUserName(name);
-          setMemberFullName(memberData?.full_name || null);
-          setMemberDisplayName(memberData?.display_name || null);
-          setProfilePhotoPath(memberData?.profile_photo_path || null);
-          
-          // Check profile completeness
-          const complete = !!(memberData?.full_name && memberData?.display_name && memberData?.nationality);
-          setIsProfileComplete(complete);
-        } else {
-          setIsProfileComplete(false);
-        }
-      } catch (error) {
-        console.warn("Failed to load current user:", error);
-        setIsProfileComplete(false);
-      } finally {
-        setLoadingProfile(false);
-      }
-    }
-    loadCurrentUser();
-  }, [supabase]);
+  // Helper functions for placeholder display
+  function formatTripDate(trip: Trip & { groupName?: string; groupId?: string }): string {
+    return new Date(trip.date + "T00:00:00").toLocaleDateString("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
 
-  // Computed values (not hooks, but needed for rendering)
-  const isCurrentTrip = displayTrip === currentTrip;
+  function formatTripDateShort(trip: Trip & { groupName?: string; groupId?: string }): string {
+    return new Date(trip.date + "T00:00:00").toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  }
 
-  const courseText = displayTrip ? getTripCourseText(displayTrip, courses) : { title: "Course TBD", detail: null };
-  const course = displayTrip?.courseId
-    ? courses.find((c) => c.id === displayTrip.courseId)
-    : undefined;
-  const myEntry = displayTrip
-    ? (currentUserId
-        ? displayTrip.attendees.find((a) => a.memberId && a.memberId === currentUserId)
-        : currentUserName
-        ? displayTrip.attendees.find((a) => a.name === currentUserName)
-        : undefined)
-    : undefined;
-
-  // Scheduled: open trip, but signups only open within 30 days of trip date
-  const tripDateUtc = displayTrip ? new Date(displayTrip.date + "T00:00:00Z").getTime() : NaN;
-  const signupOpenUtc = Number.isFinite(tripDateUtc)
-    ? tripDateUtc - 30 * 24 * 60 * 60 * 1000
-    : NaN;
-  const signupOpenDateYmd = Number.isFinite(signupOpenUtc)
-    ? new Date(signupOpenUtc).toISOString().slice(0, 10)
-    : null;
-  const isScheduled =
-    displayTrip &&
-    displayTrip.status === "open" &&
-    !displayTrip.result &&
-    Number.isFinite(signupOpenUtc) &&
-    Date.now() < signupOpenUtc;
-  
-  // Check if cutoff has passed (11:59pm SGT)
-  const cutoffPassed = displayTrip?.cutoffAt ? (() => {
-    const cutoff = new Date(displayTrip.cutoffAt);
-    const now = new Date();
-    const sgtOffset = 8 * 60 * 60 * 1000;
-    const nowSGT = new Date(now.getTime() + sgtOffset);
-    return nowSGT > cutoff;
-  })() : false;
-  
-  const joinDisabled = !displayTrip || isScheduled || displayTrip.status !== "open" || cutoffPassed || isCurrentTrip;
+  function formatLastTripDate(trip: Trip & { groupName?: string; groupId?: string }): string {
+    return new Date(trip.date + "T00:00:00").toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  }
 
   // Helper function to generate initials from name
   function getInitials(fullName: string | null, displayName: string | null): string {
@@ -235,224 +230,51 @@ export default function HomePage() {
     return name.toUpperCase().slice(0, 2);
   }
 
+
+  // Helper function to generate a consistent color from a group ID
+  function getGroupColor(groupId: string): string {
+    // Generate a hash from the group ID
+    let hash = 0;
+    for (let i = 0; i < groupId.length; i++) {
+      hash = groupId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Use a palette of muted, accessible colors
+    const colors = [
+      "hsl(210, 50%, 55%)",  // Blue
+      "hsl(160, 50%, 50%)",  // Teal/Green
+      "hsl(30, 65%, 55%)",   // Orange
+      "hsl(280, 50%, 60%)",  // Purple
+      "hsl(340, 55%, 60%)",  // Pink
+      "hsl(200, 60%, 50%)",  // Cyan
+      "hsl(15, 70%, 55%)",   // Red-orange
+      "hsl(260, 50%, 60%)",  // Indigo
+    ];
+    
+    return colors[Math.abs(hash) % colors.length];
+  }
+
   // Compute onboarding states (based on real data)
   const profileComplete = isProfileComplete === true;
   const hasApprovedGroup = hasMemberships === true;
 
-  // Handler functions
+  // Handler functions (placeholder - not currently used but kept for future implementation)
   async function handleImIn() {
-    if (!displayTrip) return;
-    
-    // Prevent duplicate joins
-    if (myEntry) return;
-    if (joinDisabled) {
-      if (isScheduled && signupOpenDateYmd) {
-        alert(`Signups open on ${signupOpenDateYmd} (30 days before the trip).`);
-      } else if (displayTrip.status === "cancelled") {
-        alert("This trip has been cancelled.");
-      } else if (isCurrentTrip) {
-        alert("This trip is in progress. Signups are closed.");
-      } else if (cutoffPassed) {
-        alert("Signups have closed (cutoff date has passed).");
-      } else {
-        alert("Signups are not open for this trip.");
-      }
-      return;
-    }
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        // Look up existing member to get current handicap
-        const { data: memberData } = await supabase
-          .from("members")
-          .select("full_name,display_name,nationality,declared_handicap")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        const existingHandicap =
-          memberData && typeof memberData.declared_handicap === "number"
-            ? memberData.declared_handicap
-            : null;
-
-        // Prepare the join action function
-        const continueWithHandicap = async (handicapValue: number | null) => {
-          try {
-            const now = new Date().toISOString();
-
-            if (memberData) {
-              await supabase
-                .from("members")
-                .update({
-                  declared_handicap: handicapValue,
-                  last_seen: now,
-                  full_name: memberData.full_name ?? null,
-                  display_name: memberData.display_name ?? null,
-                  nationality: memberData.nationality ?? null,
-                })
-                .eq("id", user.id);
-            } else {
-              await supabase
-                .from("members")
-                .insert({
-                  id: user.id,
-                  email: user.email || "",
-                  declared_handicap: handicapValue,
-                  last_seen: now,
-                  created_at: now,
-                });
-            }
-
-            // Add to trip and save handicap for this trip
-            const updated = await joinTrip(trips, displayTrip.id, handicapValue);
-            setTrips(updated);
-            
-            // Reload trips to get latest data (with a small delay to let DB catch up)
-            try {
-              await new Promise(resolve => setTimeout(resolve, 500));
-              const freshTrips = await loadTrips(true); // Bypass cache
-              setTrips(freshTrips);
-              
-              // Silently verify - only log warnings, don't show errors to user
-              // The join likely succeeded even if verification fails due to timing/name matching
-              const freshDisplayTrip = freshTrips.find(t => t.id === displayTrip.id);
-              if (freshDisplayTrip && currentUserName) {
-                const freshMyEntry = freshDisplayTrip.attendees.find((a) => 
-                  a.name === currentUserName || 
-                  a.name === memberData?.display_name || 
-                  a.name === memberData?.full_name
-                );
-                if (!freshMyEntry) {
-                  console.warn("Join verification: name not found in attendees, but join may have succeeded");
-                }
-              }
-            } catch (reloadError) {
-              console.error("Failed to reload trips after join:", reloadError);
-              // Don't show error to user - the join might have succeeded
-            }
-          } catch (error) {
-            console.error("Failed to join trip:", error);
-            alert(
-              `Failed to join trip: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
-            );
-          }
-        };
-
-        // Ask if they want to edit their current handicap
-        if (existingHandicap !== null) {
-          // Show confirm modal to ask if they want to edit
-          setConfirmModal({
-            isOpen: true,
-            title: "Edit handicap?",
-            message: `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`,
-            onConfirm: () => {
-              setConfirmModal({ ...confirmModal, isOpen: false });
-              // Show prompt modal for editing handicap
-              setPromptModal({
-                isOpen: true,
-                title: "Enter handicap",
-                message: "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
-                defaultValue: String(existingHandicap),
-                placeholder: "0–36",
-                onConfirm: (input: string) => {
-                  setPromptModal({ ...promptModal, isOpen: false });
-                  const trimmed = input.trim();
-                  let handicapValue: number | null = existingHandicap;
-                  if (trimmed === "") {
-                    handicapValue = existingHandicap;
-                  } else {
-                    const parsed = Number(trimmed);
-                    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-                      alert("Handicap must be a number between 0 and 36.");
-                      return;
-                    }
-                    handicapValue = parsed;
-                  }
-                  void continueWithHandicap(handicapValue);
-                },
-                onCancel: () => {
-                  setPromptModal({ ...promptModal, isOpen: false });
-                  // Join with existing handicap even if they cancel the prompt
-                  void continueWithHandicap(existingHandicap);
-                },
-              });
-            },
-            onCancel: () => {
-              setConfirmModal({ ...confirmModal, isOpen: false });
-              // Use existing handicap without editing
-              void continueWithHandicap(existingHandicap);
-            },
-          });
-        } else {
-          // Show prompt modal for new handicap
-          setPromptModal({
-            isOpen: true,
-                title: "Enter handicap",
-                message: "Please enter your current handicap (0–36), or leave blank if you are not sure yet:",
-            defaultValue: "",
-            placeholder: "0–36",
-            onConfirm: (input: string) => {
-              setPromptModal({ ...promptModal, isOpen: false });
-              const trimmed = input.trim();
-              let handicapValue: number | null = null;
-              if (trimmed !== "") {
-                const parsed = Number(trimmed);
-                if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-                  alert("Handicap must be a number between 0 and 36.");
-                  return;
-                }
-                handicapValue = parsed;
-              }
-              void continueWithHandicap(handicapValue);
-            },
-            onCancel: () => {
-              setPromptModal({ ...promptModal, isOpen: false });
-              // Join without handicap
-              void continueWithHandicap(null);
-            },
-          });
-        }
-      } else {
-        alert("You must be signed in to join a trip.");
-      }
-    } catch (error) {
-      console.error("Failed to start join process:", error);
-      alert(
-        `Failed to start join process: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
-      );
-    }
+    if (!primaryTrip) return;
+    // Placeholder: Handler logic will be implemented when CTAs are finalized
+    alert("Placeholder: Join trip functionality will be implemented");
   }
 
   async function handleImOut() {
-    if (!displayTrip) return;
-    
-    setConfirmModal({
-      isOpen: true,
-      title: "Leave this trip?",
-      message: "You'll be removed from the attendee list.",
-      onConfirm: async () => {
-        setConfirmModal({ ...confirmModal, isOpen: false });
-        try {
-          const updated = await leaveTrip(trips, displayTrip.id);
-          setTrips(updated);
-        } catch (error) {
-          console.error("Failed to leave trip:", error);
-          alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      },
-      onCancel: () => {
-        setConfirmModal({ ...confirmModal, isOpen: false });
-      },
-    });
+    if (!primaryTrip) return;
+    // Placeholder: Handler logic will be implemented when CTAs are finalized
+    alert("Placeholder: Leave trip functionality will be implemented");
   }
 
   // Build content based on state - no early returns
   let content: React.ReactNode;
 
-  if (loadingMemberships || loadingProfile) {
+  if (loadingBootstrap) {
     content = (
       <div className="rounded-xl border border-border bg-surface p-8 text-center">
         <p className="text-sm text-muted">Loading…</p>
@@ -469,7 +291,7 @@ export default function HomePage() {
       <div className="space-y-6">
         {/* Header section - no border card */}
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Welcome to Day fore it</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Welcome to DayForeIt</h1>
           <p className="mt-2 text-sm text-muted">
             Two quick steps and you're in.
           </p>
@@ -577,7 +399,7 @@ export default function HomePage() {
         )}
       </div>
     );
-  } else if (!displayTrip) {
+  } else if (!primaryTrip) {
     content = (
       <div className="rounded-xl border border-border bg-surface p-5">
         <div className="text-lg font-semibold text-foreground">No upcoming trips</div>
@@ -592,40 +414,92 @@ export default function HomePage() {
       </div>
     );
   } else {
+    // Get trip display info for placeholders
+    const primaryCourseText = getTripCourseText(primaryTrip, courses);
+    const secondaryCourseText = secondaryTrip ? getTripCourseText(secondaryTrip, courses) : null;
+
     content = (
       <div className="space-y-4">
-        <TripCard
-          trip={displayTrip}
-          courseText={courseText}
-          course={course}
-          variant="home"
-          headerLabel={isCurrentTrip ? "Current trip" : "Next trip"}
-          isCurrentTrip={isCurrentTrip}
-          isScheduled={isScheduled}
-          signupOpenDateYmd={signupOpenDateYmd}
-          myEntry={myEntry}
-          joinDisabled={joinDisabled}
-          onJoin={handleImIn}
-          onLeave={handleImOut}
-        />
+        {/* Home Header: Two sibling cards - Next Trip (left) + Handicap (right) - equal heights, stays split on all screens */}
+        <div className="grid grid-cols-[minmax(0,1fr)_120px] sm:grid-cols-[minmax(0,1fr)_140px] md:grid-cols-[minmax(0,1fr)_160px] gap-3">
+          {/* Next Trip Card (left, flexible width, equal height with Handicap) */}
+          <div className="min-w-0 rounded-2xl border border-border bg-surface p-4 sm:p-5 md:p-6 shadow-sm flex flex-col h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px]">
+            <div className="mb-3 sm:mb-4 text-xs font-medium text-muted uppercase tracking-wide">Next trip</div>
+            
+            {/* Trip name or course */}
+            <div className="mb-2 text-lg sm:text-xl font-semibold text-foreground">
+              {primaryTrip.name || primaryCourseText.title || "Trip"}
+            </div>
+            
+            {/* Date */}
+            <div className="mb-2 sm:mb-3 text-sm sm:text-base text-foreground">
+              {formatTripDate(primaryTrip)}
+            </div>
+            
+            {/* Course details (if available) */}
+            {primaryCourseText.title !== "Course TBD" && (
+              <div className="mb-2 sm:mb-3 text-xs sm:text-sm text-muted">
+                {primaryCourseText.title}
+                {primaryCourseText.detail && (
+                  <span className="ml-2">· {primaryCourseText.detail}</span>
+                )}
+              </div>
+            )}
+            
+            {/* Placeholder CTA area - push to bottom */}
+            <div className="mt-auto rounded-lg border border-border bg-surface/50 px-3 sm:px-4 py-2 sm:py-3">
+              <div className="text-xs sm:text-sm text-muted">Placeholder: Trip actions will appear here</div>
+            </div>
+          </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href="/trips"
-                className="rounded-xl border border-border bg-surface p-4 text-sm text-foreground hover:bg-background"
-          >
-            <div className="font-semibold text-foreground">Trips</div>
-            <div className="mt-1 text-muted">Upcoming + past</div>
-          </Link>
-
-          <Link
-            href="/results"
-                className="rounded-xl border border-border bg-surface p-4 text-sm text-foreground hover:bg-background"
-          >
-            <div className="font-semibold text-foreground">Results</div>
-            <div className="mt-1 text-muted">Published only</div>
-          </Link>
+          {/* Handicap Tile (right, fixed width, equal height, space reserved for future trends) */}
+          {declaredHandicap !== null && (
+            <div className="rounded-xl border border-border bg-surface/50 p-3 sm:p-4 flex flex-col shrink-0 h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px]">
+              <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-2 sm:mb-3">Handicap</div>
+              <div className="text-2xl sm:text-3xl md:text-4xl font-semibold text-foreground mb-auto">{declaredHandicap}</div>
+              {/* Reserved space for future trend indicators - intentionally empty */}
+              <div className="mt-auto pt-2 sm:pt-3"></div>
+            </div>
+          )}
         </div>
+
+        {/* Last played tile (separate, below header row) */}
+        {lastTrip && (
+          <div className="rounded-lg border border-border bg-surface/50 p-2.5 w-fit">
+            <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-1">Last played</div>
+            <div className="text-xs text-foreground font-medium mb-0.5 line-clamp-1">
+              {lastTrip.name || getTripCourseText(lastTrip, courses).title}
+            </div>
+            <div className="text-[10px] text-muted">
+              {formatLastTripDate(lastTrip)}
+            </div>
+          </div>
+        )}
+
+        {/* Secondary Upcoming Trip Block (visually demoted, appears AFTER header section with increased spacing) */}
+        {secondaryTrip && (
+          <div className="mt-6 rounded-lg border border-border bg-surface/30 p-3">
+            <div className="mb-1.5 text-[10px] font-medium text-muted uppercase tracking-wide">Up next</div>
+            
+            {/* Compact trip info - reduced typography */}
+            <div className="mb-1 text-sm font-medium text-foreground">
+              {secondaryTrip.name || secondaryCourseText?.title || "Trip"}
+            </div>
+            <div className="text-xs text-muted">
+              {formatTripDate(secondaryTrip)}
+            </div>
+            {secondaryCourseText && secondaryCourseText.title !== "Course TBD" && (
+              <div className="mt-1 text-xs text-muted/80">
+                {secondaryCourseText.title}
+              </div>
+            )}
+            
+            {/* Placeholder info - reduced visual weight */}
+            <div className="mt-2 text-[10px] text-muted/60">
+              Placeholder: Secondary trip details
+            </div>
+          </div>
+        )}
       </div>
     );
   }

@@ -34,10 +34,10 @@ export default async function MemberLayout({ children }: { children: React.React
           <Link href="/" className="flex flex-1 justify-center">
             <Image
               src="/logo.png"
-              alt="Day fore it"
-              width={120}
-              height={60}
-              className="h-auto w-auto max-h-[60px] object-contain"
+              alt="DayForeIt"
+              width={132}
+              height={66}
+              className="h-auto w-auto max-h-[66px] object-contain"
               priority
             />
           </Link>

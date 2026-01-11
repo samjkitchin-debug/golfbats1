@@ -3,7 +3,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
-import { timeFn } from "@/app/lib/perf";
+import { perfMark, perfMeasure, perfLog } from "@/app/lib/perf";
 
 const CACHE_TAG = "courses";
 const CACHE_TTL = 3600; // 1 hour
@@ -75,13 +75,18 @@ const getCachedCourses = cache(async () => {
  * Retrieve all courses with their tees (cached)
  */
 export async function GET() {
+  const start = perfMark("courses API fetch");
   try {
-    const result = await timeFn("[courses API] Fetch", async () => {
-      return await getCachedCourses();
+    const result = await getCachedCourses();
+    const duration = perfMeasure("courses API fetch", start);
+    perfLog("courses API: success", {
+      durationMs: duration.toFixed(2),
+      count: result.courses?.length || 0,
     });
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Get courses error:", error);
+    perfMeasure("courses API fetch", start);
+    perfLog("courses API: error", { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "An error occurred." },
       { status: 500 }

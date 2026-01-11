@@ -63,50 +63,20 @@ export default function StartPage() {
     }
 
     try {
-      // Create group
-      const { data: group, error: groupErr } = await supabase
-        .from("groups")
-        .insert({
-          slug: trimmedSlug,
+      // Create group via API route (server-side only - no client-side inserts)
+      const res = await fetch("/api/groups", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
           name: trimmedName,
-          created_by: user.id,
-          is_active: true,
-        })
-        .select("id")
-        .single();
-
-      if (groupErr) {
-        // Check if it's a unique constraint violation (slug already exists)
-        if (groupErr.code === "23505" || groupErr.message?.includes("unique")) {
-          setStatus("error");
-          setMessage("This group code is already taken. Please choose a different one.");
-          return;
-        }
-        setStatus("error");
-        setMessage(groupErr.message || "Failed to create group.");
-        return;
-      }
-
-      if (!group) {
-        setStatus("error");
-        setMessage("Failed to create group.");
-        return;
-      }
-
-      // Add creator as admin member with approved status
-      const { error: memberErr } = await supabase.from("group_members").insert({
-        group_id: group.id,
-        user_id: user.id,
-        role: "admin",
-        status: "approved",
+          slug: trimmedSlug,
+        }),
       });
 
-      if (memberErr) {
-        console.error("Failed to add creator as admin member:", memberErr);
-        // Group was created but membership failed - user can still request membership
-        setStatus("done");
-        setMessage("Group created, but failed to add you as admin. Please request membership to join.");
-        return;
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to create group.");
       }
 
       setStatus("done");
@@ -170,7 +140,7 @@ export default function StartPage() {
                 className="mt-2 w-full rounded-lg border px-3 py-2 text-sm"
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
-                placeholder="e.g. GolfBats Singapore"
+                placeholder="e.g. DayForeIt Singapore"
                 disabled={status === "submitting"}
               />
             </div>

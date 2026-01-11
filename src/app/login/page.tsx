@@ -22,7 +22,7 @@ export default async function LoginPage() {
         <div className="mb-8 flex justify-center">
           <Image
             src="/logo.png"
-            alt="Day fore it"
+            alt="DayForeIt"
             width={160}
             height={80}
             className="h-auto w-auto max-h-[80px] object-contain"
@@ -31,9 +31,12 @@ export default async function LoginPage() {
         </div>
 
         {/* Title */}
-        <h1 className="mb-10 text-center text-3xl font-semibold tracking-tight text-foreground">
-          Welcome to Day fore it
+        <h1 className="mb-2 text-center text-3xl font-semibold tracking-tight text-foreground">
+          Sign in to DayForeIt
         </h1>
+        <p className="mb-10 text-center text-sm text-muted">
+          Your group's home for golf days.
+        </p>
 
         {/* Sign-in */}
         <LoginClient />

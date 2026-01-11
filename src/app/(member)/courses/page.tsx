@@ -9,7 +9,7 @@ export default function CoursesPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   useEffect(() => {
-    document.title = "GolfBats - Courses";
+    document.title = "DayForeIt - Courses";
   }, []);
 
   useEffect(() => {

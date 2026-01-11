@@ -1,21 +1,45 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { isEmailAdmin } from "@/app/lib/auth";
 
 const CACHE_TAG = "trips";
 
 /**
- * Fetch trips data using authenticated session client (subject to RLS policies)
+ * Fetch trips data for a specific group using authenticated session client
  * Returns trips with attendees and results in the same JSON format as before
  */
-async function fetchTripsData(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  // Fetch trips - only select columns we actually use (performance optimization)
-  const { data: tripsData, error: tripsError } = await supabase
+async function fetchTripsData(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  groupId: string
+) {
+  // Get today's date in local timezone (YYYY-MM-DD format)
+  // Use UTC date but compare as date strings (YYYY-MM-DD) to avoid timezone issues
+  const today = new Date();
+  const todayYmd = today.toISOString().slice(0, 10);
+  
+  // Fetch trips for the specified group - only upcoming trips (trip_date >= today)
+  // Exclude past-status trips: completed, archived, closed (those belong in Results)
+  // Only select columns we actually use (performance optimization)
+  const { data: tripsDataRaw, error: tripsError } = await supabase
     .from("trips")
     .select(
-      "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at"
+      "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id"
     )
+    .eq("group_id", groupId)
+    .gte("trip_date", todayYmd) // Only trips with date >= today (upcoming only)
     .order("trip_date", { ascending: false });
+
+  if (tripsError) {
+    console.error("[trips API] Error fetching trips:", tripsError);
+    throw new Error(tripsError.message || "Failed to fetch trips.");
+  }
+
+  // Filter out past-status trips in JavaScript (completed, archived, closed belong in Results)
+  const excludedStatuses = ["completed", "archived", "closed"];
+  const tripsData = (tripsDataRaw || []).filter(
+    (trip) => !excludedStatuses.includes(trip.status)
+  );
 
   if (tripsError) {
     console.error("[trips API] Error fetching trips:", tripsError);
@@ -160,8 +184,9 @@ async function fetchTripsData(supabase: Awaited<ReturnType<typeof createSupabase
 
 /**
  * GET /api/trips
- * Retrieve all trips with attendees and results
- * Requires authentication - subject to RLS policies (no caching, runs as authenticated user)
+ * Retrieve trips for a specific group with attendees and results
+ * Requires authentication and groupId query parameter
+ * Query params: ?groupId=<uuid>
  */
 export async function GET(req: Request) {
   try {
@@ -173,7 +198,33 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const result = await fetchTripsData(supabase);
+    // Require groupId query parameter
+    const { searchParams } = new URL(req.url);
+    const groupId = searchParams.get("groupId");
+
+    if (!groupId) {
+      return NextResponse.json(
+        { error: "groupId query parameter is required." },
+        { status: 400 }
+      );
+    }
+
+    // Verify group exists and is active
+    const { data: group } = await supabase
+      .from("groups")
+      .select("id")
+      .eq("id", groupId)
+      .eq("is_active", true)
+      .single();
+
+    if (!group) {
+      return NextResponse.json(
+        { error: "Group not found or inactive." },
+        { status: 404 }
+      );
+    }
+
+    const result = await fetchTripsData(supabase, groupId);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Get trips error:", error);
@@ -186,8 +237,8 @@ export async function GET(req: Request) {
 
 /**
  * POST /api/trips
- * Create or update a trip (admin only)
- * Body: { trip: Trip, id?: number } - if id provided, updates; otherwise creates
+ * Create or update a trip (group admin only)
+ * Body: { trip: Trip, groupId: string, id?: number } - if id provided, updates; otherwise creates
  */
 export async function POST(req: Request) {
   try {
@@ -203,61 +254,77 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Not signed in." }, { status: 401 });
     }
 
-    // Check admin status
-    const adminEmails = (process.env.ADMIN_EMAILS || "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-    const email = (user.email ?? "").toLowerCase();
-    const isEnvAdmin = adminEmails.includes(email);
-
-    // Also check DB is_admin flag
-    const { data: member } = await supabase
-      .from("members")
-      .select("is_admin")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    const isAdmin = isEnvAdmin || !!member?.is_admin;
-
-    if (!isAdmin) {
-      return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-    }
-
     const body = await req.json();
-    const { trip, id } = body as { trip: any; id?: number };
+    const { trip, groupId, id } = body as { trip: any; groupId?: string; id?: number };
 
     if (!trip) {
       return NextResponse.json({ error: "Trip data is required." }, { status: 400 });
     }
 
-    // Get club_id
-    const clubSlug = process.env.NEXT_PUBLIC_CLUB_SLUG || "golfbats";
-    const { data: clubData } = await supabase
-      .from("clubs")
+    if (!groupId || typeof groupId !== "string") {
+      return NextResponse.json(
+        { error: "groupId is required and must be a string." },
+        { status: 400 }
+      );
+    }
+
+    // Verify group exists and is active
+    const { data: group } = await supabase
+      .from("groups")
       .select("id")
-      .eq("slug", clubSlug)
+      .eq("id", groupId)
+      .eq("is_active", true)
       .single();
 
-    if (!clubData) {
+    if (!group) {
       return NextResponse.json(
-        { error: `Club not found for slug: ${clubSlug}` },
-        { status: 400 }
+        { error: "Group not found or inactive." },
+        { status: 404 }
+      );
+    }
+
+    // Check group admin authorization: platform admin OR approved group admin
+    const isPlatformAdmin = isEmailAdmin(user.email);
+
+    // Check if user is approved admin of this group
+    const { data: groupMember } = await supabase
+      .from("group_members")
+      .select("role, status")
+      .eq("group_id", groupId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const isGroupAdmin =
+      isPlatformAdmin ||
+      (groupMember && groupMember.role === "admin" && groupMember.status === "approved");
+
+    if (!isGroupAdmin) {
+      return NextResponse.json(
+        { error: "You must be an approved admin of this group to manage trips." },
+        { status: 403 }
       );
     }
 
     const now = new Date().toISOString();
 
     if (id) {
-      // Update existing trip - find by legacy_id
+      // Update existing trip - find by legacy_id and verify it belongs to this group
       const { data: existingTrip } = await supabase
         .from("trips")
-        .select("id")
+        .select("id, group_id")
         .eq("legacy_id", id)
         .single();
 
       if (!existingTrip) {
         return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+      }
+
+      // Ensure trip belongs to the specified group
+      if (existingTrip.group_id !== groupId) {
+        return NextResponse.json(
+          { error: "Trip does not belong to the specified group." },
+          { status: 403 }
+        );
       }
 
       const updateData: any = {
@@ -300,20 +367,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     } else {
       // Create new trip
-      // Get next legacy_id
+      // Get next legacy_id (globally unique - constraint requires uniqueness across all trips)
       const { data: maxTrip } = await supabase
         .from("trips")
         .select("legacy_id")
+        .not("legacy_id", "is", null)
         .order("legacy_id", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       const nextLegacyId = maxTrip?.legacy_id ? Number(maxTrip.legacy_id) + 1 : 1;
+
+      // Get default club_id for schema compliance (club_id is NOT NULL in schema)
+      // Note: group_id is the canonical scope for trips; club_id is legacy
+      const clubSlug = process.env.NEXT_PUBLIC_CLUB_SLUG || "golfbats";
+      const { data: clubData } = await supabase
+        .from("clubs")
+        .select("id")
+        .eq("slug", clubSlug)
+        .single();
+      
+      if (!clubData) {
+        return NextResponse.json(
+          { error: `Default club not found. Please ensure a club with slug '${clubSlug}' exists in the database.` },
+          { status: 500 }
+        );
+      }
 
       const tripId = crypto.randomUUID();
       const insertData: any = {
         id: tripId,
-        club_id: clubData.id,
+        club_id: clubData.id, // Legacy field required by schema
+        group_id: groupId, // Canonical scope for trips
         legacy_id: nextLegacyId,
         name: trip.name || null,
         trip_date: trip.date || new Date().toISOString().slice(0, 10),
@@ -335,6 +420,7 @@ export async function POST(req: Request) {
       const { error: insertError } = await supabase.from("trips").insert(insertData);
 
       if (insertError) {
+        console.error("Trip insert error:", insertError);
         return NextResponse.json(
           { error: insertError.message || "Failed to create trip." },
           { status: 400 }
@@ -362,8 +448,8 @@ export async function POST(req: Request) {
 
 /**
  * DELETE /api/trips
- * Delete a trip (admin only)
- * Body: { id: number } - legacy_id
+ * Delete a trip (group admin only)
+ * Body: { id: number, groupId: string } - legacy_id and groupId
  */
 export async function DELETE(req: Request) {
   try {
@@ -379,43 +465,74 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Not signed in." }, { status: 401 });
     }
 
-    // Check admin status
-    const adminEmails = (process.env.ADMIN_EMAILS || "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-    const email = (user.email ?? "").toLowerCase();
-    const isEnvAdmin = adminEmails.includes(email);
-
-    // Also check DB is_admin flag
-    const { data: member } = await supabase
-      .from("members")
-      .select("is_admin")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    const isAdmin = isEnvAdmin || !!member?.is_admin;
-
-    if (!isAdmin) {
-      return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-    }
-
     const body = await req.json();
-    const { id } = body as { id?: number };
+    const { id, groupId } = body as { id?: number; groupId?: string };
 
     if (!id) {
       return NextResponse.json({ error: "Trip ID is required." }, { status: 400 });
     }
 
-    // Find trip by legacy_id
+    if (!groupId || typeof groupId !== "string") {
+      return NextResponse.json(
+        { error: "groupId is required and must be a string." },
+        { status: 400 }
+      );
+    }
+
+    // Verify group exists and is active
+    const { data: group } = await supabase
+      .from("groups")
+      .select("id")
+      .eq("id", groupId)
+      .eq("is_active", true)
+      .single();
+
+    if (!group) {
+      return NextResponse.json(
+        { error: "Group not found or inactive." },
+        { status: 404 }
+      );
+    }
+
+    // Check group admin authorization: platform admin OR approved group admin
+    const isPlatformAdmin = isEmailAdmin(user.email);
+
+    // Check if user is approved admin of this group
+    const { data: groupMember } = await supabase
+      .from("group_members")
+      .select("role, status")
+      .eq("group_id", groupId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const isGroupAdmin =
+      isPlatformAdmin ||
+      (groupMember && groupMember.role === "admin" && groupMember.status === "approved");
+
+    if (!isGroupAdmin) {
+      return NextResponse.json(
+        { error: "You must be an approved admin of this group to delete trips." },
+        { status: 403 }
+      );
+    }
+
+    // Find trip by legacy_id and verify it belongs to this group
     const { data: trip } = await supabase
       .from("trips")
-      .select("id")
+      .select("id, group_id")
       .eq("legacy_id", id)
       .single();
 
     if (!trip) {
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+    }
+
+    // Ensure trip belongs to the specified group
+    if (trip.group_id !== groupId) {
+      return NextResponse.json(
+        { error: "Trip does not belong to the specified group." },
+        { status: 403 }
+      );
     }
 
     // Delete related data first

@@ -1,5 +1,6 @@
 import { getClubSlug, isSupabaseConfigured } from "./supabaseClient";
 import { createSupabaseBrowserClient } from "./supabaseBrowser";
+import { perfMark, perfMeasure, perfLog } from "./perf";
 
 export type Tee = {
   id: string;
@@ -36,7 +37,7 @@ async function revalidateCoursesCache() {
     });
   } catch (error) {
     // Silently fail - cache will expire naturally
-    console.warn("Failed to revalidate courses cache:", error);
+    perfLog("revalidateCoursesCache: error", { error: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -53,18 +54,28 @@ function cleanNullableString(v: unknown): string | null {
 export async function loadCourses(): Promise<Course[]> {
   if (typeof window === "undefined") return [];
   
+  const start = perfMark("loadCourses");
   try {
     const res = await fetch("/api/courses");
     const json = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      console.warn("Failed to load courses:", json?.error);
+      perfMeasure("loadCourses", start);
+      perfLog("loadCourses: API error", { status: res.status, error: json?.error });
       return [];
     }
 
-    return json.courses || [];
+    const courses = json.courses || [];
+    const duration = perfMeasure("loadCourses", start);
+    perfLog("loadCourses: success", {
+      durationMs: duration.toFixed(2),
+      count: courses.length,
+    });
+    
+    return courses;
   } catch (error) {
-    console.warn("Failed to load courses:", error);
+    perfMeasure("loadCourses", start);
+    perfLog("loadCourses: exception", { error: error instanceof Error ? error.message : String(error) });
     return [];
   }
 }
@@ -198,7 +209,7 @@ export async function deleteCourse(courseId: string) {
     .eq("course_id", courseId);
 
   if (teesError) {
-    console.warn("Failed to delete tees:", teesError);
+    perfLog("deleteCourse: failed to delete tees", { courseId, error: teesError.message });
     // Continue anyway to delete the course
   }
 

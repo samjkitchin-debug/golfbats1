@@ -17,6 +17,7 @@ import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay"
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import { PromptModal } from "../../../components/PromptModal";
 import { TripRsvpActions } from "../../../components/TripRsvpActions";
+import { perfMark, perfMeasure, perfLog } from "../../../lib/perf";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -32,6 +33,8 @@ export default function TripDetailPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -56,41 +59,62 @@ export default function TripDetailPage() {
     );
   }, []);
 
+  // Bootstrap: fetch user, member profile, and group data in one call
   useEffect(() => {
+    async function loadBootstrap() {
+      const start = perfMark("bootstrap");
+      try {
+        const res = await fetch("/api/me/bootstrap", { credentials: "include" });
+        if (!res.ok) {
+          if (res.status === 401) {
+            // Not authenticated - redirect handled by layout
+            perfMeasure("bootstrap", start);
+            setLoadingBootstrap(false);
+            return;
+          }
+          throw new Error("Failed to load bootstrap data");
+        }
+
+        const bootstrap = await res.json();
+        
+        setCurrentUserId(bootstrap.userId);
+        setCurrentUserName(bootstrap.member?.display_name || bootstrap.member?.full_name || null);
+        setActiveGroupId(bootstrap.activeGroupId);
+        
+        const duration = perfMeasure("bootstrap", start);
+        perfLog("bootstrap: success", {
+          durationMs: duration.toFixed(2),
+          activeGroupId: bootstrap.activeGroupId,
+          membershipCount: bootstrap.approvedGroups?.length || 0,
+        });
+      } catch (error) {
+        perfMeasure("bootstrap", start);
+        perfLog("bootstrap: error", { error: error instanceof Error ? error.message : String(error) });
+      } finally {
+        setLoadingBootstrap(false);
+      }
+    }
+    loadBootstrap();
+  }, []);
+
+  // Load trips and courses once activeGroupId is known
+  useEffect(() => {
+    if (!activeGroupId) return;
+
     async function loadData() {
       try {
-        const [tripsData, coursesData] = await Promise.all([loadTrips(), loadCourses()]);
+        const [tripsData, coursesData] = await Promise.all([
+          loadTrips(activeGroupId, false),
+          loadCourses()
+        ]);
         setTrips(tripsData);
         setCourses(coursesData);
       } catch (error) {
-        console.warn("Failed to load data:", error);
+        perfLog("loadData: error", { error: error instanceof Error ? error.message : String(error) });
       }
     }
     loadData();
-  }, []);
-
-  useEffect(() => {
-    async function loadCurrentUser() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          setCurrentUserId(user.id);
-          const { data: memberData } = await supabase
-            .from("members")
-            .select("display_name,full_name")
-            .eq("id", user.id)
-            .maybeSingle();
-          const name = memberData?.display_name || memberData?.full_name || null;
-          setCurrentUserName(name);
-        }
-      } catch (error) {
-        console.warn("Failed to load current user:", error);
-      }
-    }
-    loadCurrentUser();
-  }, [supabase]);
+  }, [activeGroupId]);
 
   const trip = useMemo(() => {
     if (!tripId) return undefined;
@@ -135,16 +159,7 @@ export default function TripDetailPage() {
     return undefined;
   }, [trip, currentUserId, currentUserName]);
 
-  useEffect(() => {
-    if (!trip) return;
-    console.log("[TripDetail] debug state:", {
-      tripId: trip.id,
-      currentUserId,
-      currentUserName,
-      attendees: trip.attendees,
-      myEntry,
-    });
-  }, [trip, currentUserId, currentUserName, myEntry]);
+  // Debug state tracking removed - use React DevTools instead
 
   const [hcp, setHcp] = useState<string>("");
   const [attendeeProfilePhotos, setAttendeeProfilePhotos] = useState<
@@ -220,7 +235,7 @@ export default function TripDetailPage() {
           setAttendeeProfilePhotos(photos);
         }
       } catch (error) {
-        console.warn("Failed to load attendee profile photos:", error);
+        perfLog("loadAttendeeProfilePhotos: error", { error: error instanceof Error ? error.message : String(error) });
         setAttendeeProfilePhotos([]);
       }
     }
@@ -260,52 +275,57 @@ export default function TripDetailPage() {
     // Prevent duplicate joins
     if (myEntry) return;
 
+    if (!currentUserId || !activeGroupId) {
+      alert("You must be signed in and have an active group to join a trip.");
+      return;
+    }
+
     try {
-      console.log("[TripDetail] handleImIn called for tripId:", tripIdSafe);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      // Use bootstrap data - fetch handicap from members table for trip-specific value
+      const { data: memberData } = await supabase
+        .from("members")
+        .select("full_name,display_name,nationality,declared_handicap")
+        .eq("id", currentUserId)
+        .maybeSingle();
 
-      if (user) {
-        const { data: memberData } = await supabase
-          .from("members")
-          .select("full_name,display_name,nationality,declared_handicap")
-          .eq("id", user.id)
-          .maybeSingle();
+      const existingHandicap =
+        memberData && typeof memberData.declared_handicap === "number"
+          ? memberData.declared_handicap
+          : null;
 
-        const existingHandicap =
-          memberData && typeof memberData.declared_handicap === "number"
-            ? memberData.declared_handicap
-            : null;
+      // Prepare the join action function
+      const continueWithHandicap = async (handicapValue: number | null) => {
+        try {
+          await supabase
+            .from("members")
+            .update({
+              declared_handicap: handicapValue,
+              last_seen: new Date().toISOString(),
+              full_name: memberData?.full_name ?? null,
+              display_name: memberData?.display_name ?? null,
+              nationality: memberData?.nationality ?? null,
+            })
+            .eq("id", currentUserId);
 
-        // Prepare the join action function
-        const continueWithHandicap = async (handicapValue: number | null) => {
-          try {
-            console.log("[TripDetail] continueWithHandicap with value:", handicapValue);
-            await supabase
-              .from("members")
-              .update({
-                declared_handicap: handicapValue,
-                last_seen: new Date().toISOString(),
-                full_name: memberData?.full_name ?? null,
-                display_name: memberData?.display_name ?? null,
-                nationality: memberData?.nationality ?? null,
-              })
-              .eq("id", user.id);
-
-            const updated = await joinTrip(trips, tripIdSafe, handicapValue);
-            console.log("[TripDetail] joinTrip returned, updating trips state. Joined trip snapshot:", {
-              tripId: tripIdSafe,
-              trip: updated.find((t) => t.id === tripIdSafe),
-            });
-            setTrips(updated);
-          } catch (error) {
-            console.error("Failed to join trip:", error);
-            alert(
-              `Failed to join trip: ${error instanceof Error ? error.message : String(error)}`
-            );
+          const updated = await joinTrip(trips, tripIdSafe, handicapValue, activeGroupId);
+          setTrips(updated);
+          
+          // Reload trips to get fresh data
+          if (activeGroupId) {
+            try {
+              const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
+              setTrips(freshTrips);
+            } catch (reloadError) {
+              perfLog("handleImIn: reload error", { tripId: tripIdSafe, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
+            }
           }
-        };
+        } catch (error) {
+          perfLog("handleImIn: error", { tripId: tripIdSafe, error: error instanceof Error ? error.message : String(error) });
+          alert(
+            `Failed to join trip: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      };
 
         if (existingHandicap !== null) {
           // Show confirm modal to ask if they want to edit
@@ -380,10 +400,8 @@ export default function TripDetailPage() {
             },
           });
         }
-
-      }
     } catch (error) {
-      console.error("Failed to update member handicap:", error);
+      perfLog("handleImIn: member update error", { tripId: tripIdSafe, error: error instanceof Error ? error.message : String(error) });
       alert(
         `Failed to join trip: ${error instanceof Error ? error.message : String(error)}`
       );
@@ -398,10 +416,19 @@ export default function TripDetailPage() {
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });
         try {
-          const updated = await leaveTrip(trips, tripIdSafe);
+          const updated = await leaveTrip(trips, tripIdSafe, activeGroupId || undefined);
           setTrips(updated);
+          // Reload trips to get fresh data
+          if (activeGroupId) {
+            try {
+              const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
+              setTrips(freshTrips);
+            } catch (reloadError) {
+              perfLog("handleImOut: reload error", { tripId: tripIdSafe, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
+            }
+          }
         } catch (error) {
-          console.error("Failed to leave trip:", error);
+          perfLog("handleImOut: error", { tripId: tripIdSafe, error: error instanceof Error ? error.message : String(error) });
           alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -419,11 +446,23 @@ export default function TripDetailPage() {
 
     if (trimmed !== "" && !Number.isFinite(parsed)) return;
 
+    if (!activeGroupId) {
+      alert("Active group is required to update handicap.");
+      return;
+    }
+
     try {
-      const updated = await setMyHandicapForTrip(trips, tripIdSafe, trimmed === "" ? null : parsed);
+      const updated = await setMyHandicapForTrip(trips, tripIdSafe, trimmed === "" ? null : parsed, activeGroupId);
       setTrips(updated);
+      // Reload trips to get fresh data
+      try {
+        const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
+        setTrips(freshTrips);
+      } catch (reloadError) {
+        perfLog("saveHandicap: reload error", { tripId: tripIdSafe, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
+      }
     } catch (error) {
-      console.error("Failed to save handicap:", error);
+      perfLog("saveHandicap: error", { tripId: tripIdSafe, error: error instanceof Error ? error.message : String(error) });
       alert(`Failed to save handicap: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

@@ -1,72 +1,59 @@
 /**
- * Performance instrumentation utilities (dev-only)
- * Helps identify bottlenecks during development
+ * Lightweight performance logging utilities (dev-only)
+ * Centralized logging for development performance monitoring
+ * Works in both browser and Node.js/server environments
  */
 
 const isDev = process.env.NODE_ENV === "development";
 
-/**
- * Time a function execution and log the result (dev only)
- */
-export async function timeFn<T>(
-  label: string,
-  fn: () => Promise<T>
-): Promise<T> {
-  if (!isDev) return fn();
-
-  const start = performance.now();
-  try {
-    const result = await fn();
-    const duration = performance.now() - start;
-    console.log(`[PERF] ${label}: ${duration.toFixed(2)}ms`);
-    return result;
-  } catch (error) {
-    const duration = performance.now() - start;
-    console.error(`[PERF] ${label}: ${duration.toFixed(2)}ms (ERROR)`);
-    throw error;
+// Get performance timing function that works in both browser and Node.js
+function getPerformanceNow(): () => number {
+  if (typeof window !== "undefined") {
+    // Browser environment
+    return () => performance.now();
   }
-}
-
-/**
- * Time a synchronous function execution (dev only)
- */
-export function timeSync<T>(label: string, fn: () => T): T {
-  if (!isDev) return fn();
-
-  const start = performance.now();
-  try {
-    const result = fn();
-    const duration = performance.now() - start;
-    console.log(`[PERF] ${label}: ${duration.toFixed(2)}ms`);
-    return result;
-  } catch (error) {
-    const duration = performance.now() - start;
-    console.error(`[PERF] ${label}: ${duration.toFixed(2)}ms (ERROR)`);
-    throw error;
+  // Node.js/server environment - use performance API if available (Node 16+), otherwise Date.now()
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return () => performance.now();
   }
+  // Fallback to Date.now() (less precise but works everywhere)
+  return () => Date.now();
+}
+
+const perfNow = getPerformanceNow();
+
+/**
+ * Mark a performance point and return the timestamp
+ * Returns timestamp in milliseconds (from performance.now() or Date.now())
+ */
+export function perfMark(name: string): number {
+  if (!isDev) return 0;
+  return perfNow();
 }
 
 /**
- * Mark a performance point (useful for measuring user-perceived timing)
+ * Measure duration from a start mark and log the result
+ * @param name - Label for this measurement
+ * @param startMark - Timestamp returned from perfMark()
+ * @returns Duration in milliseconds, or 0 if not in dev mode
  */
-export function mark(label: string): void {
-  if (!isDev || typeof performance === "undefined" || !performance.mark) return;
-  performance.mark(label);
+export function perfMeasure(name: string, startMark: number): number {
+  if (!isDev || startMark === 0) return 0;
+  const duration = perfNow() - startMark;
+  console.debug(`[perf] ${name}: ${duration.toFixed(2)}ms`);
+  return duration;
 }
 
 /**
- * Measure between two marks
+ * Log a performance event with optional data
+ * @param event - Event name/label
+ * @param data - Optional data object to include in the log
  */
-export function measure(name: string, startMark: string, endMark: string): void {
-  if (!isDev || typeof performance === "undefined" || !performance.measure) return;
-  try {
-    performance.measure(name, startMark, endMark);
-    const measures = performance.getEntriesByName(name);
-    if (measures.length > 0) {
-      const duration = measures[measures.length - 1].duration;
-      console.log(`[PERF] ${name}: ${duration.toFixed(2)}ms`);
-    }
-  } catch {
-    // Ignore if marks don't exist
+export function perfLog(event: string, data?: Record<string, unknown>): void {
+  if (!isDev) return;
+  if (data) {
+    console.debug(`[perf] ${event}`, data);
+  } else {
+    console.debug(`[perf] ${event}`);
   }
 }

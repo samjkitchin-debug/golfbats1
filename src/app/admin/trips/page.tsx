@@ -59,7 +59,7 @@ export default function AdminTripsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    document.title = "GolfBats - Admin Trips";
+    document.title = "DayForeIt - Admin Trips";
   }, []);
 
   useEffect(() => {

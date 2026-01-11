@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
-export default function MembersNavLink() {
+export default function MembersNavLink({ groupId }: { groupId: string }) {
   const [pendingCount, setPendingCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -15,11 +15,13 @@ export default function MembersNavLink() {
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         );
 
-        // Count members that are not active (pending)
+        // Count members in this group that are not active (pending)
+        // Note: This counts group_members with status != 'approved', which maps to pending members
         const { count, error } = await supabase
-          .from("members")
+          .from("group_members")
           .select("*", { count: "exact", head: true })
-          .or("status.neq.active,status.is.null");
+          .eq("group_id", groupId)
+          .neq("status", "approved");
 
         if (!error && count !== null) {
           setPendingCount(count);
@@ -30,11 +32,11 @@ export default function MembersNavLink() {
     }
 
     loadPendingCount();
-  }, []);
+  }, [groupId]);
 
   return (
     <Link
-      href="/admin/members"
+      href={`/admin/g/${groupId}/members`}
       className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background relative"
     >
       Members

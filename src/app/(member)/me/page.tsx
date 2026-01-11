@@ -64,17 +64,60 @@ export default function MePage() {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
+  // Passport edit state
+  const [editingPassport, setEditingPassport] = useState(false);
+  const [passportFullName, setPassportFullName] = useState("");
+  const [passportNumber, setPassportNumber] = useState("");
+  const [passportCountry, setPassportCountry] = useState("");
+  const [passportExpiryDate, setPassportExpiryDate] = useState("");
+  const [passportPhotoPath, setPassportPhotoPath] = useState<string | null>(null);
+  const [passportPhotoUrl, setPassportPhotoUrl] = useState<string | null>(null);
+  const [uploadingPassportPhoto, setUploadingPassportPhoto] = useState(false);
+  const [savingPassport, setSavingPassport] = useState(false);
+  const [passportSaveSuccess, setPassportSaveSuccess] = useState(false);
+  const [showPassportCropModal, setShowPassportCropModal] = useState(false);
+  const [passportImageSrc, setPassportImageSrc] = useState<string | null>(null);
+  const [passportCrop, setPassportCrop] = useState<Point>({ x: 0, y: 0 });
+  const [passportZoom, setPassportZoom] = useState(1);
+  const [passportCroppedAreaPixels, setPassportCroppedAreaPixels] = useState<Area | null>(null);
+
   // Account deletion state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Group memberships state
+  const [groupMemberships, setGroupMemberships] = useState<Array<{
+    groupId: string;
+    groupName: string;
+    role: "admin" | "member";
+    status: "approved" | "pending";
+    isSoleAdmin: boolean;
+  }>>([]);
+  const [loadingGroups, setLoadingGroups] = useState(true);
+  
+  // Group menu state
+  const [openGroupMenuId, setOpenGroupMenuId] = useState<string | null>(null);
+  const [leaveGroupModal, setLeaveGroupModal] = useState<{
+    isOpen: boolean;
+    groupId: string;
+    groupName: string;
+    isSoleAdmin: boolean;
+  }>({
+    isOpen: false,
+    groupId: "",
+    groupName: "",
+    isSoleAdmin: false,
+  });
+  const [leavingGroup, setLeavingGroup] = useState(false);
+  const [leaveGroupError, setLeaveGroupError] = useState<string | null>(null);
+
   // Passport data (for checking if passport exists - no inline editing)
   // Passport editing is handled on /me/passport page
 
   useEffect(() => {
-    document.title = "Day fore it - Profile";
+    document.title = "DayForeIt - Profile";
   }, []);
 
   useEffect(() => {
@@ -134,8 +177,8 @@ export default function MePage() {
       // Ensure editing state is available even when member is null
       // This allows profile photo upload on first visit
 
-      // Load passport data
-      const { data: passportData } = await supabase
+      // Load passport data first
+      const passportResult = await supabase
         .from("member_passports")
         .select("passport_full_name,passport_country,passport_expiry_date,passport_photo_path")
         .eq("user_id", user.id)
@@ -143,9 +186,113 @@ export default function MePage() {
 
       if (cancelled) return;
 
-      if (passportData) {
-        const p = passportData as PassportRow;
+      if (passportResult.data) {
+        const p = passportResult.data as PassportRow;
         setPassport(p);
+        setPassportFullName(p.passport_full_name ?? "");
+        setPassportCountry(p.passport_country ?? "");
+        setPassportExpiryDate(p.passport_expiry_date ?? "");
+        setPassportPhotoPath(p.passport_photo_path ?? null);
+        
+        // Load passport photo URL if exists
+        if (p.passport_photo_path) {
+          try {
+            const photoRes = await fetch("/me/passport/photo", { credentials: "include" });
+            const photoJson = await photoRes.json();
+            if (photoJson.photoUrl) {
+              setPassportPhotoUrl(photoJson.photoUrl);
+            }
+          } catch (err) {
+            console.error("Failed to load passport photo URL:", err);
+          }
+        }
+      } else {
+        setPassport(null);
+        setPassportFullName("");
+        setPassportNumber("");
+        setPassportCountry("");
+        setPassportExpiryDate("");
+        setPassportPhotoPath(null);
+        setPassportPhotoUrl(null);
+      }
+
+      // Load group memberships: first get group_members, then fetch group details separately
+      const { data: groupMembersData, error: groupMembersError } = await supabase
+        .from("group_members")
+        .select("group_id, role, status, joined_at")
+        .eq("user_id", user.id)
+        .order("joined_at", { ascending: false });
+
+      if (cancelled) return;
+
+      // Check for actual error (error object should have message/code if real error)
+      if (groupMembersError && (groupMembersError.message || groupMembersError.code || groupMembersError.details)) {
+        console.error("Failed to load group memberships:", groupMembersError);
+        setGroupMemberships([]);
+        setLoadingGroups(false);
+      } else if (groupMembersData && groupMembersData.length > 0) {
+        // Extract group IDs and fetch group details
+        const groupIds = groupMembersData.map((gm) => gm.group_id);
+        const { data: groupsData, error: groupsError } = await supabase
+          .from("groups")
+          .select("id, name, is_active")
+          .in("id", groupIds);
+
+        if (cancelled) return;
+
+        if (groupsError) {
+          console.error("Failed to load group details:", groupsError);
+          setGroupMemberships([]);
+          setLoadingGroups(false);
+        } else {
+          // Create a map of group data
+          const groupsMap = new Map((groupsData || []).map((g: any) => [g.id, g]));
+          
+          // For each membership, check if user is sole approved admin and combine with group data
+          const membershipsWithSoleAdmin = await Promise.all(
+            groupMembersData.map(async (gm: any) => {
+              const group = groupsMap.get(gm.group_id);
+              if (!group || !group.is_active) return null;
+              
+              const role = (gm.role || "member") as "admin" | "member";
+              const status = (gm.status || "pending") as "approved" | "pending";
+              
+              // Check if user is sole approved admin
+              let isSoleAdmin = false;
+              if (role === "admin" && status === "approved") {
+                const { count } = await supabase
+                  .from("group_members")
+                  .select("*", { count: "exact", head: true })
+                  .eq("group_id", group.id)
+                  .eq("role", "admin")
+                  .eq("status", "approved")
+                  .neq("user_id", user.id);
+                
+                isSoleAdmin = count === 0;
+              }
+              
+              return {
+                groupId: group.id,
+                groupName: group.name,
+                role,
+                status,
+                isSoleAdmin,
+              };
+            })
+          );
+          
+          if (cancelled) return;
+          
+          const memberships = membershipsWithSoleAdmin.filter(
+            (m): m is { groupId: string; groupName: string; role: "admin" | "member"; status: "approved" | "pending"; isSoleAdmin: boolean } => m !== null
+          );
+          
+          setGroupMemberships(memberships);
+          setLoadingGroups(false);
+        }
+      } else {
+        setGroupMemberships([]);
+        setLoadingGroups(false);
       }
 
       setLoading(false);
@@ -155,7 +302,257 @@ export default function MePage() {
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [supabase, router]);
+
+  // Helper function to generate a consistent color from a group ID (same as in home page)
+  function getGroupColor(groupId: string): string {
+    let hash = 0;
+    for (let i = 0; i < groupId.length; i++) {
+      hash = groupId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    const colors = [
+      "hsl(210, 50%, 55%)",  // Blue
+      "hsl(160, 50%, 50%)",  // Teal/Green
+      "hsl(30, 65%, 55%)",   // Orange
+      "hsl(280, 50%, 60%)",  // Purple
+      "hsl(340, 55%, 60%)",  // Pink
+      "hsl(200, 60%, 50%)",  // Cyan
+      "hsl(15, 70%, 55%)",   // Red-orange
+      "hsl(260, 50%, 60%)",  // Indigo
+    ];
+    
+    return colors[Math.abs(hash) % colors.length];
+  }
+
+  // Helper function to get group avatar initials from group name
+  function getGroupInitials(groupName: string): string {
+    if (!groupName) return "?";
+    const parts = groupName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase().slice(0, 2);
+    }
+    return groupName.toUpperCase().slice(0, 2);
+  }
+
+  // Handler for leaving a group
+  async function handleLeaveGroup(groupId: string, groupName: string, isSoleAdmin: boolean) {
+    if (isSoleAdmin) {
+      setLeaveGroupError("You are the only approved admin of this group. Assign another admin before leaving.");
+      return;
+    }
+
+    setLeavingGroup(true);
+    setLeaveGroupError(null);
+
+    try {
+      const res = await fetch("/api/groups/leave", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ groupId }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (res.status === 409 && json.reason === "sole_admin") {
+          throw new Error(json.message || "You are the only approved admin of this group. Assign another admin before leaving.");
+        }
+        throw new Error(json.error || "Failed to leave group.");
+      }
+
+      // Reload group memberships using the same pattern as initial load
+      const { data: { user: reloadUser } } = await supabase.auth.getUser();
+      if (reloadUser) {
+        // First get group_members
+        const { data: reloadGroupMembersData, error: reloadGroupMembersError } = await supabase
+          .from("group_members")
+          .select("group_id, role, status, joined_at")
+          .eq("user_id", reloadUser.id)
+          .order("joined_at", { ascending: false });
+
+        if (reloadGroupMembersError && (reloadGroupMembersError.message || reloadGroupMembersError.code || reloadGroupMembersError.details)) {
+          console.error("Failed to reload group memberships:", reloadGroupMembersError);
+          // Don't update state on error - keep existing memberships
+        } else if (reloadGroupMembersData && reloadGroupMembersData.length > 0) {
+          // Extract group IDs and fetch group details separately
+          const reloadGroupIds = reloadGroupMembersData.map((gm) => gm.group_id);
+          const { data: reloadGroupsData, error: reloadGroupsError } = await supabase
+            .from("groups")
+            .select("id, name, is_active")
+            .in("id", reloadGroupIds);
+
+          if (reloadGroupsError && (reloadGroupsError.message || reloadGroupsError.code || reloadGroupsError.details)) {
+            console.error("Failed to reload group details:", reloadGroupsError);
+            // Don't update state on error - keep existing memberships
+          } else {
+            // Create a map of group data
+            const reloadGroupsMap = new Map((reloadGroupsData || []).map((g: any) => [g.id, g]));
+            
+            // For each membership, check if user is sole approved admin and combine with group data
+            const reloadMembershipsWithSoleAdmin = await Promise.all(
+              reloadGroupMembersData.map(async (gm: any) => {
+                const group = reloadGroupsMap.get(gm.group_id);
+                if (!group || !group.is_active) return null;
+                
+                const role = (gm.role || "member") as "admin" | "member";
+                const status = (gm.status || "pending") as "approved" | "pending";
+                
+                // Check if user is sole approved admin
+                let isSoleAdmin = false;
+                if (role === "admin" && status === "approved") {
+                  const { count } = await supabase
+                    .from("group_members")
+                    .select("*", { count: "exact", head: true })
+                    .eq("group_id", group.id)
+                    .eq("role", "admin")
+                    .eq("status", "approved")
+                    .neq("user_id", reloadUser.id);
+                  
+                  isSoleAdmin = count === 0;
+                }
+                
+                return {
+                  groupId: group.id,
+                  groupName: group.name,
+                  role,
+                  status,
+                  isSoleAdmin,
+                };
+              })
+            );
+            
+            const reloadMemberships = reloadMembershipsWithSoleAdmin.filter(
+              (m): m is { groupId: string; groupName: string; role: "admin" | "member"; status: "approved" | "pending"; isSoleAdmin: boolean } => m !== null
+            );
+            
+            setGroupMemberships(reloadMemberships);
+          }
+        } else {
+          // No memberships found - clear the list
+          setGroupMemberships([]);
+        }
+      }
+
+      setLeaveGroupModal({ isOpen: false, groupId: "", groupName: "", isSoleAdmin: false });
+    } catch (error) {
+      setLeaveGroupError(error instanceof Error ? error.message : "Failed to leave group.");
+    } finally {
+      setLeavingGroup(false);
+    }
+  }
+
+  // Click outside handler for group menu
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (openGroupMenuId !== null && !target.closest(`[data-group-menu="${openGroupMenuId}"]`)) {
+        setOpenGroupMenuId(null);
+      }
+    }
+    
+    if (openGroupMenuId !== null) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [openGroupMenuId]);
+
+  // Handler for passport photo upload
+  async function handlePassportPhotoUpload(file: File) {
+    setUploadingPassportPhoto(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/me/passport/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to upload passport photo.");
+      }
+
+      if (json.path) {
+        setPassportPhotoPath(json.path);
+        // Reload photo URL
+        const photoRes = await fetch("/me/passport/photo", { credentials: "include" });
+        const photoJson = await photoRes.json();
+        if (photoJson.photoUrl) {
+          setPassportPhotoUrl(photoJson.photoUrl);
+        }
+      }
+    } catch (error: any) {
+      setError(error?.message || "Failed to upload passport photo.");
+    } finally {
+      setUploadingPassportPhoto(false);
+    }
+  }
+
+  // Handler for saving passport details
+  async function handleSavePassport() {
+    if (savingPassport) return;
+
+    setSavingPassport(true);
+    setError(null);
+    setPassportSaveSuccess(false);
+
+    try {
+      const res = await fetch("/me/passport/save", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          passport_full_name: passportFullName.trim(),
+          passport_number: passportNumber.trim(),
+          passport_country: passportCountry.trim(),
+          passport_expiry_date: passportExpiryDate.trim() || null,
+          passport_photo_path: passportPhotoPath,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to save passport details.");
+      }
+
+      // Success: reload passport data
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: passportData } = await supabase
+          .from("member_passports")
+          .select("passport_full_name,passport_country,passport_expiry_date,passport_photo_path")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (passportData) {
+          const p = passportData as PassportRow;
+          setPassport(p);
+          setPassportPhotoPath(p.passport_photo_path ?? null);
+          
+          // Reload photo URL
+          if (p.passport_photo_path) {
+            const photoRes = await fetch("/me/passport/photo", { credentials: "include" });
+            const photoJson = await photoRes.json();
+            if (photoJson.photoUrl) {
+              setPassportPhotoUrl(photoJson.photoUrl);
+            }
+          }
+        }
+      }
+
+      setPassportSaveSuccess(true);
+      setEditingPassport(false);
+    } catch (error: any) {
+      setError(error?.message || "Failed to save passport details.");
+    } finally {
+      setSavingPassport(false);
+    }
+  }
 
   const titleName =
     member?.display_name?.trim() ||
@@ -200,7 +597,7 @@ export default function MePage() {
       {/* Welcome orientation block - shown when profile is incomplete */}
       {!loading && !error && member && profileIncomplete && (
         <div className="mt-4 rounded-xl border border-border bg-surface/50 p-4">
-          <p className="text-sm font-semibold text-foreground">Welcome to Day fore it</p>
+          <p className="text-sm font-semibold text-foreground">Welcome to DayForeIt</p>
           <p className="mt-1 text-sm text-muted">
             You're joining a private golf group. To get you set up, we just need a few basic details. You can update everything later.
           </p>
@@ -265,7 +662,7 @@ export default function MePage() {
         </div>
       ) : null}
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 space-y-4">
         {/* Profile Block */}
         <ProfileBlock
           member={member}
@@ -439,26 +836,299 @@ export default function MePage() {
           }}
         />
 
-        {/* Passport details section - optional and deferrable */}
+        {/* My groups section */}
         <div className="rounded-2xl border border-border bg-surface/50 p-4">
           <div className="mb-3">
-            <div className="text-sm font-semibold text-foreground">Passport details (optional)</div>
-            <p className="mt-1 text-xs text-muted">
-              Only required for trips involving travel (e.g. ferries). You can add this later.
-            </p>
+            <div className="text-sm font-semibold text-foreground">My groups</div>
           </div>
-          <Link
-            href="/me/passport"
-            className="inline-block rounded-xl border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground hover:bg-background"
-          >
-            Add passport details
-          </Link>
+          
+          {loadingGroups ? (
+            <div className="text-xs text-muted">Loading groups…</div>
+          ) : groupMemberships.length === 0 ? (
+            <div className="text-xs text-muted">You're not a member of any groups yet.</div>
+          ) : (
+            <div className="space-y-2">
+              {groupMemberships.map((membership) => {
+                const groupColor = getGroupColor(membership.groupId);
+                const initials = getGroupInitials(membership.groupName);
+                const isMenuOpen = openGroupMenuId === membership.groupId;
+                const canLeave = !membership.isSoleAdmin;
+                
+                return (
+                  <div
+                    key={membership.groupId}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5"
+                  >
+                    {/* Group avatar - small circular */}
+                    <div
+                      className="h-8 w-8 flex-shrink-0 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
+                      style={{ backgroundColor: groupColor }}
+                    >
+                      {initials}
+                    </div>
+                    
+                    {/* Group info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">
+                        {membership.groupName}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
+                        <span>{membership.role === "admin" ? "Admin" : "Member"}</span>
+                        <span>·</span>
+                        <span className={membership.status === "approved" ? "text-brand-green" : "text-muted"}>
+                          {membership.status === "approved" ? "Approved" : "Pending"}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Kebab menu */}
+                    <div className="relative flex-shrink-0" data-group-menu={membership.groupId}>
+                      <button
+                        onClick={() => setOpenGroupMenuId(isMenuOpen ? null : membership.groupId)}
+                        className="rounded-md p-1.5 text-muted hover:bg-background hover:text-foreground"
+                        aria-label="Group options"
+                      >
+                        <svg
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                          />
+                        </svg>
+                      </button>
+                      {isMenuOpen && (
+                        <div className="absolute right-0 top-9 z-10 w-48 rounded-lg border border-border bg-surface shadow-lg">
+                          <div className="py-1">
+                            {canLeave && (
+                              <button
+                                onClick={() => {
+                                  setOpenGroupMenuId(null);
+                                  setLeaveGroupModal({
+                                    isOpen: true,
+                                    groupId: membership.groupId,
+                                    groupName: membership.groupName,
+                                    isSoleAdmin: membership.isSoleAdmin,
+                                  });
+                                  setLeaveGroupError(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-background"
+                              >
+                                Leave group
+                              </button>
+                            )}
+                            {!canLeave && (
+                              <div className="px-4 py-2 text-xs text-muted">
+                                Cannot leave (sole admin)
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div className="rounded-2xl border border-border bg-surface/50 p-3">
-          <div className="text-xs font-medium text-muted">Data security</div>
+        {/* Passport details section */}
+        <div className="rounded-2xl border border-border bg-surface/50 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold text-foreground">Passport details</div>
+              <p className="mt-1 text-xs text-muted">
+                Required for overseas trips (e.g. ferries). Your passport number is encrypted and secure.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setEditingPassport(!editingPassport);
+                setPassportSaveSuccess(false);
+                if (!editingPassport) {
+                  // Reset to current values when starting edit
+                  setPassportFullName(passport?.passport_full_name ?? "");
+                  setPassportNumber(""); // Don't show existing number for security
+                  setPassportCountry(passport?.passport_country ?? "");
+                  setPassportExpiryDate(passport?.passport_expiry_date ?? "");
+                }
+              }}
+              className="rounded-xl border border-border px-3 py-1 text-xs font-semibold hover:bg-background"
+            >
+              {editingPassport ? "Cancel" : passport ? "Edit" : "Add"}
+            </button>
+          </div>
 
-            <div className="mt-2 space-y-2 text-xs text-muted leading-relaxed">
+          {!editingPassport ? (
+            <div className="space-y-2">
+              {passport ? (
+                <>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="font-medium text-muted">Status:</span>
+                    <span className="text-brand-green">On file</span>
+                  </div>
+                  {passport.passport_full_name && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-medium text-muted">Name:</span>
+                      <span className="text-foreground">{passport.passport_full_name}</span>
+                    </div>
+                  )}
+                  {passport.passport_country && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-medium text-muted">Country:</span>
+                      <span className="text-foreground">{passport.passport_country}</span>
+                    </div>
+                  )}
+                  {passport.passport_expiry_date && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-medium text-muted">Expiry:</span>
+                      <span className="text-foreground">
+                        {new Date(passport.passport_expiry_date + "T00:00:00").toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {passportPhotoUrl && (
+                    <div className="mt-2">
+                      <img
+                        src={passportPhotoUrl}
+                        alt="Passport"
+                        className="h-24 w-auto rounded-lg border border-border object-contain"
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-xs text-muted">No passport details on file</div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {/* Passport photo */}
+              <div>
+                <div className="text-xs font-semibold">Passport photo</div>
+                <div className="mt-2 flex items-center gap-3">
+                  {passportPhotoUrl ? (
+                    <img
+                      src={passportPhotoUrl}
+                      alt="Passport"
+                      className="h-24 w-auto rounded-lg border border-border object-contain"
+                    />
+                  ) : (
+                    <div className="h-24 w-32 rounded-lg border border-border bg-background flex items-center justify-center text-xs text-muted">
+                      No photo
+                    </div>
+                  )}
+                  <div>
+                    <input
+                      id="passport-photo-input"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.addEventListener("load", () => {
+                            setPassportImageSrc(reader.result as string);
+                            setShowPassportCropModal(true);
+                            setPassportZoom(1);
+                            setPassportCrop({ x: 0, y: 0 });
+                          });
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className="hidden"
+                      disabled={uploadingPassportPhoto}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById("passport-photo-input")?.click()}
+                      disabled={uploadingPassportPhoto}
+                      className="rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold hover:bg-background disabled:opacity-60"
+                    >
+                      {passportPhotoPath ? "Change Photo" : "Add Photo"}
+                    </button>
+                    {uploadingPassportPhoto && (
+                      <p className="mt-1 text-xs text-muted">Uploading photo…</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold">Full name (as on passport)</div>
+                <input
+                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+                  value={passportFullName}
+                  onChange={(e) => setPassportFullName(e.target.value)}
+                  placeholder="e.g. John Smith"
+                />
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold">Passport number</div>
+                <input
+                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+                  value={passportNumber}
+                  onChange={(e) => setPassportNumber(e.target.value)}
+                  placeholder="e.g. A12345678"
+                />
+                <p className="mt-1 text-xs text-muted">Your passport number is encrypted and secure</p>
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold">Country</div>
+                <input
+                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+                  value={passportCountry}
+                  onChange={(e) => setPassportCountry(e.target.value)}
+                  placeholder="e.g. United Kingdom"
+                />
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold">Expiry date</div>
+                <input
+                  type="date"
+                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+                  value={passportExpiryDate}
+                  onChange={(e) => setPassportExpiryDate(e.target.value)}
+                />
+              </div>
+
+              <button
+                onClick={handleSavePassport}
+                disabled={savingPassport || !passportFullName.trim() || !passportNumber.trim() || !passportCountry.trim() || !passportExpiryDate.trim()}
+                className="w-full rounded-xl bg-brand-green px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingPassport ? "Saving..." : "Save passport details"}
+              </button>
+            </div>
+          )}
+
+          {passportSaveSuccess && (
+            <div className="mt-3 rounded-lg border border-brand-green bg-brand-green/10 px-3 py-2 text-xs text-foreground">
+              Passport details saved successfully
+            </div>
+          )}
+        </div>
+
+        {/* Data security (note on passport data protection) */}
+        <div className="rounded-2xl border border-border bg-surface/50 p-4">
+          <div className="mb-3">
+            <div className="text-xs font-medium text-muted">Data security</div>
+          </div>
+          <div className="space-y-2 text-xs text-muted leading-relaxed">
               <div>
                 <div className="font-medium text-foreground">Protection measures</div>
               <ul className="mt-1 ml-4 list-disc space-y-0.5">
@@ -479,7 +1149,7 @@ export default function MePage() {
         </div>
 
         {/* Delete account */}
-        <div className="rounded-2xl border border-border bg-surface p-4">
+        <div className="rounded-2xl border border-border bg-surface/50 p-4">
           <div className="mb-3">
             <div className="text-sm font-semibold text-foreground">Delete account</div>
             <p className="mt-1 text-xs text-muted">
@@ -504,6 +1174,42 @@ export default function MePage() {
           )}
         </div>
       </div>
+
+      {/* Leave group confirmation modal */}
+      {leaveGroupModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-surface border border-border p-6">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">Leave group</h3>
+            <p className="mb-4 text-sm text-muted">
+              Are you sure you want to leave "{leaveGroupModal.groupName}"? You will no longer have access to this group's trips and members.
+            </p>
+            {leaveGroupError && (
+              <div className="mb-4 rounded-lg border border-brand-orange bg-brand-orange/10 px-3 py-2 text-sm text-foreground">
+                {leaveGroupError}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setLeaveGroupModal({ isOpen: false, groupId: "", groupName: "", isSoleAdmin: false });
+                  setLeaveGroupError(null);
+                }}
+                disabled={leavingGroup}
+                className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleLeaveGroup(leaveGroupModal.groupId, leaveGroupModal.groupName, leaveGroupModal.isSoleAdmin)}
+                disabled={leavingGroup || leaveGroupModal.isSoleAdmin}
+                className="flex-1 rounded-lg bg-brand-orange px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {leavingGroup ? "Leaving..." : "Leave group"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete account confirmation modal */}
       {showDeleteModal && (
@@ -701,11 +1407,11 @@ function ProfileBlock({
   setCroppedAreaPixels: (v: Area | null) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-border p-4">
+    <div className="rounded-2xl border border-border bg-surface/50 p-4">
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-sm font-semibold">Profile</div>
-          <p className="mt-0.5 text-xs text-muted">
+          <div className="text-sm font-semibold text-foreground">Profile</div>
+          <p className="mt-1 text-xs text-muted">
             This helps organisers place you in groups and manage trips.
           </p>
         </div>
@@ -859,6 +1565,44 @@ function ProfileBlock({
                   console.error("Failed to crop image:", error);
                 } finally {
                   setUploadingProfilePhoto(false);
+                }
+              }}
+            />
+          )}
+
+          {/* Passport photo crop modal */}
+          {showPassportCropModal && passportImageSrc && (
+            <ImageCropModal
+              title="Crop Passport Photo"
+              imageSrc={passportImageSrc}
+              crop={passportCrop}
+              zoom={passportZoom}
+              onCropChange={setPassportCrop}
+              onZoomChange={setPassportZoom}
+              onCropComplete={(croppedArea, croppedAreaPixels) => {
+                setPassportCroppedAreaPixels(croppedAreaPixels);
+              }}
+              onCancel={() => {
+                setShowPassportCropModal(false);
+                setPassportImageSrc(null);
+              }}
+              onSave={async () => {
+                if (!passportCroppedAreaPixels || !passportImageSrc) return;
+                
+                setShowPassportCropModal(false);
+                setUploadingPassportPhoto(true);
+                
+                try {
+                  const croppedImage = await getCroppedImg(passportImageSrc, passportCroppedAreaPixels);
+                  const blob = await fetch(croppedImage).then((r) => r.blob());
+                  const file = new File([blob], "passport.jpg", { type: "image/jpeg" });
+                  await handlePassportPhotoUpload(file);
+                  setPassportImageSrc(null);
+                } catch (error: any) {
+                  // Error will be handled by handlePassportPhotoUpload's error handling
+                  console.error("Failed to crop passport image:", error);
+                } finally {
+                  setUploadingPassportPhoto(false);
                 }
               }}
             />
