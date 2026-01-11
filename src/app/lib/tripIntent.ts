@@ -20,13 +20,15 @@ export type TripIntent = {
 export type TripRecipe = {
   sections: {
     basics: true;
-    signups: boolean;
-    logistics: boolean;
-    export: boolean;
-    scoring: boolean;
+    signups: boolean;                  // signups enabled (cutoff date applies)
+    capacity: boolean;                 // capacity limit enabled (capacity field applies)
+    logistics: boolean;                // logistics section enabled
+    export: boolean;                   // export actions enabled
+    scoring: boolean;                  // scoring section enabled
+    flights: boolean;                  // flights module enabled (quartile grouping)
   };
   defaults: {
-    capacity?: number | null;          // null means no cap
+    capacity?: number | null;          // default capacity value (null means no cap) - only used if sections.capacity is true
     cutoffRule: 'none' | 'nightBefore' | 'daysBefore';
     cutoffDaysBefore?: number;         // used if cutoffRule=daysBefore
     ferryEnabled?: boolean;
@@ -56,9 +58,11 @@ export function deriveTripRecipe(
     sections: {
       basics: true,
       signups: false,
+      capacity: false,
       logistics: false,
       export: false,
       scoring: false,
+      flights: false,
     },
     defaults: {
       capacity: null,
@@ -77,26 +81,29 @@ export function deriveTripRecipe(
     case 'casual':
       recipe.sections.signups = true;
       recipe.defaults.cutoffRule = 'nightBefore';
-      recipe.defaults.capacity = intent.hasCapacityLimit
-        ? (groupContext?.defaultCapacity ?? 16)
-        : null;
+      if (intent.hasCapacityLimit) {
+        recipe.sections.capacity = true;
+        recipe.defaults.capacity = groupContext?.defaultCapacity ?? 16;
+      }
       break;
 
     case 'normal':
       recipe.sections.signups = true;
       recipe.defaults.cutoffRule = 'nightBefore';
-      recipe.defaults.capacity = intent.hasCapacityLimit
-        ? (groupContext?.defaultCapacity ?? 16)
-        : null;
+      if (intent.hasCapacityLimit) {
+        recipe.sections.capacity = true;
+        recipe.defaults.capacity = groupContext?.defaultCapacity ?? 16;
+      }
       break;
 
     case 'organised':
       recipe.sections.signups = true;
       recipe.defaults.cutoffRule = 'daysBefore';
       recipe.defaults.cutoffDaysBefore = 3;
-      recipe.defaults.capacity = intent.hasCapacityLimit
-        ? (groupContext?.defaultCapacity ?? 16)
-        : null;
+      if (intent.hasCapacityLimit) {
+        recipe.sections.capacity = true;
+        recipe.defaults.capacity = groupContext?.defaultCapacity ?? 16;
+      }
       break;
   }
 
@@ -170,6 +177,7 @@ export function getRecipeSummary(recipe: TripRecipe): string[] {
 export function deriveRecipeFromTrip(trip: {
   cutoffAt?: string | null;
   capacity?: number | null;
+  scenarioKey?: string | null;
   logistics?: {
     meetingPoint?: string;
     meetTime?: string;
@@ -204,13 +212,21 @@ export function deriveRecipeFromTrip(trip: {
     }
   }
 
+  // Heuristic: if trip has capacity > 0, assume capacity is enabled
+  const hasCapacity = (trip.capacity ?? 0) > 0;
+
+  // Heuristic: if trip has scenario_key === 'cross_border_agent', enable flights
+  const hasFlights = trip.scenarioKey === "cross_border_agent";
+
   return {
     sections: {
       basics: true,
       signups: !!trip.cutoffAt,
+      capacity: hasCapacity,
       logistics: hasLogistics,
       export: false, // Cannot determine from trip data alone
       scoring: false,
+      flights: hasFlights,
     },
     defaults: {
       capacity: trip.capacity ?? null,

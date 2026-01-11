@@ -67,6 +67,9 @@ export type Trip = {
   courseId: string | null;
   teeId: string | null;
 
+  /** Trip scenario key (e.g. 'local_round', 'away_day', 'overnight_trip', etc.) */
+  scenarioKey?: string | null;
+
   logistics?: TripLogistics;
 
   attendees: Attendee[];
@@ -128,6 +131,8 @@ function normalizeTrip(input: any): Trip {
 
     courseId: (t as any).courseId ?? null,
     teeId: (t as any).teeId ?? null,
+
+    scenarioKey: (t as any).scenarioKey !== undefined ? ((t as any).scenarioKey ?? null) : undefined,
 
     logistics: (t as any).logistics ?? {},
 
@@ -270,6 +275,7 @@ export async function createTrip(
     cutoffAt: partial.cutoffAt ?? null, // API expects null or ISO string
     courseId: partial.courseId ?? null,
     teeId: partial.teeId ?? null,
+    scenarioKey: partial.scenarioKey !== undefined ? (partial.scenarioKey || null) : null,
     logistics: partial.logistics ? {
       meetingPoint: partial.logistics.meetingPoint ?? null,
       meetTime: partial.logistics.meetTime ?? null,
@@ -319,9 +325,15 @@ export async function updateTrip(trips: Trip[], tripId: number, groupId: string,
     throw new Error("groupId is required to update a trip");
   }
 
-  const base = trips.find((t) => normalizeTrip(t).id === tripId);
+  let base = trips.find((t) => normalizeTrip(t).id === tripId);
+  
+  // If trip not found in local array, fetch it from server
   if (!base) {
-    throw new Error("Trip not found");
+    const fetchedTrips = await loadTrips(groupId, true);
+    base = fetchedTrips.find((t) => t.id === tripId);
+    if (!base) {
+      throw new Error(`Trip not found (ID: ${tripId})`);
+    }
   }
 
   const normalized = normalizeTrip(base);

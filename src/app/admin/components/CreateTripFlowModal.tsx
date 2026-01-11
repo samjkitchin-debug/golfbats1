@@ -1,15 +1,30 @@
+/**
+ * CreateTripFlowModal
+ * 
+ * Two-stage trip creation flow with scenario classification.
+ * 
+ * Scenario truth lives in src/app/lib/scenarios/registry.ts and docs/trips/scenarios.md
+ */
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createTrip, updateTrip, loadTrips, type Trip } from "../../lib/tripActions";
+import { createTrip, type Trip } from "../../lib/tripActions";
 import {
-  type TripIntent,
   type TripRecipe,
-  deriveTripRecipe,
   getRecipeSummary,
 } from "../../lib/tripIntent";
 import { computeDefaultCutoffAt, generateDefaultTripName } from "../../lib/tripDates";
+import {
+  type ScenarioAnswers,
+  type ScenarioKey,
+  deriveScenarioKey,
+  deriveTripRecipeFromScenario,
+} from "../../lib/tripScenario";
+import { emitTripEvent } from "../../lib/tripInstrumentation";
+import { getScenario, getAllScenarioKeys, type ScenarioDefinition } from "../../lib/scenarios/registry";
+import { proposeScenarioAnswersFromText } from "../../lib/scenarios/aiHelper";
 
 type CreateTripFlowModalProps = {
   groupId: string;
@@ -26,11 +41,11 @@ function todayYmd() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function getStoredIntent(groupId: string): TripIntent | null {
+function getLastUsedScenarioKey(groupId: string): ScenarioKey | null {
   try {
-    const stored = localStorage.getItem(`tripIntent_${groupId}`);
+    const stored = localStorage.getItem(`lastUsedScenarioKey_${groupId}`);
     if (stored) {
-      return JSON.parse(stored) as TripIntent;
+      return stored as ScenarioKey;
     }
   } catch {
     // Ignore parse errors
@@ -38,9 +53,9 @@ function getStoredIntent(groupId: string): TripIntent | null {
   return null;
 }
 
-function storeIntent(groupId: string, intent: TripIntent) {
+function storeLastUsedScenarioKey(groupId: string, scenarioKey: ScenarioKey) {
   try {
-    localStorage.setItem(`tripIntent_${groupId}`, JSON.stringify(intent));
+    localStorage.setItem(`lastUsedScenarioKey_${groupId}`, scenarioKey);
   } catch {
     // Ignore storage errors
   }
@@ -63,18 +78,43 @@ export default function CreateTripFlowModal({
   const [tripDate, setTripDate] = useState(todayYmd());
   const [tripName, setTripName] = useState("");
 
-  // Stage 2: Intent
-  const [intent, setIntent] = useState<TripIntent>(() => {
-    const stored = getStoredIntent(groupId);
-    return (
-      stored || {
-        structureLevel: "normal",
-        needsLogistics: false,
-        needsExport: false,
-        hasCapacityLimit: true,
-      }
-    );
+  // Group settings (scenario presets)
+  const [defaultScenarioKey, setDefaultScenarioKey] = useState<ScenarioKey | null>(null);
+  const [secondaryScenarioKey, setSecondaryScenarioKey] = useState<ScenarioKey | null>(null);
+  
+  // Last used scenario key (per-user, per-group)
+  const lastUsedScenarioKey = getLastUsedScenarioKey(groupId);
+  
+  // Stage 2: Scenario selection mode
+  const [selectedScenarioKey, setSelectedScenarioKey] = useState<ScenarioKey | null>(null);
+  const [showMoreScenarios, setShowMoreScenarios] = useState(false);
+  const [describeText, setDescribeText] = useState("");
+  const [aiProposal, setAiProposal] = useState<{ answers: ScenarioAnswers; confidence: number; followupQuestion?: string } | null>(null);
+  
+  // Scenario answers (derived from selectedScenarioKey or AI proposal)
+  const [answers, setAnswers] = useState<ScenarioAnswers>({
+    organiserBooking: false,
+    travelCoordination: false,
+    crossBorderAgent: false,
   });
+  
+  // Load group settings on mount
+  useEffect(() => {
+    if (!groupSlug) return;
+    async function loadGroupSettings() {
+      try {
+        const res = await fetch(`/api/groups/${groupSlug}/settings`);
+        if (res.ok) {
+          const data = await res.json();
+          setDefaultScenarioKey(data.defaultScenarioKey || null);
+          setSecondaryScenarioKey(data.secondaryScenarioKey || null);
+        }
+      } catch (error) {
+        console.warn("Failed to load group settings:", error);
+      }
+    }
+    loadGroupSettings();
+  }, [groupSlug]);
 
   // Auto-generate name when date changes
   useEffect(() => {
@@ -83,8 +123,54 @@ export default function CreateTripFlowModal({
     }
   }, [tripDate, groupName, step, tripName]);
 
-  const recipe = useMemo(() => deriveTripRecipe(intent), [intent]);
+  // Compute scenario key from selectedScenarioKey or derived from answers
+  const scenarioKey = useMemo(() => {
+    if (selectedScenarioKey) {
+      return selectedScenarioKey;
+    }
+    return deriveScenarioKey(answers);
+  }, [selectedScenarioKey, answers]);
+  
+  const recipe = useMemo(() => deriveTripRecipeFromScenario(scenarioKey, tripDate), [scenarioKey, tripDate]);
   const summary = useMemo(() => getRecipeSummary(recipe), [recipe]);
+  
+  // Helper to select scenario by key
+  function selectScenario(scenarioKey: ScenarioKey, source: "fast_lane" | "describe" | "manual" = "manual") {
+    setSelectedScenarioKey(scenarioKey);
+    const scenario = getScenario(scenarioKey);
+    // Derive answers from scenario (reverse lookup is approximate, but for fast lane it's fine)
+    // For now, we'll use a simple mapping based on scenario type
+    // This is a simplification - in reality we'd need a better mapping
+    // But for fast lane, the key is what matters
+    setAnswers({
+      organiserBooking: scenarioKey === "organiser_booking",
+      travelCoordination: ["away_day", "carpool_round", "overnight_trip", "cross_border_agent"].includes(scenarioKey),
+      crossBorderAgent: scenarioKey === "cross_border_agent",
+      overnight: scenarioKey === "overnight_trip",
+      carpool: scenarioKey === "carpool_round",
+    });
+    storeLastUsedScenarioKey(groupId, scenarioKey);
+    setShowMoreScenarios(false);
+    setDescribeText("");
+    setAiProposal(null);
+    emitTripEvent({ type: "scenario_selected", scenarioKey, groupId, source });
+  }
+  
+  // Helper to handle AI proposal
+  function handleDescribeSubmit() {
+    if (!describeText.trim()) return;
+    const proposal = proposeScenarioAnswersFromText(describeText);
+    setAiProposal(proposal);
+    
+    if (proposal.confidence >= 0.8) {
+      // High confidence - auto-select
+      const derivedKey = deriveScenarioKey(proposal.answers);
+      selectScenario(derivedKey, "describe");
+    } else {
+      // Low confidence - show followup or let user choose
+      setAnswers(proposal.answers);
+    }
+  }
 
   // Reset on open
   useEffect(() => {
@@ -93,14 +179,20 @@ export default function CreateTripFlowModal({
       setError(null);
       setTripDate(todayYmd());
       setTripName("");
-      const stored = getStoredIntent(groupId);
-      if (stored) {
-        setIntent(stored);
-      }
+      setSelectedScenarioKey(null);
+      setShowMoreScenarios(false);
+      setDescribeText("");
+      setAiProposal(null);
+      setAnswers({
+        organiserBooking: false,
+        travelCoordination: false,
+        crossBorderAgent: false,
+      });
+      emitTripEvent({ type: "create_started", groupId });
     }
   }, [open, groupId]);
 
-  async function handleStage1Submit() {
+  function handleStage1Submit() {
     // Client-side validation (Option B: name is required)
     const trimmedName = tripName.trim();
     if (!tripDate) {
@@ -112,19 +204,37 @@ export default function CreateTripFlowModal({
       return;
     }
 
+    // Move to stage 2 (no trip creation yet)
+    setStep(2);
+    setError(null);
+  }
+
+  async function handleStage2Complete() {
     setLoading(true);
     setError(null);
 
     try {
-      // IMPORTANT: Trip name is REQUIRED (Option B). User-entered name and date must never be overridden.
-      // The API will also validate, but we validate here for better UX (prevents bad requests).
+      // Store last used scenario key (already done in selectScenario, but ensure it's stored)
+      storeLastUsedScenarioKey(groupId, scenarioKey);
+
+      // Compute all values from scenario
+      const trimmedName = tripName.trim();
+      const cutoffAt = computeDefaultCutoffAt(tripDate, recipe.defaults);
+      
+      // Capacity: set ONLY if recipe.sections.capacity, otherwise undefined
+      // If capacity is enabled, use the recipe default (or 16 as fallback)
+      // If capacity is NOT enabled, pass undefined (API will default to 16, but that's fine - capacity is not enforced)
+      const capacity = recipe.sections.capacity ? (recipe.defaults.capacity ?? 16) : undefined;
+
+      // Create trip with all computed values in ONE call
       const result = await createTrip([], groupId, {
-        date: tripDate, // User-selected date - must be preserved
-        name: trimmedName, // User-entered name (validated, non-empty) - must be preserved
+        date: tripDate,
+        name: trimmedName,
         format: "Stableford",
-        status: "open",
-        capacity: 16, // Will be updated in stage 2 if needed
-        cutoffAt: undefined, // Will be computed in stage 2
+        status: "open", // API may require this, but UI relies on getEffectiveTripPhase for joinability
+        capacity: capacity, // undefined if not enabled, number if enabled
+        cutoffAt: cutoffAt || undefined,
+        scenarioKey: scenarioKey, // Persist scenarioKey to DB
         courseId: null,
         teeId: null,
       });
@@ -133,51 +243,23 @@ export default function CreateTripFlowModal({
         throw new Error("Trip created but no ID returned.");
       }
 
-      // Move to stage 2
-      setStep(2);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create trip.");
-    } finally {
-      setLoading(false);
-    }
-  }
+      // Emit completion event
+      emitTripEvent({
+        type: "create_completed",
+        tripId: result.newTripId,
+        groupId,
+        scenarioKey: scenarioKey || null,
+      });
 
-  async function handleStage2Complete() {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Store intent for next time
-      storeIntent(groupId, intent);
-
-      // Compute cutoff from recipe
-      const cutoffAt = computeDefaultCutoffAt(tripDate, recipe.defaults);
-
-      // Load current trips to get the created trip
-      const trips = await loadTrips(groupId, true);
-      const createdTrip = trips.find((t) => t.date === tripDate && t.name === tripName.trim());
-
-      if (!createdTrip) {
-        throw new Error("Could not find created trip.");
-      }
-
-      // Update trip with recipe-derived values
-      const updates: Partial<Trip> = {
-        cutoffAt: cutoffAt || undefined,
-        capacity: recipe.defaults.capacity ?? undefined,
-      };
-
-      await updateTrip(trips, createdTrip.id, groupId, updates);
-
-      // Close modal and navigate
+      // Close modal and navigate immediately
       onClose();
       if (onCreated) {
-        onCreated(createdTrip.id);
+        onCreated(result.newTripId);
       } else {
-        router.push(`/admin/g/${groupSlug}/trips/${createdTrip.id}`);
+        router.push(`/admin/g/${groupSlug}/trips/${result.newTripId}`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to configure trip.");
+      setError(err instanceof Error ? err.message : "Failed to create trip.");
     } finally {
       setLoading(false);
     }
@@ -192,7 +274,7 @@ export default function CreateTripFlowModal({
           {/* Header */}
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-foreground">
-              {step === 1 ? "Create trip" : "Trip needs"}
+              {step === 1 ? "Create trip" : "What kind of day is this?"}
             </h2>
             {step === 1 && (
               <p className="mt-1 text-sm text-muted">
@@ -201,7 +283,7 @@ export default function CreateTripFlowModal({
             )}
             {step === 2 && (
               <p className="mt-1 text-sm text-muted">
-                Tell us what this trip needs and we'll set it up.
+                A couple of quick questions so DayForeIt knows what to collect.
               </p>
             )}
           </div>
@@ -256,107 +338,170 @@ export default function CreateTripFlowModal({
                 </button>
                 <button
                   onClick={handleStage1Submit}
-                  disabled={loading || !tripDate || !tripName.trim()}
+                  disabled={!tripDate || !tripName.trim()}
                   className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? "Creating…" : "Create trip"}
+                  Next
                 </button>
               </div>
             </div>
           )}
 
-          {/* Stage 2: Intent picker */}
+          {/* Stage 2: Scenario classification */}
           {step === 2 && (
             <div className="space-y-6">
-              {/* Chip toggles */}
+              {/* Question 1: Organiser booking */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Trip needs
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setIntent((prev) => ({ ...prev, needsLogistics: !prev.needsLogistics }))
-                    }
-                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-                      intent.needsLogistics
-                        ? "border-foreground bg-foreground text-white"
-                        : "border-border bg-surface text-foreground hover:bg-background"
-                    }`}
-                  >
-                    Logistics
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setIntent((prev) => ({ ...prev, needsExport: !prev.needsExport }))
-                    }
-                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-                      intent.needsExport
-                        ? "border-foreground bg-foreground text-white"
-                        : "border-border bg-surface text-foreground hover:bg-background"
-                    }`}
-                  >
-                    Export
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setIntent((prev) => ({ ...prev, hasCapacityLimit: !prev.hasCapacityLimit }))
-                    }
-                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-                      intent.hasCapacityLimit
-                        ? "border-foreground bg-foreground text-white"
-                        : "border-border bg-surface text-foreground hover:bg-background"
-                    }`}
-                  >
-                    Capacity limit
-                  </button>
-                </div>
-              </div>
-
-              {/* Structure level */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  How structured is this?
+                  Booking
                 </label>
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setIntent((prev) => ({ ...prev, structureLevel: "casual" }))}
+                    onClick={() => setAnswers((prev) => ({ ...prev, organiserBooking: false }))}
                     className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
-                      intent.structureLevel === "casual"
+                      !answers.organiserBooking
                         ? "border-foreground bg-foreground text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
-                    Casual
+                    Everyone sorts themselves
                   </button>
                   <button
                     type="button"
-                    onClick={() => setIntent((prev) => ({ ...prev, structureLevel: "normal" }))}
+                    onClick={() => setAnswers((prev) => ({ ...prev, organiserBooking: true }))}
                     className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
-                      intent.structureLevel === "normal"
+                      answers.organiserBooking
                         ? "border-foreground bg-foreground text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
-                    Normal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIntent((prev) => ({ ...prev, structureLevel: "organised" }))}
-                    className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
-                      intent.structureLevel === "organised"
-                        ? "border-foreground bg-foreground text-white"
-                        : "border-border bg-surface text-foreground hover:bg-background"
-                    }`}
-                  >
-                    Organised
+                    I'm booking / need a roster
                   </button>
                 </div>
               </div>
+
+              {/* Question 2: Travel coordination */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Travel
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAnswers((prev) => ({
+                        ...prev,
+                        travelCoordination: false,
+                        overnight: undefined,
+                        carpool: undefined,
+                      }));
+                    }}
+                    className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+                      !answers.travelCoordination
+                        ? "border-foreground bg-foreground text-white"
+                        : "border-border bg-surface text-foreground hover:bg-background"
+                    }`}
+                  >
+                    Meet at course
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnswers((prev) => ({ ...prev, travelCoordination: true }))}
+                    className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+                      answers.travelCoordination
+                        ? "border-foreground bg-foreground text-white"
+                        : "border-border bg-surface text-foreground hover:bg-background"
+                    }`}
+                  >
+                    We're travelling together
+                  </button>
+                </div>
+              </div>
+
+              {/* Question 3: Cross border agent */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Passport / ferry / agent
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAnswers((prev) => ({ ...prev, crossBorderAgent: false }))}
+                    className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+                      !answers.crossBorderAgent
+                        ? "border-foreground bg-foreground text-white"
+                        : "border-border bg-surface text-foreground hover:bg-background"
+                    }`}
+                  >
+                    No
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnswers((prev) => ({ ...prev, crossBorderAgent: true }))}
+                    className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+                      answers.crossBorderAgent
+                        ? "border-foreground bg-foreground text-white"
+                        : "border-border bg-surface text-foreground hover:bg-background"
+                    }`}
+                  >
+                    Yes (passport / ferry / agent)
+                  </button>
+                </div>
+              </div>
+
+              {/* Conditional Question 4: Overnight (only if travelCoordination=true and crossBorderAgent=false) */}
+              {answers.travelCoordination && !answers.crossBorderAgent && (
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Duration
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAnswers((prev) => ({ ...prev, overnight: false }))}
+                      className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+                        answers.overnight === false
+                          ? "border-foreground bg-foreground text-white"
+                          : "border-border bg-surface text-foreground hover:bg-background"
+                      }`}
+                    >
+                      Day trip
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAnswers((prev) => ({ ...prev, overnight: true }))}
+                      className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+                        answers.overnight === true
+                          ? "border-foreground bg-foreground text-white"
+                          : "border-border bg-surface text-foreground hover:bg-background"
+                      }`}
+                    >
+                      Overnight
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Optional refinement: Carpool toggle (only if travelCoordination=true and crossBorderAgent=false) */}
+              {answers.travelCoordination && !answers.crossBorderAgent && (
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Carpool
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setAnswers((prev) => ({ ...prev, carpool: !prev.carpool }))}
+                    className={`w-full rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+                      answers.carpool
+                        ? "border-foreground bg-foreground text-white"
+                        : "border-border bg-surface text-foreground hover:bg-background"
+                    }`}
+                  >
+                    {answers.carpool ? "✓ We're carpooling (pickup point matters)" : "We're carpooling (pickup point matters)"}
+                  </button>
+                </div>
+              )}
 
               {/* Summary */}
               {summary.length > 0 && (
@@ -389,7 +534,7 @@ export default function CreateTripFlowModal({
                   disabled={loading}
                   className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? "Saving…" : "Done"}
+                  {loading ? "Creating…" : "Create"}
                 </button>
               </div>
             </div>

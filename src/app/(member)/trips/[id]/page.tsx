@@ -18,6 +18,8 @@ import { ConfirmModal } from "../../../components/ConfirmModal";
 import { PromptModal } from "../../../components/PromptModal";
 import { TripRsvpActions } from "../../../components/TripRsvpActions";
 import { perfMark, perfMeasure, perfLog } from "../../../lib/perf";
+import { checkMemberExportReadiness } from "../../../lib/memberExportReadiness";
+import { useRouter } from "next/navigation";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -26,6 +28,7 @@ function toTripId(raw: string): number | null {
 
 export default function TripDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   
   const tripId = useMemo(() => toTripId(params?.id), [params?.id]);
 
@@ -166,6 +169,52 @@ export default function TripDetailPage() {
   const [attendeeProfilePhotos, setAttendeeProfilePhotos] = useState<
     Array<{ memberId: string; name: string; photoUrl: string | null }>
   >([]);
+  const [exportReadinessNotice, setExportReadinessNotice] = useState<{
+    show: boolean;
+    missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap">;
+  } | null>(null);
+
+  // Check export readiness when trip or myEntry changes (for cross_border_agent trips)
+  useEffect(() => {
+    async function checkReadiness() {
+      if (
+        trip?.scenarioKey === "cross_border_agent" &&
+        myEntry?.status === "confirmed" &&
+        currentUserId
+      ) {
+        try {
+          const readiness = await checkMemberExportReadiness(
+            currentUserId,
+            myEntry.handicapForTrip
+          );
+          
+          if (!readiness.isReady && readiness.missingFields.length > 0) {
+            // Only show notice if we don't already have one, or if missing fields changed
+            setExportReadinessNotice(prev => {
+              if (prev?.show && JSON.stringify(prev.missingFields) === JSON.stringify(readiness.missingFields)) {
+                return prev; // Don't update if same
+              }
+              return {
+                show: true,
+                missingFields: readiness.missingFields,
+              };
+            });
+          } else if (readiness.isReady) {
+            // Hide notice if member becomes ready
+            setExportReadinessNotice(null);
+          }
+        } catch (error) {
+          // Silently fail - don't show errors
+          console.warn("Failed to check export readiness:", error);
+        }
+      } else if (trip?.scenarioKey !== "cross_border_agent" || myEntry?.status !== "confirmed") {
+        // Hide notice if trip is not cross_border_agent or member is not confirmed
+        setExportReadinessNotice(null);
+      }
+    }
+    
+    checkReadiness();
+  }, [trip?.scenarioKey, trip?.id, myEntry?.status, myEntry?.handicapForTrip, currentUserId]);
 
   // Compute confirmed and waitlist before early returns (with fallback for null trip)
   const confirmed = useMemo(() => {
@@ -316,6 +365,31 @@ export default function TripDetailPage() {
             try {
               const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
               setTrips(freshTrips);
+              
+              // Check if this is a cross_border_agent trip and if member needs to complete details
+              const joinedTrip = freshTrips.find(t => t.id === tripIdSafe);
+              if (joinedTrip?.scenarioKey === "cross_border_agent" && currentUserId) {
+                // Find the member's attendee entry
+                const myAttendee = joinedTrip.attendees.find(
+                  a => a.memberId === currentUserId || a.name === currentUserName
+                );
+                
+                if (myAttendee?.status === "confirmed") {
+                  // Check export readiness
+                  const readiness = await checkMemberExportReadiness(
+                    currentUserId,
+                    myAttendee.handicapForTrip
+                  );
+                  
+                  if (!readiness.isReady && readiness.missingFields.length > 0) {
+                    // Show notice to complete details
+                    setExportReadinessNotice({
+                      show: true,
+                      missingFields: readiness.missingFields,
+                    });
+                  }
+                }
+              }
             } catch (reloadError) {
               perfLog("handleImIn: reload error", { tripId: tripIdSafe, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
             }
@@ -606,6 +680,30 @@ export default function TripDetailPage() {
           showJoin={trip.status === "open" && !isScheduled}
           showMicrocopy={true}
         />
+
+        {/* Export readiness notice for cross_border_agent trips */}
+        {trip.scenarioKey === "cross_border_agent" && 
+         myEntry?.status === "confirmed" && 
+         exportReadinessNotice?.show && (
+          <div className="mt-4 rounded-lg border border-brand-orange/30 bg-brand-orange/5 p-3">
+            <div className="text-sm font-medium text-foreground mb-1">
+              This trip requires passport details for the travel agent.
+            </div>
+            <div className="text-xs text-muted mb-3">
+              Please complete your passport details to enable agent export.
+            </div>
+            <button
+              onClick={() => {
+                // Navigate to Me page with highlight query params for missing fields
+                const highlightParams = exportReadinessNotice.missingFields.join(",");
+                router.push(`/me?highlight=${encodeURIComponent(highlightParams)}`);
+              }}
+              className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-white hover:opacity-95"
+            >
+              Complete details
+            </button>
+          </div>
+        )}
 
         {isScheduled && signupOpenDateYmd && (
           <div className="mt-3 text-sm text-muted">

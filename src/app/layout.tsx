@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import localFont from "next/font/local";
 import "./globals.css";
@@ -77,7 +77,6 @@ export const metadata: Metadata = {
   },
   description: "Your group's home for golf days",
   manifest: "/manifest.json",
-  themeColor: "#1F7A4A",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -92,6 +91,10 @@ export const metadata: Metadata = {
       { url: "/browserIcon.png", sizes: "192x192", type: "image/png" },
     ],
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1F7A4A",
 };
 
 export default function RootLayout({

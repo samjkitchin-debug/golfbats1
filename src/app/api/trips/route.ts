@@ -25,7 +25,7 @@ async function fetchTripsData(
   const { data: tripsDataRaw, error: tripsError } = await supabase
     .from("trips")
     .select(
-      "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id"
+      "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key"
     )
     .eq("group_id", groupId)
     .gte("trip_date", todayYmd) // Only trips with date >= today (upcoming only)
@@ -73,19 +73,48 @@ async function fetchTripsData(
   const attendees = attendeesData || [];
   const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id).filter(Boolean)));
 
-  // Fetch member display names only if we have attendees
-  const membersById: Record<string, { display_name: string | null; full_name: string | null }> = {};
+  // Fetch member display names and passport data only if we have attendees
+  const membersById: Record<string, { 
+    display_name: string | null; 
+    full_name: string | null;
+    passport_full_name: string | null;
+    passport_number: string | null;
+    passport_nationality: string | null;
+    passport_date_of_birth: string | null;
+    passport_expiry_date: string | null;
+  }> = {};
   if (memberIds.length > 0) {
+    // Fetch members with their passport data from member_profiles
     const { data: membersData, error: membersError } = await supabase
       .from("members")
-      .select("id,display_name,full_name")
+      .select(`
+        id,
+        display_name,
+        full_name,
+        member_profiles(
+          passport_full_name,
+          passport_number,
+          passport_nationality,
+          passport_date_of_birth,
+          passport_expiry_date
+        )
+      `)
       .in("id", memberIds);
 
     if (membersError) {
       console.warn("[trips API] Failed to fetch members for attendees:", membersError);
     } else if (membersData) {
       for (const m of membersData) {
-        membersById[m.id] = { display_name: m.display_name, full_name: m.full_name };
+        const profile = (m.member_profiles as any)?.[0] || null;
+        membersById[m.id] = { 
+          display_name: m.display_name, 
+          full_name: m.full_name,
+          passport_full_name: profile?.passport_full_name ?? null,
+          passport_number: profile?.passport_number ?? null,
+          passport_nationality: profile?.passport_nationality ?? null,
+          passport_date_of_birth: profile?.passport_date_of_birth ?? null,
+          passport_expiry_date: profile?.passport_expiry_date ?? null,
+        };
       }
     }
   }
@@ -104,6 +133,12 @@ async function fetchTripsData(
           joinedAt: new Date(a.joined_at).getTime(),
           handicapForTrip: a.handicap_snapshot ?? null,
           memberId: a.member_id,
+          // Include passport fields from member_profiles
+          passportFullName: member.passport_full_name,
+          passportNumber: member.passport_number,
+          passportNationality: member.passport_nationality,
+          passportDateOfBirth: member.passport_date_of_birth,
+          passportExpiryDate: member.passport_expiry_date,
         };
       });
 
@@ -156,6 +191,7 @@ async function fetchTripsData(
       cutoffAt: trip.cutoff_at ? new Date(trip.cutoff_at).toISOString() : undefined,
       courseId: trip.course_id,
       teeId: trip.tee_id,
+      scenarioKey: (trip as any).scenario_key || null,
       logistics: {
         meetingPoint: trip.meeting_point || undefined,
         meetTime: trip.meet_time || undefined,
@@ -378,6 +414,20 @@ export async function POST(req: Request) {
       if (trip.teeId !== undefined) {
         updateData.tee_id = trip.teeId || null;
       }
+      if (trip.scenarioKey !== undefined) {
+        // Validate scenario_key if provided
+        const allowedScenarioKeys = ['local_round', 'away_day', 'overnight_trip', 'organiser_booking', 'cross_border_agent'];
+        if (trip.scenarioKey === null || trip.scenarioKey === '') {
+          updateData.scenario_key = null;
+        } else if (typeof trip.scenarioKey === 'string' && allowedScenarioKeys.includes(trip.scenarioKey)) {
+          updateData.scenario_key = trip.scenarioKey;
+        } else {
+          return NextResponse.json(
+            { error: `scenarioKey must be one of: ${allowedScenarioKeys.join(', ')}, or null` },
+            { status: 400 }
+          );
+        }
+      }
       if (trip.logistics !== undefined) {
         updateData.meeting_point = trip.logistics?.meetingPoint || null;
         updateData.meet_time = trip.logistics?.meetTime || null;
@@ -467,6 +517,22 @@ export async function POST(req: Request) {
 
       validatedDate = trip.date;
 
+      // Validate scenario_key if provided
+      const allowedScenarioKeys = ['local_round', 'carpool_round', 'away_day', 'overnight_trip', 'organiser_booking', 'cross_border_agent', 'casual_round'];
+      let validatedScenarioKey: string | null = null;
+      if (trip.scenarioKey !== undefined) {
+        if (trip.scenarioKey === null || trip.scenarioKey === '') {
+          validatedScenarioKey = null;
+        } else if (typeof trip.scenarioKey === 'string' && allowedScenarioKeys.includes(trip.scenarioKey)) {
+          validatedScenarioKey = trip.scenarioKey;
+        } else {
+          return NextResponse.json(
+            { error: `scenarioKey must be one of: ${allowedScenarioKeys.join(', ')}, or null` },
+            { status: 400 }
+          );
+        }
+      }
+
       // Build INSERT payload with validated fields
       const tripId = crypto.randomUUID();
       const insertData: any = {
@@ -485,6 +551,7 @@ export async function POST(req: Request) {
         cutoff_at: trip.cutoffAt ? new Date(trip.cutoffAt).toISOString() : null,
         course_id: trip.courseId || null,
         tee_id: trip.teeId || null,
+        scenario_key: validatedScenarioKey,
         meeting_point: trip.logistics?.meetingPoint || null,
         meet_time: trip.logistics?.meetTime || null,
         ferry_details: trip.logistics?.ferryDetails || null,

@@ -10,6 +10,8 @@ import { isTripUpcoming, pickDefaultExpandedTrip, getEffectiveTripPhase } from "
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
+import { checkMemberExportReadiness } from "../../lib/memberExportReadiness";
+import { useRouter } from "next/navigation";
 
 // Helper function to check if cutoff has passed (11:59pm SGT on cutoff date)
 function isCutoffPassed(cutoffAt: string | undefined): boolean {
@@ -44,6 +46,7 @@ function getGroupColor(groupId: string): string {
 }
 
 export default function TripsListPage() {
+  const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -54,6 +57,7 @@ export default function TripsListPage() {
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [pastTripsExpanded, setPastTripsExpanded] = useState<boolean>(false);
+  const [completionPrompt, setCompletionPrompt] = useState<{ tripId: number; missingFields: string[] } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -213,6 +217,7 @@ export default function TripsListPage() {
           setTrips(updated);
 
           // Reload all trips for all groups
+          let reloadedTrip: Trip | null = null;
           if (approvedGroups.length > 0) {
             try {
               const tripsPromises = approvedGroups.map(async (group) => {
@@ -233,12 +238,30 @@ export default function TripsListPage() {
                 if (activeGroupIndex >= 0) {
                   const activeGroupTrips = allTripsArrays[activeGroupIndex].map(({ groupName, groupId, ...trip }) => trip);
                   setTrips(activeGroupTrips);
+                  // Find the reloaded trip for completion check
+                  reloadedTrip = activeGroupTrips.find((t) => t.id === tripId) || null;
                 }
               }
               
               setCourses(coursesData);
             } catch (reloadError) {
               perfLog("handleJoinTrip: reload error", { tripId, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
+            }
+          }
+
+          // Check if this is a Batam trip and member details are complete
+          if (trip.scenarioKey === "cross_border_agent" && currentUserId) {
+            try {
+              const readiness = await checkMemberExportReadiness(currentUserId, handicapValue);
+              if (!readiness.isReady) {
+                // Show completion prompt
+                setCompletionPrompt({
+                  tripId,
+                  missingFields: readiness.missingFields,
+                });
+              }
+            } catch (error) {
+              perfLog("handleJoinTrip: completion check error", { tripId, error: error instanceof Error ? error.message : String(error) });
             }
           }
         } catch (error) {
@@ -443,6 +466,29 @@ export default function TripsListPage() {
     return "not_joined";
   }
 
+  // Helper to get completion status for Batam trips
+  const [completionStatusCache, setCompletionStatusCache] = useState<Record<number, { isReady: boolean; missingFields: string[] }>>({});
+  
+  async function checkAndCacheCompletionStatus(trip: Trip & { groupName?: string; groupId?: string }) {
+    if (trip.scenarioKey !== "cross_border_agent" || !currentUserId) return;
+    if (completionStatusCache[trip.id]) return; // Already cached
+    
+    const myEntry = currentUserId
+      ? trip.attendees.find((a) => a.memberId && a.memberId === currentUserId)
+      : currentUserName
+      ? trip.attendees.find((a) => a.name === currentUserName)
+      : undefined;
+    
+    if (!myEntry || myEntry.status !== "confirmed") return; // Only check for confirmed attendees
+    
+    try {
+      const readiness = await checkMemberExportReadiness(currentUserId, myEntry.handicapForTrip);
+      setCompletionStatusCache(prev => ({ ...prev, [trip.id]: readiness }));
+    } catch (error) {
+      perfLog("checkAndCacheCompletionStatus: error", { tripId: trip.id, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   // Helper to get sign-up timing information
   function getSignupTiming(trip: Trip): { status: "not_open" | "open" | "locked"; message: string; opensDate?: string; closesDate?: string } {
     if (trip.status === "cancelled") {
@@ -556,6 +602,11 @@ export default function TripsListPage() {
     ].filter(Boolean).length;
     const showTbcHelper = tbcFields >= 3;
     
+    // Check completion status for Batam trips
+    const completionStatus = trip.scenarioKey === "cross_border_agent" && rsvpStatus === "joined" 
+      ? completionStatusCache[trip.id] 
+      : null;
+    
     return (
       <div className="rounded-lg border border-border bg-surface">
         {/* Card Header - Collapsed row - fixed 3-column grid for strict alignment */}
@@ -606,6 +657,31 @@ export default function TripsListPage() {
                  "Not joined"}
               </span>
             </div>
+
+            {/* Completion prompt for Batam trips */}
+            {trip.scenarioKey === "cross_border_agent" && rsvpStatus === "joined" && completionStatus && !completionStatus.isReady && (
+              <div className="rounded-lg border border-brand-orange/30 bg-brand-orange/5 p-3 mb-3">
+                <div className="text-sm font-medium text-foreground mb-1">Complete your details for the agent</div>
+                <div className="text-xs text-muted mb-3">
+                  Please complete: {completionStatus.missingFields.map(f => f.replace(/_/g, ' ')).join(", ")}
+                </div>
+                <button
+                  onClick={() => {
+                    router.push(`/me?highlight=${completionStatus.missingFields.join(',')}`);
+                  }}
+                  className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-white hover:opacity-95"
+                >
+                  Complete now
+                </button>
+              </div>
+            )}
+
+            {/* Completion status badge for Batam trips */}
+            {trip.scenarioKey === "cross_border_agent" && rsvpStatus === "joined" && completionStatus && completionStatus.isReady && (
+              <div className="mb-3">
+                <span className="text-xs text-brand-green font-medium">✓ Details complete</span>
+              </div>
+            )}
 
             {/* TBC helper message (only if 3+ fields are TBC) */}
             {showTbcHelper && (
@@ -788,6 +864,40 @@ export default function TripsListPage() {
         onConfirm={promptModal.onConfirm}
         onCancel={promptModal.onCancel}
       />
+
+      {/* Completion Prompt for Batam trips (after RSVP) */}
+      {completionPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-surface border border-border p-6">
+            <h3 className="text-lg font-semibold text-foreground mb-2">Complete your details for the agent</h3>
+            <p className="text-sm text-muted mb-4">
+              You're in! To help the organiser export your details to the travel agent, please complete:
+            </p>
+            <ul className="list-disc list-inside text-sm text-muted mb-4 space-y-1">
+              {completionPrompt.missingFields.map((field, idx) => (
+                <li key={idx}>{field.replace(/_/g, ' ')}</li>
+              ))}
+            </ul>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  router.push(`/me?highlight=${completionPrompt.missingFields.join(',')}`);
+                  setCompletionPrompt(null);
+                }}
+                className="flex-1 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              >
+                Complete now
+              </button>
+              <button
+                onClick={() => setCompletionPrompt(null)}
+                className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
+              >
+                Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

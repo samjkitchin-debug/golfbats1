@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Cropper from "react-easy-crop";
 import type { Area, Point } from "react-easy-crop";
 import { COUNTRIES } from "@/app/lib/countries";
@@ -24,15 +24,17 @@ type MemberRow = {
   is_admin: boolean;
 };
 
-type PassportRow = {
+type ProfileRow = {
   passport_full_name: string | null;
-  passport_country: string | null;
+  passport_number: string | null;
+  passport_nationality: string | null;
+  passport_date_of_birth: string | null;
   passport_expiry_date: string | null;
-  passport_photo_path: string | null;
 };
 
 export default function MePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => {
     return createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,9 +42,16 @@ export default function MePage() {
     );
   }, []);
 
+  // Get highlighted fields from query params
+  const highlightParam = searchParams?.get("highlight") || "";
+  const highlightedFields = useMemo(() => {
+    if (!highlightParam) return [];
+    return highlightParam.split(",").map(f => f.trim()).filter(Boolean);
+  }, [highlightParam]);
+
   const [loading, setLoading] = useState(true);
   const [member, setMember] = useState<MemberRow | null>(null);
-  const [passport, setPassport] = useState<PassportRow | null>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
 
@@ -64,22 +73,15 @@ export default function MePage() {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
-  // Passport edit state
+  // Passport edit state (from member_profiles)
   const [editingPassport, setEditingPassport] = useState(false);
   const [passportFullName, setPassportFullName] = useState("");
   const [passportNumber, setPassportNumber] = useState("");
-  const [passportCountry, setPassportCountry] = useState("");
+  const [passportNationality, setPassportNationality] = useState("");
+  const [passportDateOfBirth, setPassportDateOfBirth] = useState("");
   const [passportExpiryDate, setPassportExpiryDate] = useState("");
-  const [passportPhotoPath, setPassportPhotoPath] = useState<string | null>(null);
-  const [passportPhotoUrl, setPassportPhotoUrl] = useState<string | null>(null);
-  const [uploadingPassportPhoto, setUploadingPassportPhoto] = useState(false);
   const [savingPassport, setSavingPassport] = useState(false);
   const [passportSaveSuccess, setPassportSaveSuccess] = useState(false);
-  const [showPassportCropModal, setShowPassportCropModal] = useState(false);
-  const [passportImageSrc, setPassportImageSrc] = useState<string | null>(null);
-  const [passportCrop, setPassportCrop] = useState<Point>({ x: 0, y: 0 });
-  const [passportZoom, setPassportZoom] = useState(1);
-  const [passportCroppedAreaPixels, setPassportCroppedAreaPixels] = useState<Area | null>(null);
 
   // Account deletion state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -177,43 +179,30 @@ export default function MePage() {
       // Ensure editing state is available even when member is null
       // This allows profile photo upload on first visit
 
-      // Load passport data first
-      const passportResult = await supabase
-        .from("member_passports")
-        .select("passport_full_name,passport_country,passport_expiry_date,passport_photo_path")
-        .eq("user_id", user.id)
+      // Load passport data from member_profiles
+      const profileResult = await supabase
+        .from("member_profiles")
+        .select("passport_full_name,passport_number,passport_nationality,passport_date_of_birth,passport_expiry_date")
+        .eq("member_id", user.id)
         .maybeSingle();
 
       if (cancelled) return;
 
-      if (passportResult.data) {
-        const p = passportResult.data as PassportRow;
-        setPassport(p);
+      if (profileResult.data) {
+        const p = profileResult.data as ProfileRow;
+        setProfile(p);
         setPassportFullName(p.passport_full_name ?? "");
-        setPassportCountry(p.passport_country ?? "");
+        setPassportNumber(p.passport_number ?? "");
+        setPassportNationality(p.passport_nationality ?? "");
+        setPassportDateOfBirth(p.passport_date_of_birth ?? "");
         setPassportExpiryDate(p.passport_expiry_date ?? "");
-        setPassportPhotoPath(p.passport_photo_path ?? null);
-        
-        // Load passport photo URL if exists
-        if (p.passport_photo_path) {
-          try {
-            const photoRes = await fetch("/me/passport/photo", { credentials: "include" });
-            const photoJson = await photoRes.json();
-            if (photoJson.photoUrl) {
-              setPassportPhotoUrl(photoJson.photoUrl);
-            }
-          } catch (err) {
-            console.error("Failed to load passport photo URL:", err);
-          }
-        }
       } else {
-        setPassport(null);
+        setProfile(null);
         setPassportFullName("");
         setPassportNumber("");
-        setPassportCountry("");
+        setPassportNationality("");
+        setPassportDateOfBirth("");
         setPassportExpiryDate("");
-        setPassportPhotoPath(null);
-        setPassportPhotoUrl(null);
       }
 
       // Load group memberships: first get group_members, then fetch group details separately
@@ -457,43 +446,7 @@ export default function MePage() {
     }
   }, [openGroupMenuId]);
 
-  // Handler for passport photo upload
-  async function handlePassportPhotoUpload(file: File) {
-    setUploadingPassportPhoto(true);
-    setError(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/me/passport/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(json?.error || "Failed to upload passport photo.");
-      }
-
-      if (json.path) {
-        setPassportPhotoPath(json.path);
-        // Reload photo URL
-        const photoRes = await fetch("/me/passport/photo", { credentials: "include" });
-        const photoJson = await photoRes.json();
-        if (photoJson.photoUrl) {
-          setPassportPhotoUrl(photoJson.photoUrl);
-        }
-      }
-    } catch (error: any) {
-      setError(error?.message || "Failed to upload passport photo.");
-    } finally {
-      setUploadingPassportPhoto(false);
-    }
-  }
-
-  // Handler for saving passport details
+  // Handler for saving passport details to member_profiles
   async function handleSavePassport() {
     if (savingPassport) return;
 
@@ -502,15 +455,15 @@ export default function MePage() {
     setPassportSaveSuccess(false);
 
     try {
-      const res = await fetch("/me/passport/save", {
+      const res = await fetch("/api/me/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          passport_full_name: passportFullName.trim(),
-          passport_number: passportNumber.trim(),
-          passport_country: passportCountry.trim(),
+          passport_full_name: passportFullName.trim() || null,
+          passport_number: passportNumber.trim() || null,
+          passport_nationality: passportNationality.trim() || null,
+          passport_date_of_birth: passportDateOfBirth.trim() || null,
           passport_expiry_date: passportExpiryDate.trim() || null,
-          passport_photo_path: passportPhotoPath,
         }),
       });
 
@@ -520,28 +473,23 @@ export default function MePage() {
         throw new Error(json?.error || "Failed to save passport details.");
       }
 
-      // Success: reload passport data
+      // Success: reload profile data
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: passportData } = await supabase
-          .from("member_passports")
-          .select("passport_full_name,passport_country,passport_expiry_date,passport_photo_path")
-          .eq("user_id", user.id)
+        const { data: profileData } = await supabase
+          .from("member_profiles")
+          .select("passport_full_name,passport_number,passport_nationality,passport_date_of_birth,passport_expiry_date")
+          .eq("member_id", user.id)
           .maybeSingle();
 
-        if (passportData) {
-          const p = passportData as PassportRow;
-          setPassport(p);
-          setPassportPhotoPath(p.passport_photo_path ?? null);
-          
-          // Reload photo URL
-          if (p.passport_photo_path) {
-            const photoRes = await fetch("/me/passport/photo", { credentials: "include" });
-            const photoJson = await photoRes.json();
-            if (photoJson.photoUrl) {
-              setPassportPhotoUrl(photoJson.photoUrl);
-            }
-          }
+        if (profileData) {
+          const p = profileData as ProfileRow;
+          setProfile(p);
+          setPassportFullName(p.passport_full_name ?? "");
+          setPassportNumber(p.passport_number ?? "");
+          setPassportNationality(p.passport_nationality ?? "");
+          setPassportDateOfBirth(p.passport_date_of_birth ?? "");
+          setPassportExpiryDate(p.passport_expiry_date ?? "");
         }
       }
 
@@ -562,9 +510,11 @@ export default function MePage() {
 
   const isApproved = (member?.status ?? "pending") === "active";
   const passportComplete =
-    !!passport?.passport_full_name &&
-    !!passport?.passport_country &&
-    !!passport?.passport_expiry_date;
+    !!profile?.passport_full_name &&
+    !!profile?.passport_number &&
+    !!profile?.passport_nationality &&
+    !!profile?.passport_date_of_birth &&
+    !!profile?.passport_expiry_date;
 
   // Check if required profile fields are missing
   const profileIncomplete =
@@ -664,6 +614,7 @@ export default function MePage() {
 
       <div className="mt-4 space-y-4">
         {/* Profile Block */}
+        <div id="profile-section">
         <ProfileBlock
           member={member}
           editing={editingProfile}
@@ -834,7 +785,9 @@ export default function MePage() {
               setUploadingProfilePhoto(false);
             }
           }}
+          highlightedFields={highlightedFields}
         />
+        </div>
 
         {/* My groups section */}
         <div className="rounded-2xl border border-border bg-surface/50 p-4">
@@ -953,43 +906,44 @@ export default function MePage() {
                 setPassportSaveSuccess(false);
                 if (!editingPassport) {
                   // Reset to current values when starting edit
-                  setPassportFullName(passport?.passport_full_name ?? "");
-                  setPassportNumber(""); // Don't show existing number for security
-                  setPassportCountry(passport?.passport_country ?? "");
-                  setPassportExpiryDate(passport?.passport_expiry_date ?? "");
+                  setPassportFullName(profile?.passport_full_name ?? "");
+                  setPassportNumber(profile?.passport_number ?? "");
+                  setPassportNationality(profile?.passport_nationality ?? "");
+                  setPassportDateOfBirth(profile?.passport_date_of_birth ?? "");
+                  setPassportExpiryDate(profile?.passport_expiry_date ?? "");
                 }
               }}
               className="rounded-xl border border-border px-3 py-1 text-xs font-semibold hover:bg-background"
             >
-              {editingPassport ? "Cancel" : passport ? "Edit" : "Add"}
+              {editingPassport ? "Cancel" : profile ? "Edit" : "Add"}
             </button>
           </div>
 
           {!editingPassport ? (
             <div className="space-y-2">
-              {passport ? (
+              {profile ? (
                 <>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-medium text-muted">Status:</span>
                     <span className="text-brand-green">On file</span>
                   </div>
-                  {passport.passport_full_name && (
+                  {profile.passport_full_name && (
                     <div className="flex items-center gap-2 text-xs">
                       <span className="font-medium text-muted">Name:</span>
-                      <span className="text-foreground">{passport.passport_full_name}</span>
+                      <span className="text-foreground">{profile.passport_full_name}</span>
                     </div>
                   )}
-                  {passport.passport_country && (
+                  {profile.passport_nationality && (
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="font-medium text-muted">Country:</span>
-                      <span className="text-foreground">{passport.passport_country}</span>
+                      <span className="font-medium text-muted">Nationality:</span>
+                      <span className="text-foreground">{profile.passport_nationality}</span>
                     </div>
                   )}
-                  {passport.passport_expiry_date && (
+                  {profile.passport_date_of_birth && (
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="font-medium text-muted">Expiry:</span>
+                      <span className="font-medium text-muted">Date of Birth:</span>
                       <span className="text-foreground">
-                        {new Date(passport.passport_expiry_date + "T00:00:00").toLocaleDateString("en-GB", {
+                        {new Date(profile.passport_date_of_birth + "T00:00:00").toLocaleDateString("en-GB", {
                           day: "numeric",
                           month: "short",
                           year: "numeric",
@@ -997,13 +951,16 @@ export default function MePage() {
                       </span>
                     </div>
                   )}
-                  {passportPhotoUrl && (
-                    <div className="mt-2">
-                      <img
-                        src={passportPhotoUrl}
-                        alt="Passport"
-                        className="h-24 w-auto rounded-lg border border-border object-contain"
-                      />
+                  {profile.passport_expiry_date && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-medium text-muted">Expiry:</span>
+                      <span className="text-foreground">
+                        {new Date(profile.passport_expiry_date + "T00:00:00").toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </span>
                     </div>
                   )}
                 </>
@@ -1013,102 +970,95 @@ export default function MePage() {
             </div>
           ) : (
             <div className="mt-4 space-y-3">
-              {/* Passport photo */}
-              <div>
-                <div className="text-xs font-semibold">Passport photo</div>
-                <div className="mt-2 flex items-center gap-3">
-                  {passportPhotoUrl ? (
-                    <img
-                      src={passportPhotoUrl}
-                      alt="Passport"
-                      className="h-24 w-auto rounded-lg border border-border object-contain"
-                    />
-                  ) : (
-                    <div className="h-24 w-32 rounded-lg border border-border bg-background flex items-center justify-center text-xs text-muted">
-                      No photo
-                    </div>
-                  )}
-                  <div>
-                    <input
-                      id="passport-photo-input"
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.addEventListener("load", () => {
-                            setPassportImageSrc(reader.result as string);
-                            setShowPassportCropModal(true);
-                            setPassportZoom(1);
-                            setPassportCrop({ x: 0, y: 0 });
-                          });
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                      className="hidden"
-                      disabled={uploadingPassportPhoto}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => document.getElementById("passport-photo-input")?.click()}
-                      disabled={uploadingPassportPhoto}
-                      className="rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold hover:bg-background disabled:opacity-60"
-                    >
-                      {passportPhotoPath ? "Change Photo" : "Add Photo"}
-                    </button>
-                    {uploadingPassportPhoto && (
-                      <p className="mt-1 text-xs text-muted">Uploading photo…</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
               <div>
                 <div className="text-xs font-semibold">Full name (as on passport)</div>
                 <input
-                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+                  className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                    highlightedFields.includes("passport_full_name")
+                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      : "border-border"
+                  }`}
                   value={passportFullName}
                   onChange={(e) => setPassportFullName(e.target.value)}
                   placeholder="e.g. John Smith"
                 />
+                {highlightedFields.includes("passport_full_name") && (
+                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                )}
               </div>
 
               <div>
                 <div className="text-xs font-semibold">Passport number</div>
                 <input
-                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+                  className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                    highlightedFields.includes("passport_number")
+                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      : "border-border"
+                  }`}
                   value={passportNumber}
                   onChange={(e) => setPassportNumber(e.target.value)}
                   placeholder="e.g. A12345678"
                 />
                 <p className="mt-1 text-xs text-muted">Your passport number is encrypted and secure</p>
+                {highlightedFields.includes("passport_number") && (
+                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                )}
               </div>
 
               <div>
-                <div className="text-xs font-semibold">Country</div>
+                <div className="text-xs font-semibold">Nationality</div>
                 <input
-                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
-                  value={passportCountry}
-                  onChange={(e) => setPassportCountry(e.target.value)}
-                  placeholder="e.g. United Kingdom"
+                  className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                    highlightedFields.includes("passport_nationality")
+                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      : "border-border"
+                  }`}
+                  value={passportNationality}
+                  onChange={(e) => setPassportNationality(e.target.value)}
+                  placeholder="e.g. Singaporean"
                 />
+                {highlightedFields.includes("passport_nationality") && (
+                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold">Date of Birth</div>
+                <input
+                  type="date"
+                  className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                    highlightedFields.includes("passport_date_of_birth")
+                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      : "border-border"
+                  }`}
+                  value={passportDateOfBirth}
+                  onChange={(e) => setPassportDateOfBirth(e.target.value)}
+                />
+                {highlightedFields.includes("passport_date_of_birth") && (
+                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                )}
               </div>
 
               <div>
                 <div className="text-xs font-semibold">Expiry date</div>
                 <input
                   type="date"
-                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+                  className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                    highlightedFields.includes("passport_expiry_date")
+                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      : "border-border"
+                  }`}
                   value={passportExpiryDate}
                   onChange={(e) => setPassportExpiryDate(e.target.value)}
                 />
+                {highlightedFields.includes("passport_expiry_date") && (
+                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                )}
               </div>
 
               <button
                 onClick={handleSavePassport}
-                disabled={savingPassport || !passportFullName.trim() || !passportNumber.trim() || !passportCountry.trim() || !passportExpiryDate.trim()}
+                disabled={savingPassport || !passportFullName.trim() || !passportNumber.trim() || !passportNationality.trim() || !passportDateOfBirth.trim() || !passportExpiryDate.trim()}
                 className="w-full rounded-xl bg-brand-green px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {savingPassport ? "Saving..." : "Save passport details"}
@@ -1375,6 +1325,7 @@ function ProfileBlock({
   setCrop,
   setZoom,
   setCroppedAreaPixels,
+  highlightedFields = [],
 }: {
   member: MemberRow | null;
   editing: boolean;
@@ -1405,6 +1356,7 @@ function ProfileBlock({
   setCrop: (v: Point) => void;
   setZoom: (v: number) => void;
   setCroppedAreaPixels: (v: Area | null) => void;
+  highlightedFields?: string[];
 }) {
   return (
     <div className="rounded-2xl border border-border bg-surface/50 p-4">
@@ -1524,12 +1476,19 @@ function ProfileBlock({
           <div>
             <div className="text-xs font-semibold">Declared handicap</div>
             <input
-              className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+              className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                highlightedFields.includes("handicap")
+                  ? "border-brand-orange ring-2 ring-brand-orange/30"
+                  : "border-border"
+              }`}
               value={declaredHandicap}
               onChange={(e) => setDeclaredHandicap(e.target.value)}
               inputMode="decimal"
               placeholder="e.g. 18.2"
             />
+            {highlightedFields.includes("handicap") && (
+              <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+            )}
           </div>
 
           {/* Profile Photo Crop Modal */}

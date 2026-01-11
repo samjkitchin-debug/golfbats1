@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { isTripJoinable } from "@/app/lib/tripDates";
+import type { Trip } from "@/app/lib/tripActions";
 
 const CACHE_TAG = "trips";
-const SIGNUP_WINDOW_DAYS = 30;
 
 // Map a single trip row + related rows into the Trip JSON shape used by /api/trips
 async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, tripIdentifier: string | number) {
   // Determine if identifier is legacy_id (number) or id (UUID)
-  let tripQuery = supabase.from("trips").select("id,group_id,legacy_id,trip_date,status,cutoff_at,course_id,tee_id,name,format,capacity,ferry,meeting_point,meet_time,ferry_details,notes,created_at,updated_at");
+  let tripQuery = supabase.from("trips").select("id,group_id,legacy_id,trip_date,status,cutoff_at,course_id,tee_id,name,format,capacity,ferry,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,scenario_key");
   
   if (typeof tripIdentifier === "number") {
     tripQuery = tripQuery.eq("legacy_id", tripIdentifier);
@@ -95,6 +96,7 @@ async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupaba
     cutoffAt: trip.cutoff_at ? new Date(trip.cutoff_at).toISOString() : undefined,
     courseId: trip.course_id,
     teeId: trip.tee_id,
+    scenarioKey: (trip as any).scenario_key || null,
     logistics: {
       meetingPoint: trip.meeting_point || undefined,
       meetTime: trip.meet_time || undefined,
@@ -161,30 +163,39 @@ export async function POST(
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    // Validate trip status - only "open" trips can be joined
-    const tripStatus = String(trip.status ?? "").toLowerCase();
-    if (tripStatus !== "open") {
-      return NextResponse.json(
-        { error: "RSVP is closed for this trip." },
-        { status: 403 }
-      );
+    // Build trip payload to check joinability using isTripJoinable helper
+    // This uses getEffectiveTripPhase which implements auto-open logic (30 days before)
+    const tripIdentifier = isLegacyId ? legacyId : trip.id;
+    const tripPayload = await buildTripPayload(supabase, tripIdentifier);
+    if (!tripPayload) {
+      return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    // Phase 0 enforcement: do not allow joining until 30 days before trip date
-    const tripDateStr = String(trip.trip_date ?? "");
-    const tripDateUtc = new Date(tripDateStr + "T00:00:00Z").getTime();
-    if (!Number.isFinite(tripDateUtc)) {
-      return NextResponse.json(
-        { error: "Trip date is invalid. Please ask an admin to fix the trip date." },
-        { status: 400 }
-      );
-    }
+    // Use isTripJoinable to check if trip can be joined (phase === 'openForSignups')
+    // This is the single source of truth for joinability checks
+    const tripForJoinability: Trip = {
+      id: tripPayload.id,
+      name: tripPayload.name,
+      date: tripPayload.date,
+      format: tripPayload.format,
+      course: tripPayload.course,
+      ferry: tripPayload.ferry,
+      capacity: tripPayload.capacity,
+      status: tripPayload.status as "open" | "closed" | "archived",
+      cutoffAt: tripPayload.cutoffAt,
+      courseId: tripPayload.courseId,
+      teeId: tripPayload.teeId,
+      logistics: tripPayload.logistics,
+      attendees: tripPayload.attendees,
+      result: tripPayload.result,
+      createdAtUtc: tripPayload.createdAtUtc,
+      updatedAtUtc: tripPayload.updatedAtUtc,
+    };
 
-    const signupOpenUtc = tripDateUtc - SIGNUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-    if (Date.now() < signupOpenUtc) {
-      const openDate = new Date(signupOpenUtc).toISOString().slice(0, 10);
+    if (!isTripJoinable(tripForJoinability)) {
+      // Trip is not joinable - could be scheduled (too early), closed, or past
       return NextResponse.json(
-        { error: `Signups open on ${openDate} (30 days before the trip).` },
+        { error: "RSVP is not available for this trip. It may be too early, closed, or past." },
         { status: 403 }
       );
     }
@@ -230,9 +241,8 @@ export async function POST(
       );
     }
 
-    // Build fresh trip payload (including attendees) so clients can update state without refetching all trips
-    const tripIdentifier = isLegacyId ? legacyId : trip.id;
-    const tripPayload = await buildTripPayload(supabase, tripIdentifier);
+    // Build fresh trip payload (including new attendee) so clients can update state without refetching all trips
+    const updatedTripPayload = await buildTripPayload(supabase, tripIdentifier);
 
     // Invalidate trips cache
     try {
@@ -242,7 +252,7 @@ export async function POST(
       // Cache will expire via TTL if revalidation fails
     }
 
-    return NextResponse.json({ ok: true, trip: tripPayload });
+    return NextResponse.json({ ok: true, trip: updatedTripPayload });
   } catch (error) {
     console.error("Join trip error:", error);
     return NextResponse.json(
