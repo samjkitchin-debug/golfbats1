@@ -1097,7 +1097,7 @@ export default function AdminTripPage() {
   async function onSetCourse(courseId: string | null) {
     // Reset tee when course changes
     try {
-      const updated = await setTripCourse(trips, tripIdSafe, courseId, null);
+      const updated = await setTripCourse(trips, tripIdSafe, groupId, courseId, null);
       setTrips(updated);
     } catch (error) {
       console.error("Failed to set course:", error);
@@ -1107,7 +1107,7 @@ export default function AdminTripPage() {
 
   async function onSetTee(teeId: string | null) {
     try {
-      const updated = await setTripCourse(trips, tripIdSafe, tripSafe.courseId, teeId);
+      const updated = await setTripCourse(trips, tripIdSafe, groupId, tripSafe.courseId, teeId);
       setTrips(updated);
     } catch (error) {
       console.error("Failed to set tee:", error);
@@ -1282,7 +1282,7 @@ export default function AdminTripPage() {
         patchTrip({ format: phase1Form.format || undefined }),
         patchTrip({ capacity: phase1Form.capacity }),
         patchTrip({ cutoffAt: fromDateValue(phase1Form.cutoffDate) }),
-        setTripCourse(trips, tripIdSafe, phase1Form.courseId, phase1Form.teeId),
+        setTripCourse(trips, tripIdSafe, groupId, phase1Form.courseId, phase1Form.teeId),
       ]);
       
       // Reload trips to get fresh data
@@ -1440,7 +1440,7 @@ export default function AdminTripPage() {
 
   async function onSetLogistics(next: TripLogistics) {
     try {
-      const updated = await setTripLogistics(trips, tripIdSafe, next);
+      const updated = await setTripLogistics(trips, tripIdSafe, groupId, next);
       setTrips(updated);
     } catch (error) {
       console.error("Failed to set logistics:", error);
