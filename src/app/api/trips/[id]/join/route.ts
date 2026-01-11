@@ -8,7 +8,7 @@ const SIGNUP_WINDOW_DAYS = 30;
 // Map a single trip row + related rows into the Trip JSON shape used by /api/trips
 async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, tripIdentifier: string | number) {
   // Determine if identifier is legacy_id (number) or id (UUID)
-  let tripQuery = supabase.from("trips").select("*");
+  let tripQuery = supabase.from("trips").select("id,group_id,legacy_id,trip_date,status,cutoff_at,course_id,tee_id,name,format,capacity,ferry,meeting_point,meet_time,ferry_details,notes");
   
   if (typeof tripIdentifier === "number") {
     tripQuery = tripQuery.eq("legacy_id", tripIdentifier);
@@ -29,7 +29,7 @@ async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupaba
   // Load attendees for this trip
   const { data: attendeesData, error: attendeesError } = await supabase
     .from("trip_attendees")
-    .select("*,members(id,display_name,full_name)")
+    .select("trip_id,member_id,status,joined_at,handicap_snapshot,members(id,display_name,full_name)")
     .eq("trip_id", trip.id);
 
   if (attendeesError) {
@@ -39,7 +39,7 @@ async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupaba
   // Load results for this trip
   const { data: resultsData, error: resultsError } = await supabase
     .from("trip_results")
-    .select("*,result_rows(*)")
+    .select("id,trip_id,published,published_at,notes,result_rows(id,position,display_name,metric_label,metric_value)")
     .eq("trip_id", trip.id);
 
   if (resultsError) {

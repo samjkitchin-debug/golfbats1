@@ -44,7 +44,7 @@ export async function POST(req: Request) {
         .update({ note: trimmedNote })
         .eq("id", id)
         .eq("user_id", user.id)
-        .select()
+        .select("id,user_id,note,created_at,updated_at")
         .single();
 
       if (error) {
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
           user_id: user.id,
           note: trimmedNote,
         })
-        .select()
+        .select("id,user_id,note,created_at,updated_at")
         .single();
 
       if (error) {

@@ -22,61 +22,6 @@ function isCutoffPassed(cutoffAt: string | undefined): boolean {
   return nowSGT > cutoff;
 }
 
-// Helper function to determine trip phase
-type TripPhase = "scheduled" | "openForSignups" | "signupsClosed" | "gameDay" | "results" | "archived";
-
-function getTripPhase(trip: Trip): TripPhase {
-  const now = Date.now();
-  const tripDate = new Date(trip.date + "T00:00:00").getTime();
-  const hasResults = !!trip.result;
-  const tripDatePassed = now >= tripDate;
-  const signupOpenAt = tripDate - 30 * 24 * 60 * 60 * 1000;
-  const cutoffPassed = isCutoffPassed(trip.cutoffAt);
-
-  // Archived (results published)
-  if (hasResults) {
-    return "archived";
-  }
-
-  // Results (scores entered but not yet archived)
-  // Note: Currently Results and Archived are the same (has results)
-  if (hasResults) {
-    return "results";
-  }
-
-  // Scheduled (trip is open, but signups aren't open until 30 days before trip date)
-  // Also show Scheduled if trip doesn't have a course yet (new trip being set up)
-  const isScheduled = !trip.courseId && trip.status === "open";
-  if (isScheduled) {
-    return "scheduled";
-  }
-
-  // Open for Signups (trip is open, within 30 days of trip date, before cutoff)
-  // OR trip has been posted (has courseId) and status is "open" (allows manual opening)
-  const isOpenForSignups = trip.status === "open" && !tripDatePassed && !cutoffPassed && (
-    (Number.isFinite(signupOpenAt) && now >= signupOpenAt) || // Automatic: within 30 days
-    (trip.courseId && trip.date) // Manual: trip has been posted
-  );
-  if (isOpenForSignups) {
-    return "openForSignups";
-  }
-
-  // Signups Closed (trip is closed, before trip date, after cutoff, or after trip date but no results)
-  const isSignupsClosed = trip.status === "closed" && !hasResults;
-  if (isSignupsClosed && !tripDatePassed) {
-    return "signupsClosed";
-  }
-
-  // Game Day (trip date passed, no results yet, trip is closed - represents the round being played)
-  if (tripDatePassed && !hasResults && trip.status === "closed") {
-    return "gameDay";
-  }
-
-  // Fallback
-  return "scheduled";
-}
-
-
 // Helper function to generate a consistent color from a group ID
 function getGroupColor(groupId: string): string {
   let hash = 0;
