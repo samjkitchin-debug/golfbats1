@@ -41,11 +41,6 @@ async function fetchTripsData(
     (trip) => !excludedStatuses.includes(trip.status)
   );
 
-  if (tripsError) {
-    console.error("[trips API] Error fetching trips:", tripsError);
-    throw new Error(tripsError.message || "Failed to fetch trips.");
-  }
-
   if (!tripsData || tripsData.length === 0) {
     return { ok: true, trips: [] };
   }

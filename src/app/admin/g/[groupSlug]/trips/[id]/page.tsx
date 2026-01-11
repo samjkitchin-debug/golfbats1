@@ -1414,7 +1414,7 @@ export default function AdminTripPage() {
     
     try {
       // Publish results and archive the trip (move to Phase 4)
-      const updated = await publishTripResult(trips, tripIdSafe, {
+      const updated = await publishTripResult(trips, tripIdSafe, groupId, {
         leaderboard,
         notes: phase3Form.notes || undefined,
       });
@@ -1464,7 +1464,7 @@ export default function AdminTripPage() {
 
   async function onClearResult() {
     try {
-      const updated = await clearTripResult(trips, tripIdSafe);
+      const updated = await clearTripResult(trips, tripIdSafe, groupId);
       setTrips(updated);
     } catch (error) {
       console.error("Failed to clear result:", error);
@@ -1523,7 +1523,7 @@ export default function AdminTripPage() {
     // This happens automatically 30 days before, but can be done manually
     try {
       // Ensure trip is open (should already be, but ensure it)
-      const updated = await updateTrip(trips, tripIdSafe, { status: "open" });
+      const updated = await updateTrip(trips, tripIdSafe, groupId, { status: "open" });
       setTrips(updated);
       
       // Reload trips to get fresh phase calculations
@@ -1540,7 +1540,7 @@ export default function AdminTripPage() {
   async function moveToSignupsClosed() {
     // Manually close signups (move from Open for Signups to Signups Closed)
     try {
-      const updated = await updateTrip(trips, tripIdSafe, { status: "closed" });
+      const updated = await updateTrip(trips, tripIdSafe, groupId, { status: "closed" });
       setTrips(updated);
       
       // Reload trips to get fresh phase calculations
@@ -1599,7 +1599,7 @@ export default function AdminTripPage() {
     // Scheduled phase requires: status="open" and no courseId
     // We need to clear courseId and teeId to truly go back to Scheduled
     try {
-      const updated = await updateTrip(trips, tripIdSafe, { 
+      const updated = await updateTrip(trips, tripIdSafe, groupId, {
         status: "open",
         courseId: null,
         teeId: null
@@ -1620,7 +1620,7 @@ export default function AdminTripPage() {
   async function goBackToOpenForSignups() {
     // Move from Signups Closed back to Open for Signups
     try {
-      const updated = await updateTrip(trips, tripIdSafe, { status: "open" });
+      const updated = await updateTrip(trips, tripIdSafe, groupId, { status: "open" });
       setTrips(updated);
       
       // Reload trips to get fresh phase calculations
@@ -1643,7 +1643,7 @@ export default function AdminTripPage() {
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowYmd = tomorrow.toISOString().split("T")[0];
       
-      const updated = await updateTrip(trips, tripIdSafe, { 
+      const updated = await updateTrip(trips, tripIdSafe, groupId, { 
         status: "closed",
         date: tomorrowYmd 
       });
@@ -1664,7 +1664,7 @@ export default function AdminTripPage() {
     // Move from Results back to Game Day
     // Results phase is when hasResults=true, so we need to clear the results
     try {
-      const updated = await clearTripResult(trips, tripIdSafe);
+      const updated = await clearTripResult(trips, tripIdSafe, groupId);
       setTrips(updated);
       
       // Reload trips to get fresh phase calculations

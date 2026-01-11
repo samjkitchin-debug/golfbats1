@@ -419,6 +419,7 @@ export async function setTripLogistics(
 export async function publishTripResult(
   trips: Trip[],
   tripId: number,
+  groupId: string,
   payload: TripResult | { leaderboard: { name: string; points: number }[]; notes?: string }
 ): Promise<Trip[]> {
   try {
@@ -439,14 +440,14 @@ export async function publishTripResult(
     }
 
     // Reload trips from server
-    return await loadTrips();
+    return await loadTrips(groupId, true);
   } catch (error) {
-    perfLog("publishTripResult: error", { tripId, error: error instanceof Error ? error.message : String(error) });
+    perfLog("publishTripResult: error", { tripId, groupId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
 
-export async function clearTripResult(trips: Trip[], tripId: number): Promise<Trip[]> {
+export async function clearTripResult(trips: Trip[], tripId: number, groupId: string): Promise<Trip[]> {
   try {
     const res = await fetch(`/api/trips/${tripId}/result`, {
       method: "DELETE",
@@ -460,9 +461,9 @@ export async function clearTripResult(trips: Trip[], tripId: number): Promise<Tr
     }
 
     // Reload trips from server
-    return await loadTrips();
+    return await loadTrips(groupId, true);
   } catch (error) {
-    perfLog("clearTripResult: error", { tripId, error: error instanceof Error ? error.message : String(error) });
+    perfLog("clearTripResult: error", { tripId, groupId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
