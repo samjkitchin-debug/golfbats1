@@ -366,19 +366,19 @@ WHERE user_id = (SELECT auth.uid())
 
 ### High Priority (Correctness & Performance)
 
-1. **Consolidate trip phase logic** - Replace local `getTripPhase()` with `getEffectiveTripPhase()`
-2. **Add missing database indexes** - `group_members` (user_id, group_id composites), `trips` (group_id)
-3. **Remove orphaned routes** - Delete `src/app/admin/[groupId]/*`
+1. ✅ **Consolidate trip phase logic** - Replaced local `getTripPhase()` with `getEffectiveTripPhase()` (COMPLETED)
+2. ✅ **Add missing database indexes** - Migration created: `docs/migrations/add-group-members-indexes.sql` (COMPLETED)
+3. ✅ **Remove orphaned routes** - Deleted `src/app/admin/[groupId]/*` (COMPLETED)
 
 ### Medium Priority (Performance)
 
-4. **Optimize query selects** - Replace `.select("*")` with specific columns
-5. **Remove local `isCutoffPassed()`** - Use timezone-aware logic from `tripDates.ts`
+4. ✅ **Optimize query selects** - Replaced `.select("*")` with specific columns in dev-notes and trips/join routes (COMPLETED)
+5. ✅ **Remove local `isCutoffPassed()`** - Simplified to use timezone-aware comparison (COMPLETED)
 
 ### Low Priority (Code Quality)
 
-6. **Fix lint errors** - Unescaped entities, reduce `any` usage
-7. **Remove empty directory** - `src/app/_me_tmp/`
+6. ✅ **Fix lint errors** - Fixed unescaped entities and replaced `any` types with proper types (COMPLETED)
+7. ✅ **Remove empty directory** - Removed `src/app/_me_tmp/` (COMPLETED)
 
 ### Documentation Only (Do Not Apply)
 
