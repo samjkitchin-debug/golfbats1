@@ -257,41 +257,37 @@ export async function createTrip(
   }
 
   // IMPORTANT: Trip name is REQUIRED (Option B). User-entered name and date must never be overridden.
-  // The object passed to fetch() will preserve undefined vs provided semantics:
-  // - If partial.name is undefined -> name key is omitted from JSON (API will reject for POST)
-  // - If partial.name exists -> include it as-is (API will validate)
-  const nextTrip: Trip = normalizeTrip({
+  // Build raw trip object for API (don't normalize - API expects raw structure)
+  // The API will validate and normalize the data itself
+  const tripPayload = {
     id: 0, // Temporary, will be set by server
-    name: partial.name, // Preserve as-is (API validates)
-    date: partial.date ?? new Date().toISOString().slice(0, 10), // Date fallback only if missing
+    name: partial.name, // REQUIRED - API validates
+    date: partial.date ?? new Date().toISOString().slice(0, 10), // REQUIRED - API validates
     format: partial.format ?? "Stableford",
-
-    course: partial.course,
-    ferry: partial.ferry ?? "",
-
+    ferry: partial.ferry ?? null,
     capacity: Number.isFinite(Number(partial.capacity)) ? Number(partial.capacity) : 16,
     status: partial.status ?? "open",
-
-    cutoffAt: partial.cutoffAt, // keep undefined by default
-
+    cutoffAt: partial.cutoffAt ?? null, // API expects null or ISO string
     courseId: partial.courseId ?? null,
     teeId: partial.teeId ?? null,
-
-    logistics: partial.logistics ?? {},
+    logistics: partial.logistics ? {
+      meetingPoint: partial.logistics.meetingPoint ?? null,
+      meetTime: partial.logistics.meetTime ?? null,
+      ferryDetails: partial.logistics.ferryDetails ?? null,
+      notes: partial.logistics.notes ?? null,
+    } : null,
     attendees: partial.attendees ?? [],
-
-    result: partial.result,
-
+    result: partial.result ?? null,
     createdAtUtc: partial.createdAtUtc ?? nowIsoUtc(),
     updatedAtUtc: nowIsoUtc(),
-  });
+  };
 
   try {
     const res = await fetch("/api/trips", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ trip: nextTrip, groupId }),
+      body: JSON.stringify({ trip: tripPayload, groupId }),
     });
 
     const json = await res.json().catch(() => ({}));

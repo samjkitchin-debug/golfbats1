@@ -493,6 +493,13 @@ export async function POST(req: Request) {
         updated_at: now,
       };
 
+      // Debug: Log what we're inserting
+      console.log("[POST /api/trips] Inserting trip with data:", {
+        name: insertData.name,
+        trip_date: insertData.trip_date,
+        group_id: insertData.group_id,
+      });
+
       const { error: insertError } = await supabase.from("trips").insert(insertData);
 
       if (insertError) {
@@ -502,6 +509,8 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
+
+      console.log("[POST /api/trips] Trip inserted successfully with ID:", tripId);
 
       // Invalidate trips cache
       try {
