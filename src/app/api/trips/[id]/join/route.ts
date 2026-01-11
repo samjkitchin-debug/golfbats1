@@ -8,7 +8,7 @@ const SIGNUP_WINDOW_DAYS = 30;
 // Map a single trip row + related rows into the Trip JSON shape used by /api/trips
 async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, tripIdentifier: string | number) {
   // Determine if identifier is legacy_id (number) or id (UUID)
-  let tripQuery = supabase.from("trips").select("id,group_id,legacy_id,trip_date,status,cutoff_at,course_id,tee_id,name,format,capacity,ferry,meeting_point,meet_time,ferry_details,notes");
+  let tripQuery = supabase.from("trips").select("id,group_id,legacy_id,trip_date,status,cutoff_at,course_id,tee_id,name,format,capacity,ferry,meeting_point,meet_time,ferry_details,notes,created_at,updated_at");
   
   if (typeof tripIdentifier === "number") {
     tripQuery = tripQuery.eq("legacy_id", tripIdentifier);
