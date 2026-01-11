@@ -75,9 +75,22 @@ export const metadata: Metadata = {
     default: "DayForeIt",
     template: "DayForeIt",
   },
-  description: "Private golf club coordination noticeboard",
+  description: "Your group's home for golf days",
+  manifest: "/manifest.json",
+  themeColor: "#1F7A4A",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "DayForeIt",
+  },
   icons: {
-    icon: "/browserIcon.png",
+    icon: [
+      { url: "/browserIcon.png", sizes: "192x192", type: "image/png" },
+      { url: "/browserIcon.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/browserIcon.png", sizes: "192x192", type: "image/png" },
+    ],
   },
 };
 
