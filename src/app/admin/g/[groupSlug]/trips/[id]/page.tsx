@@ -1084,9 +1084,9 @@ export default function AdminTripPage() {
     setTrips(next);
   }
 
-  async function patchTrip(patch: Parameters<typeof updateTrip>[2]) {
+  async function patchTrip(patch: Parameters<typeof updateTrip>[3]) {
     try {
-      const updated = await updateTrip(trips, tripIdSafe, patch);
+      const updated = await updateTrip(trips, tripIdSafe, groupId, patch);
       setTrips(updated);
     } catch (error) {
       console.error("Failed to update trip:", error);
@@ -1166,7 +1166,7 @@ export default function AdminTripPage() {
     
     try {
       // Save all Scheduled fields in a single update to avoid race conditions
-      const updated = await updateTrip(trips, tripIdSafe, {
+      const updated = await updateTrip(trips, tripIdSafe, groupId, {
         date: phase0Form.date,
         cutoffAt: fromDateValue(phase0Form.cutoffDate),
         format: phase0Form.format || undefined,
@@ -1216,7 +1216,7 @@ export default function AdminTripPage() {
     
     try {
       // Save all Scheduled fields in a single update to avoid race conditions
-      const updated = await updateTrip(trips, tripIdSafe, {
+      const updated = await updateTrip(trips, tripIdSafe, groupId, {
         date: phase0Form.date,
         cutoffAt: fromDateValue(phase0Form.cutoffDate),
         format: phase0Form.format || undefined,
