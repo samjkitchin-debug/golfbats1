@@ -118,6 +118,12 @@ export default function MePage() {
   // Passport data (for checking if passport exists - no inline editing)
   // Passport editing is handled on /me/passport page
 
+  // Sign out state
+  const [signingOut, setSigningOut] = useState(false);
+
+  // Sign out state
+  const [signingOut, setSigningOut] = useState(false);
+
   useEffect(() => {
     document.title = "DayForeIt - Profile";
   }, []);
@@ -1098,30 +1104,58 @@ export default function MePage() {
           </div>
         </div>
 
-        {/* Delete account */}
+        {/* Sign out + Delete account */}
         <div className="rounded-2xl border border-border bg-surface/50 p-4">
           <div className="mb-3">
-            <div className="text-sm font-semibold text-foreground">Delete account</div>
+            <div className="text-sm font-semibold text-foreground">Account</div>
             <p className="mt-1 text-xs text-muted">
-              Permanently deletes your account and associated data. This cannot be undone.
+              Sign out safely or permanently delete your account and associated data.
             </p>
           </div>
-          <div className="flex justify-center">
+          <div className="flex flex-col gap-3">
             <button
-              onClick={() => {
-                setShowDeleteModal(true);
-                setDeleteConfirmText("");
-                setDeleteError(null);
+              type="button"
+              onClick={async () => {
+                if (signingOut) return;
+                setSigningOut(true);
+                try {
+                  await supabase.auth.signOut();
+                } catch {
+                  // Non-fatal; still navigate to login
+                } finally {
+                  router.replace("/login");
+                  router.refresh();
+                  setSigningOut(false);
+                }
               }}
-              disabled={deletingAccount}
-              className="rounded-lg border border-brand-orange bg-surface px-4 py-2 text-sm text-brand-orange hover:bg-brand-orange/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
+              disabled={signingOut}
             >
-              Delete my account
+              {signingOut ? "Signing out…" : "Sign out"}
             </button>
+            <div className="pt-2 border-t border-dashed border-border">
+              <div className="text-sm font-semibold text-foreground">Delete account</div>
+              <p className="mt-1 text-xs text-muted">
+                Permanently deletes your account and associated data. This cannot be undone.
+              </p>
+            </div>
+            <div className="flex justify-center">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(true);
+                  setDeleteConfirmText("");
+                  setDeleteError(null);
+                }}
+                disabled={deletingAccount}
+                className="rounded-lg border border-brand-orange bg-surface px-4 py-2 text-sm text-brand-orange hover:bg-brand-orange/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Delete my account
+              </button>
+            </div>
+            {deleteError && (
+              <p className="mt-3 text-center text-sm font-medium text-foreground">{deleteError}</p>
+            )}
           </div>
-          {deleteError && (
-            <p className="mt-3 text-center text-sm font-medium text-foreground">{deleteError}</p>
-          )}
         </div>
       </div>
 

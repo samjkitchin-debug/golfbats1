@@ -2,7 +2,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import BottomNav from "../components/BottomNav";
-import SignOutButton from "../components/SignOutButton";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
 import MainNav from "../components/MainNav";
 
@@ -19,8 +18,6 @@ export default async function MemberLayout({ children }: { children: React.React
   // Require authenticated user - this is the only gate
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-
-  const isSignedIn = true;
 
   return (
     <div className="min-h-dvh bg-background">
@@ -42,18 +39,7 @@ export default async function MemberLayout({ children }: { children: React.React
             />
           </Link>
 
-          <div className="flex w-16 justify-end">
-            {isSignedIn ? (
-              <SignOutButton />
-            ) : (
-              <Link
-                href="/login"
-                className="text-sm text-muted hover:text-foreground"
-              >
-                Sign in
-              </Link>
-            )}
-          </div>
+          <div className="flex w-16 justify-end" />
         </div>
 
         {/* brand accent */}
