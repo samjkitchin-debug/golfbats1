@@ -535,7 +535,7 @@ export default function AdminMembersPage() {
                 onClick={() => setActiveTab("pending")}
                 className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
                   activeTab === "pending"
-                    ? "bg-foreground text-white"
+                    ? "bg-brand-green text-white"
                     : "text-foreground hover:bg-background"
                 }`}
               >
@@ -554,7 +554,7 @@ export default function AdminMembersPage() {
                 onClick={() => setActiveTab("members")}
                 className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
                   activeTab === "members"
-                    ? "bg-foreground text-white"
+                    ? "bg-brand-green text-white"
                     : "text-foreground hover:bg-background"
                 }`}
               >
@@ -564,7 +564,7 @@ export default function AdminMembersPage() {
                 onClick={() => setActiveTab("admins")}
                 className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
                   activeTab === "admins"
-                    ? "bg-foreground text-white"
+                    ? "bg-brand-green text-white"
                     : "text-foreground hover:bg-background"
                 }`}
               >
@@ -656,7 +656,7 @@ export default function AdminMembersPage() {
                             <button
                               onClick={() => handleApproveMember(m.id, name)}
                               disabled={approvingMemberId === m.id}
-                              className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-white hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="flex-1 rounded-md bg-brand-green px-4 py-3 text-sm font-medium text-white hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {approvingMemberId === m.id ? "Approving..." : "Approve"}
                             </button>
@@ -718,7 +718,7 @@ export default function AdminMembersPage() {
                                   <button
                                     onClick={() => handleApproveMember(m.id, name)}
                                     disabled={approvingMemberId === m.id}
-                                    className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-white hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="rounded-md bg-brand-green px-3 py-1.5 text-xs font-medium text-white hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     {approvingMemberId === m.id ? "Approving..." : "Approve"}
                                   </button>

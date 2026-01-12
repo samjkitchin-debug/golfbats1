@@ -170,7 +170,7 @@ export default function GroupAdminDashboard() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-foreground">Admin dashboard</h1>
           <button
-            className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-white"
+            className="rounded-lg bg-brand-green px-3 py-2 text-sm font-medium text-white"
             onClick={createNewTrip}
           >
             Create trip
@@ -263,7 +263,7 @@ export default function GroupAdminDashboard() {
                           </div>
                         )}
                         <button
-                          className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] flex items-center"
+                          className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 min-h-[44px] flex items-center"
                           onClick={() => router.push(`/admin/${groupId}/trips/${t.id}`)}
                         >
                           Manage

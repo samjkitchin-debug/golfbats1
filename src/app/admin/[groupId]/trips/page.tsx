@@ -141,7 +141,7 @@ export default function GroupAdminTripsPage() {
             Dashboard
           </Link>
           <button
-            className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-white"
+            className="rounded-lg bg-brand-green px-3 py-2 text-sm font-medium text-white"
             onClick={createNewTrip}
             type="button"
           >
