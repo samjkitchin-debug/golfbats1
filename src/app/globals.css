@@ -205,6 +205,34 @@ button:disabled {
   }
 }
 
+/* Primary narrative panel - soft panel styling */
+.primary-narrative-panel {
+  /* Base: clean white in light mode, subtle surface tint in dark mode */
+  background-color: var(--color-surface);
+}
+
+@media (prefers-color-scheme: dark) {
+  .primary-narrative-panel-hosted {
+    background-color: rgba(255, 255, 255, 0.02); /* bg-surface/20 equivalent */
+  }
+  
+  .primary-narrative-panel-group {
+    background-color: rgba(255, 255, 255, 0.02); /* Same panel surface for group events */
+  }
+}
+
+/* Light mode depth - very soft shadow */
+@media (prefers-color-scheme: light) {
+  .primary-narrative-panel {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  }
+}
+
+/* Utility footer */
+.utility-footer {
+  text-align: center;
+}
+
 /* Bottom nav active state warmth */
 .nav-active-warm::before {
   content: '';

@@ -482,20 +482,20 @@ export default function HomePage() {
 
         {/* Primary Narrative - Next Thing You're Playing */}
         <div 
-          className={`relative ${primaryTrip?.tripOrigin !== 'member' ? 'pb-4' : 'pb-2'}`}
+          className={`relative rounded-xl p-5 sm:p-6 primary-narrative-panel ${
+            primaryTrip?.tripOrigin !== 'member' ? 'primary-narrative-panel-group' : 'primary-narrative-panel-hosted'
+          }`}
           style={{
             ...(primaryTrip?.tripOrigin !== 'member' && {
               borderWidth: '1px',
               borderColor: 'rgba(201, 169, 97, 0.65)',
               borderStyle: 'solid',
-              borderRadius: '0.5rem',
-              padding: '1.5rem',
             }),
           }}
         >
           {/* Group event label (only if group event) */}
           {primaryTrip && primaryTrip.tripOrigin !== 'member' && (
-            <div className="absolute top-3 right-3">
+            <div className="absolute top-3 right-3 z-10">
               <span 
                 className="text-[11px] font-normal tracking-wide uppercase"
                 style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
@@ -517,19 +517,19 @@ export default function HomePage() {
           )}
 
           {/* Trip name */}
-          <div className="text-2xl sm:text-3xl font-semibold text-foreground mb-3 relative">
+          <div className="text-2xl sm:text-3xl font-semibold text-foreground mb-3 relative z-10">
             {primaryTrip.name || primaryCourseText.title || (getGolfNoun(primaryTrip) === "trip" ? "Trip" : "Round")}
           </div>
           
           {/* Date */}
-          <div className="text-base sm:text-lg flex items-center gap-1.5 mb-3 relative">
+          <div className="text-base sm:text-lg flex items-center gap-1.5 mb-3 relative z-10">
             <span className="inline-block w-1 h-1 rounded-full date-dot-accent" />
             <span className="date-text-warm">{formatTripDate(primaryTrip)}</span>
           </div>
           
           {/* Course name */}
           {primaryCourseText.title !== "Course TBD" && (
-            <div className="text-sm sm:text-base text-muted mb-4 relative">
+            <div className="text-sm sm:text-base text-muted mb-4 relative z-10">
               {primaryCourseText.title}
               {primaryCourseText.detail && (
                 <span className="ml-2">· {primaryCourseText.detail}</span>
@@ -538,7 +538,7 @@ export default function HomePage() {
           )}
 
           {/* Trip actions */}
-          <div className="relative">
+          <div className="relative z-10">
             {/* Placeholder for trip actions - will be replaced with TripRsvpActions when ready */}
             <div className="text-xs text-muted">
               Trip actions will appear here
@@ -568,19 +568,26 @@ export default function HomePage() {
         {/* Continuation - After That */}
         {secondaryTrip && (
           <div className="pt-4 border-t border-border/50">
-            <div className="text-xs text-muted/70 mb-3">After that</div>
-            <div className="text-base font-medium text-foreground mb-1">
-              {secondaryTrip.name || secondaryCourseText?.title || (getGolfNoun(secondaryTrip) === "trip" ? "Trip" : "Round")}
-            </div>
-            <div className="text-sm text-muted flex items-center gap-1.5 mb-1">
-              <span className="inline-block w-1 h-1 rounded-full date-dot-accent" />
-              <span className="date-text-warm">{formatTripDateShort(secondaryTrip)}</span>
-            </div>
-            {secondaryCourseText && secondaryCourseText.title !== "Course TBD" && (
-              <div className="text-sm text-muted/80">
-                {secondaryCourseText.title}
+            <div className="text-xs text-muted/70 mb-2">After that</div>
+            <div className="flex items-start gap-3">
+              {/* Tiny sunrise dot accent */}
+              <div className="flex-shrink-0 mt-1.5">
+                <span className="inline-block w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--sunrise-warm-surface)', opacity: 0.6 }} />
               </div>
-            )}
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-foreground mb-0.5">
+                  {secondaryTrip.name || secondaryCourseText?.title || (getGolfNoun(secondaryTrip) === "trip" ? "Trip" : "Round")}
+                </div>
+                <div className="text-xs text-muted flex items-center gap-1.5 mb-0.5">
+                  <span className="date-text-warm">{formatTripDateShort(secondaryTrip)}</span>
+                </div>
+                {secondaryCourseText && secondaryCourseText.title !== "Course TBD" && (
+                  <div className="text-xs text-muted/70">
+                    {secondaryCourseText.title}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -649,15 +656,17 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Admin tools (demoted) */}
+        {/* Utility Footer - Admin tools */}
         {isGroupAdmin && activeGroupId && (
-          <div className="pt-4 border-t border-border/30">
-            <Link
-              href={`/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)?.slug || ''}/trips`}
-              className="text-xs text-muted/60 hover:text-muted"
-            >
-              Admin: Organise a group trip →
-            </Link>
+          <div className="pt-6 mt-6 border-t border-border/30">
+            <div className="utility-footer">
+              <Link
+                href={`/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)?.slug || ''}/trips`}
+                className="text-xs text-muted/60 hover:text-muted"
+              >
+                Admin: Organise a group trip →
+              </Link>
+            </div>
           </div>
         )}
       </div>
