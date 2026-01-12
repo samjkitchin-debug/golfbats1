@@ -608,8 +608,31 @@ export default function TripsListPage() {
       ? completionStatusCache[trip.id] 
       : null;
     
+    // Determine event kind (canonical rule: hosted_round if member, group_event otherwise)
+    const eventKind = trip.tripOrigin === 'member' ? 'hosted_round' : 'group_event';
+    
     return (
-      <div className="rounded-lg border border-border bg-surface">
+      <div 
+        className="rounded-lg bg-surface relative"
+        style={{
+          borderWidth: '1px',
+          borderColor: eventKind === 'group_event' 
+            ? 'rgba(201, 169, 97, 0.65)' /* --event-official-border at 65% opacity */
+            : 'var(--color-border)',
+          borderStyle: 'solid',
+        }}
+      >
+        {/* Group event label */}
+        {eventKind === 'group_event' && (
+          <div className="absolute top-2 right-2 z-10">
+            <span 
+              className="text-[11px] font-normal tracking-wide uppercase"
+              style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
+            >
+              Group event
+            </span>
+          </div>
+        )}
         {/* Card Header - Collapsed row - fixed 3-column grid for strict alignment */}
         <button
           onClick={onToggle}
@@ -789,8 +812,14 @@ export default function TripsListPage() {
 
   return (
     <div className="space-y-4">
-      <div>
+      <div className="flex items-center justify-between">
         <div className="text-xl font-semibold text-foreground">Trips</div>
+        <Link
+          href="/host"
+          className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          ⛳ Host a round
+        </Link>
       </div>
 
       {/* Search Input */}

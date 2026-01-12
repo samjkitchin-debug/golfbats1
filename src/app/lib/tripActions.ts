@@ -58,6 +58,26 @@ export type TripResult = {
   publishedAt?: string; // ISO UTC
 };
 
+/**
+ * TripListItem - Lightweight DTO for list views
+ * Used by /api/trips/list endpoint
+ */
+export type TripListItem = {
+  id: number;
+  name?: string;
+  date: string; // YYYY-MM-DD
+  courseId: string | null;
+  teeId: string | null;
+  capacity: number;
+  status: TripStatus;
+  tripOrigin?: 'group' | 'member';
+  isPostedToGroup?: boolean;
+  createdByMemberName?: string | null;
+  attendeeCount: number;
+  openSpots: number;
+  hasPublishedResults: boolean;
+};
+
 export type Trip = {
   id: number;
 
@@ -202,11 +222,121 @@ function normalizeTrip(input: any): Trip {
 ================================ */
 
 /**
- * Load trips from database API for a specific group
- * No longer uses localStorage - always fetches from server
+ * Load trips list (lightweight) from database API for a specific group
+ * Uses /api/trips/list endpoint with pagination
  * @param groupId - Required group ID to filter trips
- * @param bypassCache - Whether to bypass cache
+ * @param limit - Number of trips to fetch (default 20, max 50)
+ * @param cursor - Optional cursor for pagination
  * @param throwOnError - Whether to throw on API errors (default: false, returns empty array)
+ * @returns Object with trips array and nextCursor for pagination
+ */
+export async function loadTripsList(
+  groupId: string,
+  limit = 20,
+  cursor?: string,
+  throwOnError = false
+): Promise<{ trips: TripListItem[]; nextCursor?: string }> {
+  if (typeof window === "undefined") return { trips: [] };
+
+  if (!groupId) {
+    perfLog("loadTripsList: error", { error: "groupId is required" });
+    return { trips: [] };
+  }
+
+  const start = perfMark("loadTripsList");
+  try {
+    const params = new URLSearchParams({
+      groupId,
+      limit: String(Math.min(Math.max(limit, 1), 50)),
+    });
+    if (cursor) {
+      params.set("cursor", cursor);
+    }
+    
+    const res = await fetch(`/api/trips/list?${params.toString()}`, {
+      credentials: "include",
+    });
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      perfMeasure("loadTripsList", start);
+      if (throwOnError) {
+        throw new Error(json?.error || `Failed to load trips list (HTTP ${res.status})`);
+      }
+      if (res.status !== 401) {
+        perfLog("loadTripsList: API error", { status: res.status, error: json?.error });
+      }
+      return { trips: [] };
+    }
+
+    const trips = json.trips || [];
+    
+    const duration = perfMeasure("loadTripsList", start);
+    perfLog("loadTripsList: success", {
+      durationMs: duration.toFixed(2),
+      groupId,
+      count: trips.length,
+      hasNextCursor: !!json.nextCursor,
+    });
+    
+    return { trips, nextCursor: json.nextCursor };
+  } catch (error) {
+    perfMeasure("loadTripsList", start);
+    perfLog("loadTripsList: exception", { error: error instanceof Error ? error.message : String(error) });
+    return { trips: [] };
+  }
+}
+
+/**
+ * Load full trip detail from database API
+ * Uses /api/trips/[id] endpoint
+ * @param tripId - Trip ID (numeric legacy_id or UUID string)
+ * @param throwOnError - Whether to throw on API errors (default: false, returns null)
+ */
+export async function loadTripDetail(
+  tripId: number | string,
+  throwOnError = false
+): Promise<Trip | null> {
+  if (typeof window === "undefined") return null;
+
+  const start = perfMark("loadTripDetail");
+  try {
+    const res = await fetch(`/api/trips/${tripId}`, {
+      credentials: "include",
+    });
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      perfMeasure("loadTripDetail", start);
+      if (throwOnError) {
+        throw new Error(json?.error || `Failed to load trip detail (HTTP ${res.status})`);
+      }
+      if (res.status !== 401 && res.status !== 404) {
+        perfLog("loadTripDetail: API error", { status: res.status, error: json?.error });
+      }
+      return null;
+    }
+
+    const trip = normalizeTrip(json.trip);
+    
+    const duration = perfMeasure("loadTripDetail", start);
+    perfLog("loadTripDetail: success", {
+      durationMs: duration.toFixed(2),
+      tripId,
+    });
+    
+    return trip;
+  } catch (error) {
+    perfMeasure("loadTripDetail", start);
+    perfLog("loadTripDetail: exception", { error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
+
+/**
+ * Load trips from database API for a specific group (DEPRECATED - use loadTripsList for list views)
+ * @deprecated Use loadTripsList() for list views or loadTripDetail() for detail views
+ * Kept for backward compatibility with admin pages
  */
 export async function loadTrips(groupId: string, bypassCache = false, throwOnError = false): Promise<Trip[]> {
   if (typeof window === "undefined") return [];

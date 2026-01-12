@@ -223,10 +223,10 @@ export async function POST(
         const tripIdentifier = isLegacyId ? legacyId : trip.id;
         const tripPayload = await buildTripPayload(supabase, tripIdentifier);
         
-        // Invalidate trips cache
+        // Invalidate scoped cache tags
         try {
-          // @ts-expect-error - revalidateTag signature may vary by Next.js version
-          revalidateTag(CACHE_TAG);
+          (revalidateTag as any)(`trips:group:${trip.group_id}`);
+          (revalidateTag as any)(`trip:${trip.id}`);
         } catch {
           // Cache will expire via TTL if revalidation fails
         }
@@ -244,10 +244,10 @@ export async function POST(
     // Build fresh trip payload (including new attendee) so clients can update state without refetching all trips
     const updatedTripPayload = await buildTripPayload(supabase, tripIdentifier);
 
-    // Invalidate trips cache
+    // Invalidate scoped cache tags
     try {
-      // @ts-expect-error - revalidateTag signature may vary by Next.js version
-      revalidateTag(CACHE_TAG);
+      (revalidateTag as any)(`trips:group:${trip.group_id}`);
+      (revalidateTag as any)(`trip:${trip.id}`);
     } catch {
       // Cache will expire via TTL if revalidation fails
     }

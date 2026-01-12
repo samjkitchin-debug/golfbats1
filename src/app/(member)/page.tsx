@@ -28,7 +28,8 @@ export default function HomePage() {
   const [memberDisplayName, setMemberDisplayName] = useState<string | null>(null);
   const [declaredHandicap, setDeclaredHandicap] = useState<number | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string; role?: string }>>([]);
+  const [isGroupAdmin, setIsGroupAdmin] = useState(false);
   const [allTripsWithGroups, setAllTripsWithGroups] = useState<Array<Trip & { groupName: string; groupId: string }>>([]);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
@@ -96,6 +97,21 @@ export default function HomePage() {
     return completed[0] || null;
   }, [allTripsWithGroups]);
 
+  // Filter member-hosted rounds for "Happening soon" feed
+  const quickRounds = useMemo(() => {
+    const now = new Date();
+    return allTripsWithGroups
+      .filter((t) => {
+        // Only member-hosted rounds
+        if (t.tripOrigin !== 'member') return false;
+        // Exclude cancelled
+        if (t.status === 'cancelled') return false;
+        // Only upcoming (reuse existing logic)
+        return isTripUpcoming(t, now);
+      })
+      .sort((a, b) => a.date.localeCompare(b.date)); // Earliest first
+  }, [allTripsWithGroups]);
+
   // All useEffect hooks - must be before any early returns
   useEffect(() => {
     document.title = "DayForeIt - Home";
@@ -129,6 +145,10 @@ export default function HomePage() {
         setHasMemberships(bootstrap.hasApprovedGroup);
         setActiveGroupId(bootstrap.activeGroupId);
         setApprovedGroups(bootstrap.approvedGroups || []);
+        
+        // Check if user is admin in any group
+        const hasAdminRole = (bootstrap.approvedGroups || []).some((g: { role?: string }) => g.role === 'admin');
+        setIsGroupAdmin(hasAdminRole);
         
         const duration = perfMeasure("bootstrap", start);
         perfLog("bootstrap: success", {
@@ -231,6 +251,28 @@ export default function HomePage() {
     return name.toUpperCase().slice(0, 2);
   }
 
+  // Helper to get time label for quick rounds
+  function getTimeLabel(trip: Trip): string {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const tripDate = trip.date;
+
+    if (tripDate === today) {
+      // Check if it's "now" (within a reasonable window, e.g., same day and time is close)
+      // For simplicity, if it's today, show "Today" unless we have more specific time info
+      return "Today";
+    }
+
+    // Show weekday for upcoming days
+    const date = new Date(tripDate + "T00:00:00");
+    return date.toLocaleDateString("en-GB", { weekday: "short" });
+  }
+
+  // Helper to calculate spots available
+  function getSpotsAvailable(trip: Trip): number {
+    const confirmedCount = trip.attendees.filter((a) => a.status === "confirmed").length;
+    return Math.max(0, trip.capacity - confirmedCount);
+  }
 
   // Helper function to generate a consistent color from a group ID
   function getGroupColor(groupId: string): string {
@@ -421,10 +463,106 @@ export default function HomePage() {
 
     content = (
       <div className="space-y-4">
+        {/* Host a round button */}
+        <div>
+          <Link
+            href="/host"
+            className="block w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
+          >
+            ⛳ Host a round
+          </Link>
+        </div>
+
+        {/* Happening soon - Quick rounds feed */}
+        {quickRounds.length > 0 && (
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-foreground">Happening soon</div>
+            <div className="space-y-2">
+              {quickRounds.map((trip) => {
+                const hostName = trip.createdByMemberName || "Someone";
+                const courseText = getTripCourseText(trip, courses);
+                const courseName = courseText.title !== "Course TBD" ? courseText.title : "Course TBC";
+                const timeLabel = getTimeLabel(trip);
+                const spotsAvailable = getSpotsAvailable(trip);
+                const hostInitials = getInitials(null, trip.createdByMemberName || null);
+
+                return (
+                  <div
+                    key={trip.id}
+                    className="rounded-lg border border-border bg-surface p-3 flex items-center gap-3"
+                  >
+                    {/* Host avatar (initials) */}
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-brand-green/10 flex items-center justify-center text-sm font-medium text-brand-green">
+                      {hostInitials}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground">
+                        {hostName} is playing
+                      </div>
+                      <div className="text-xs text-muted mt-0.5">
+                        {courseName} · {timeLabel}
+                      </div>
+                      {spotsAvailable > 0 && (
+                        <div className="text-xs text-muted mt-0.5">
+                          {spotsAvailable} {spotsAvailable === 1 ? "spot" : "spots"} available
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Join button */}
+                    <Link
+                      href={`/trips/${trip.id}`}
+                      className="flex-shrink-0 rounded-lg bg-brand-green px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                    >
+                      Join
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Admin tools section (admins only) */}
+        {isGroupAdmin && activeGroupId && (
+          <div className="space-y-2 pt-2 border-t border-border">
+            <div className="text-xs font-medium text-muted uppercase tracking-wide">Admin tools</div>
+            <Link
+              href={`/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)?.slug || ''}/trips`}
+              className="block w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50 text-center"
+            >
+              Organise a group trip
+            </Link>
+            <p className="text-xs text-muted text-center">For official group events</p>
+          </div>
+        )}
+
         {/* Home Header: Two sibling cards - Next Trip (left) + Handicap (right) - equal heights, stays split on all screens */}
         <div className="grid grid-cols-[minmax(0,1fr)_120px] sm:grid-cols-[minmax(0,1fr)_140px] md:grid-cols-[minmax(0,1fr)_160px] gap-3">
           {/* Next Trip Card (left, flexible width, equal height with Handicap) */}
-          <div className="min-w-0 rounded-2xl border border-border bg-surface p-4 sm:p-5 md:p-6 shadow-sm flex flex-col h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px]">
+          <div 
+            className="min-w-0 rounded-2xl bg-surface p-4 sm:p-5 md:p-6 shadow-sm flex flex-col h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] relative"
+            style={{
+              borderWidth: '1px',
+              borderColor: primaryTrip?.tripOrigin === 'member' 
+                ? 'var(--color-border)'
+                : 'rgba(201, 169, 97, 0.65)' /* --event-official-border at 65% opacity */,
+              borderStyle: 'solid',
+            }}
+          >
+            {/* Group event label */}
+            {primaryTrip && primaryTrip.tripOrigin !== 'member' && (
+              <div className="absolute top-3 right-3">
+                <span 
+                  className="text-[11px] font-normal tracking-wide uppercase"
+                  style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
+                >
+                  Group event
+                </span>
+              </div>
+            )}
             <div className="mb-3 sm:mb-4 text-xs font-medium text-muted uppercase tracking-wide">Next trip</div>
             
             {/* Trip name or course */}
@@ -453,14 +591,27 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Handicap Tile (right, fixed width, equal height, space reserved for future trends) */}
-          {declaredHandicap !== null && (
-            <div className="rounded-xl border border-border bg-surface/50 p-3 sm:p-4 flex flex-col shrink-0 h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px]">
-              <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-2 sm:mb-3">Handicap</div>
-              <div className="text-2xl sm:text-3xl md:text-4xl font-semibold text-foreground mb-auto">{declaredHandicap}</div>
-              {/* Reserved space for future trend indicators - intentionally empty */}
-              <div className="mt-auto pt-2 sm:pt-3"></div>
-            </div>
+          {/* Handicap Tile (right, fixed width, equal height) */}
+          {declaredHandicap !== null ? (
+            <Link
+              href="/me"
+              className="rounded-xl border border-border bg-surface/50 p-3 sm:p-4 flex flex-col shrink-0 h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] hover:bg-surface/70 transition-colors"
+            >
+              <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-2 sm:mb-3">Your handicap</div>
+              <div className="text-2xl sm:text-3xl md:text-4xl font-semibold text-foreground mb-auto">
+                {typeof declaredHandicap === 'number' ? declaredHandicap.toFixed(1) : declaredHandicap}
+              </div>
+              <div className="mt-auto text-xs text-muted">Used for flights and scoring</div>
+            </Link>
+          ) : (
+            <Link
+              href="/me"
+              className="rounded-xl border border-border bg-surface/50 p-3 sm:p-4 flex flex-col shrink-0 h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] hover:bg-surface/70 transition-colors"
+            >
+              <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-2 sm:mb-3">Your handicap</div>
+              <div className="text-2xl sm:text-3xl md:text-4xl font-semibold text-foreground mb-auto">Not set</div>
+              <div className="mt-auto text-xs text-muted">Add it in Me</div>
+            </Link>
           )}
         </div>
 
@@ -479,7 +630,27 @@ export default function HomePage() {
 
         {/* Secondary Upcoming Trip Block (visually demoted, appears AFTER header section with increased spacing) */}
         {secondaryTrip && (
-          <div className="mt-6 rounded-lg border border-border bg-surface/30 p-3">
+          <div 
+            className="mt-6 rounded-lg bg-surface/30 p-3 relative"
+            style={{
+              borderWidth: '1px',
+              borderColor: secondaryTrip.tripOrigin === 'member' 
+                ? 'var(--color-border)'
+                : 'rgba(201, 169, 97, 0.65)' /* --event-official-border at 65% opacity */,
+              borderStyle: 'solid',
+            }}
+          >
+            {/* Group event label */}
+            {secondaryTrip.tripOrigin !== 'member' && (
+              <div className="absolute top-2 right-2">
+                <span 
+                  className="text-[11px] font-normal tracking-wide uppercase"
+                  style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
+                >
+                  Group event
+                </span>
+              </div>
+            )}
             <div className="mb-1.5 text-[10px] font-medium text-muted uppercase tracking-wide">Up next</div>
             
             {/* Compact trip info - reduced typography */}

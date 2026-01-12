@@ -27,6 +27,11 @@
   --color-brand-green-light: #E6F3EC;
   --color-brand-orange-light: #FFF1E6;
   --color-brand-blue-light: #E8F5FB;
+  
+  /* Official event border (gilt-style for group events) */
+  --event-official-border: #C9A961;   /* Warm gold/champagne tone */
+  --event-official-border-opacity: 0.65; /* 65% opacity for gilt effect */
+  --event-official-label: var(--color-muted); /* Label text color */
 
   /* Danger colors (errors, destructive actions) */
   --color-danger: #DC2626;

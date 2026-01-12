@@ -1,5 +1,48 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Product North Star — DayForeIt
+
+---
+DayForeIt is a social operating system for golf rounds.
+
+It helps people play more golf by making it frictionless to:
+- host a round (even last-minute)
+- fill spare slots by discovering games they can join
+- organise official group trips when coordination matters
+- later: score rounds, publish results, and update handicaps without admin pain
+
+Most golf apps record rounds.
+DayForeIt creates rounds.
+
+Two modes exist and must never blur:
+
+Hosted Rounds (default):
+- member-owned
+- social-first
+- cross-group
+- lightweight
+- supports "playing now" (GameDay entry)
+
+Group Trips (admin-only):
+- group-owned
+- group-confined
+- structured
+- logistics assumed
+- reputation-sensitive
+
+Core product laws:
+1) Home prioritises play; organisation is secondary
+2) Hosted rounds are the default golf object
+3) WHO always comes first in hosted flows
+4) "Playing now" is a first-class path
+5) Invites fill rounds; posting advertises spare slots
+6) Group trips are admin-only and group-confined
+7) Friction belongs where responsibility exists
+8) GameDay is the gravitational center
+9) Scenario shapes describe coordination, not booking responsibility
+10) If a step doesn't reduce anxiety or friction, it doesn't belong
+---
+
 ## Getting Started
 
 First, run the development server:

@@ -309,11 +309,12 @@ export async function GET(req: Request) {
     }
 
     // Get current member ID for filtering member trips visibility
+    // In canonical schema: members.id == auth.user.id
     let currentMemberId: string | null = null;
     const { data: memberData } = await supabase
       .from("members")
       .select("id")
-      .eq("user_id", user.id)
+      .eq("id", user.id)
       .maybeSingle();
     currentMemberId = memberData?.id || null;
 
@@ -688,10 +689,10 @@ export async function POST(req: Request) {
         );
       }
 
-      // Invalidate trips cache
+      // Invalidate scoped cache tags
       try {
-        // @ts-expect-error - revalidateTag signature may vary by Next.js version
-        revalidateTag(CACHE_TAG);
+        (revalidateTag as any)(`trips:group:${groupId}`);
+        (revalidateTag as any)(`trip:${tripId}`);
       } catch {
         // Cache will expire via TTL if revalidation fails
       }
@@ -810,13 +811,13 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // Invalidate trips cache
-    try {
-      // @ts-expect-error - revalidateTag signature may vary by Next.js version
-      revalidateTag(CACHE_TAG);
-    } catch {
-      // Cache will expire via TTL if revalidation fails
-    }
+      // Invalidate scoped cache tags
+      try {
+        (revalidateTag as any)(`trips:group:${groupId}`);
+        (revalidateTag as any)(`trip:${trip.id}`);
+      } catch {
+        // Cache will expire via TTL if revalidation fails
+      }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

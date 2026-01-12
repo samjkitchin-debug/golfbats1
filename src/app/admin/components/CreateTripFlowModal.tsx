@@ -83,21 +83,24 @@ export default function CreateTripFlowModal({
   onCreated,
 }: CreateTripFlowModalProps) {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Step 1: Basics
+  // Step 1: DECLARE INTENT
+  const [tripIntent, setTripIntent] = useState<"local_group_day" | "away_day" | "overnight_overseas" | null>(null);
+  
+  // Step 2: CORE FACTS
   const [tripDate, setTripDate] = useState("");
+  const [tripDateEnd, setTripDateEnd] = useState(""); // For overnight trips
   const [tripName, setTripName] = useState("");
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>("");
 
-  // Step 5: Signups
-  const [cutoffRule, setCutoffRule] = useState<"nightBefore" | "daysBefore" | "none">("nightBefore");
+  // Step 4: PARTICIPATION RULES
+  const [cutoffRule, setCutoffRule] = useState<"nightBefore" | "daysBefore">("nightBefore");
   const [cutoffDays, setCutoffDays] = useState<number | null>(null);
-  const [hasCapacityLimit, setHasCapacityLimit] = useState(false);
-  const [capacity, setCapacity] = useState<number | null>(null);
+  const [capacity, setCapacity] = useState<number>(16); // Required for admin trips
 
   // Group settings (scenario presets)
   const [defaultScenarioKey, setDefaultScenarioKey] = useState<ScenarioKey | null>(null);
@@ -115,10 +118,10 @@ export default function CreateTripFlowModal({
   const [describeText, setDescribeText] = useState("");
   const [aiProposal, setAiProposal] = useState<{ answers: ScenarioAnswers; confidence: number; followupQuestion?: string } | null>(null);
   
-  // Scenario answers (derived from selectedScenarioKey or AI proposal)
+  // Scenario answers (derived from tripIntent - admin trips always have coordinationOwner: "self" and bookingResponsibility: "organiser")
   const [answers, setAnswers] = useState<ScenarioAnswers>({
-    bookingResponsibility: undefined,
-    coordinationOwner: "self",
+    bookingResponsibility: "organiser", // Admin trips always have organiser booking
+    coordinationOwner: "self", // Admin trips always self-coordinated
     requiredMemberInfo: undefined,
     travelMode: null,
   });
@@ -142,13 +145,54 @@ export default function CreateTripFlowModal({
   }, [groupSlug]);
 
 
-  // Compute scenario key from selectedScenarioKey or derived from answers
+  // Compute scenario key from tripIntent (admin trips use intent-based mapping)
   const scenarioKey = useMemo(() => {
-    if (selectedScenarioKey) {
-      return selectedScenarioKey;
+    if (!tripIntent) return "local_round"; // Default fallback
+    
+    // Map intent to scenario shape
+    if (tripIntent === "local_group_day") {
+      return "local_round";
+    } else if (tripIntent === "away_day") {
+      return "away_day";
+    } else if (tripIntent === "overnight_overseas") {
+      return "overnight_trip";
     }
-    return deriveScenarioKey(answers);
-  }, [selectedScenarioKey, answers]);
+    return "local_round";
+  }, [tripIntent]);
+  
+  // Update answers based on tripIntent
+  useEffect(() => {
+    if (!tripIntent) return;
+    
+    if (tripIntent === "local_group_day") {
+      setAnswers({
+        bookingResponsibility: "organiser",
+        coordinationOwner: "self",
+        travelMode: null,
+        overnight: false,
+        carpool: false,
+        requiredMemberInfo: undefined,
+      });
+    } else if (tripIntent === "away_day") {
+      setAnswers({
+        bookingResponsibility: "organiser",
+        coordinationOwner: "self",
+        travelMode: "together",
+        overnight: false,
+        carpool: false,
+        requiredMemberInfo: undefined,
+      });
+    } else if (tripIntent === "overnight_overseas") {
+      setAnswers({
+        bookingResponsibility: "organiser",
+        coordinationOwner: "self",
+        travelMode: "together",
+        overnight: true,
+        carpool: false,
+        requiredMemberInfo: undefined,
+      });
+    }
+  }, [tripIntent]);
   
   // Compute course country for variant overlay
   const courseCountry = useMemo(() => {
@@ -215,7 +259,9 @@ export default function CreateTripFlowModal({
     if (open) {
       setStep(1);
       setError(null);
+      setTripIntent(null);
       setTripDate("");
+      setTripDateEnd("");
       setTripName("");
       setSelectedScenarioKey(null);
       setShowMoreScenarios(false);
@@ -223,15 +269,14 @@ export default function CreateTripFlowModal({
       setDescribeText("");
       setAiProposal(null);
       setAnswers({
-        bookingResponsibility: undefined,
+        bookingResponsibility: "organiser",
         coordinationOwner: "self",
         requiredMemberInfo: undefined,
         travelMode: null,
       });
       setCutoffRule("nightBefore");
       setCutoffDays(null);
-      setHasCapacityLimit(false);
-      setCapacity(null);
+      setCapacity(16);
       setSelectedCourseId("");
       emitTripEvent({ type: "create_started", groupId });
       
@@ -243,45 +288,49 @@ export default function CreateTripFlowModal({
   }, [open, groupId]);
 
   function handleStep1Next() {
+    if (!tripIntent) {
+      setError("Please select what you're organising.");
+      return;
+    }
+    setStep(2);
+    setError(null);
+  }
+
+  function handleStep2Next() {
     const trimmedName = tripName.trim();
     if (!tripDate) {
-      return; // Date picker handles validation
+      setError("Please select a date.");
+      return;
+    }
+    if (tripIntent === "overnight_overseas" && !tripDateEnd) {
+      setError("Please select an end date for overnight trips.");
+      return;
     }
     if (!trimmedName) {
-      return; // Required field handles validation
+      setError("Please enter a trip name.");
+      return;
     }
     if (!selectedCourseId) {
       setError("Please select a course.");
       return;
     }
 
-    setStep(2);
+    setStep(3);
     setError(null);
   }
 
-  function handleStep2Next() {
-    // If everyone sorts themselves, skip Step 3
-    if (answers.bookingResponsibility === undefined) {
-      setStep(4);
-    } else {
-      // Otherwise go to Step 3 (what else do you need)
-      setStep(3);
-    }
-  }
-
   function handleStep3Next() {
+    // Logistics is preconfigured, just advance
     setStep(4);
+    setError(null);
   }
 
   function handleStep4Next() {
     setStep(5);
+    setError(null);
   }
 
-  function handleStep5Next() {
-    setStep(6);
-  }
-
-  async function handleStep6Create() {
+  async function handleStep5Publish() {
     setLoading(true);
     setError(null);
 
@@ -310,8 +359,8 @@ export default function CreateTripFlowModal({
         });
       }
       
-      // Capacity: use user input if limit is enabled, otherwise undefined
-      const tripCapacity = hasCapacityLimit && capacity ? capacity : undefined;
+      // Capacity: required for admin trips
+      const tripCapacity = capacity || 16;
 
       // Determine noun for copy (round vs trip)
       const noun = getGolfNounFromAnswers(answers);
@@ -369,42 +418,36 @@ export default function CreateTripFlowModal({
           {/* Header */}
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-foreground">
-              {step === 1 ? "Start a new round" :
-               step === 2 ? "How will bookings be handled?" :
-               step === 3 ? "What else do you need from people?" :
-               step === 4 ? "How are people getting to the course?" :
-               step === 5 ? "Signups" :
-               step === 6 ? "Here's what this round will look like" :
-               "Create round"}
+              {step === 1 ? "What are we organising?" :
+               step === 2 ? "Core facts" :
+               step === 3 ? "Logistics" :
+               step === 4 ? "Participation rules" :
+               step === 5 ? "Review & publish" :
+               "Create trip"}
             </h2>
             {step === 1 && (
               <p className="mt-1 text-sm text-muted">
-                Let's get the basics down first. You can sort the rest later.
+                Select the type of group trip you're organising.
               </p>
             )}
             {step === 2 && (
               <p className="mt-1 text-sm text-muted">
-                Just so we know how to help — there's no wrong answer here.
+                Enter the essential details for this trip.
               </p>
             )}
             {step === 3 && (
               <p className="mt-1 text-sm text-muted">
-                We'll always track who's in — this is just what else you need.
+                Logistics are preconfigured based on your trip type. Review and adjust as needed.
               </p>
             )}
             {step === 4 && (
               <p className="mt-1 text-sm text-muted">
-                You don't need to be final here — this just helps people decide if they can make it.
+                Set participation rules for group members.
               </p>
             )}
             {step === 5 && (
               <p className="mt-1 text-sm text-muted">
-                When do you want people to commit by?
-              </p>
-            )}
-            {step === 6 && (
-              <p className="mt-1 text-sm text-muted">
-                You can change any of this later — nothing here is locked in.
+                Review all details before publishing to the group.
               </p>
             )}
           </div>
@@ -415,19 +458,89 @@ export default function CreateTripFlowModal({
             </div>
           )}
 
-          {/* Step 1: Basics */}
+          {/* Step 1: DECLARE INTENT */}
           {step === 1 && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTripIntent("local_group_day");
+                    // Auto-advance after selection
+                    setTimeout(() => setStep(2), 100);
+                  }}
+                  className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
+                    tripIntent === "local_group_day"
+                      ? "border-brand-green bg-brand-green text-white"
+                      : "border-border bg-surface text-foreground hover:bg-background"
+                  }`}
+                >
+                  <div className="font-medium">Local group day</div>
+                  <div className={`text-xs mt-1 ${tripIntent === "local_group_day" ? "text-white/80" : "text-muted"}`}>
+                    Official group event at a local course
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTripIntent("away_day");
+                    setTimeout(() => setStep(2), 100);
+                  }}
+                  className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
+                    tripIntent === "away_day"
+                      ? "border-brand-green bg-brand-green text-white"
+                      : "border-border bg-surface text-foreground hover:bg-background"
+                  }`}
+                >
+                  <div className="font-medium">Away day (same-day travel)</div>
+                  <div className={`text-xs mt-1 ${tripIntent === "away_day" ? "text-white/80" : "text-muted"}`}>
+                    Group trip requiring same-day travel coordination
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTripIntent("overnight_overseas");
+                    setTimeout(() => setStep(2), 100);
+                  }}
+                  className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
+                    tripIntent === "overnight_overseas"
+                      ? "border-brand-green bg-brand-green text-white"
+                      : "border-border bg-surface text-foreground hover:bg-background"
+                  }`}
+                >
+                  <div className="font-medium">Overnight / overseas trip</div>
+                  <div className={`text-xs mt-1 ${tripIntent === "overnight_overseas" ? "text-white/80" : "text-muted"}`}>
+                    Multi-day trip with accommodation and travel coordination
+                  </div>
+                </button>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={onClose}
+                  disabled={loading}
+                  className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: CORE FACTS */}
+          {step === 2 && (
             <div className="space-y-4">
               <div>
                 <label htmlFor="trip-name" className="block text-sm font-medium text-foreground mb-1">
-                  What are we calling this round?
+                  Trip name <span className="text-muted">(required)</span>
                 </label>
                 <input
                   id="trip-name"
                   type="text"
                   value={tripName}
                   onChange={(e) => setTripName(e.target.value)}
-                  placeholder={tripDate ? generateDefaultTripName(tripDate, groupName) : "e.g., Monday afternoon at Laguna"}
+                  placeholder={tripDate ? generateDefaultTripName(tripDate, groupName) : "e.g., Group Championship"}
                   maxLength={60}
                   className="w-full rounded-lg border border-border px-4 py-2 text-sm focus:border-foreground focus:outline-none"
                   required
@@ -436,7 +549,7 @@ export default function CreateTripFlowModal({
 
               <div>
                 <label htmlFor="trip-date" className="block text-sm font-medium text-foreground mb-1">
-                  When are you playing?
+                  Date <span className="text-muted">(required)</span>
                 </label>
                 <input
                   id="trip-date"
@@ -449,9 +562,26 @@ export default function CreateTripFlowModal({
                 />
               </div>
 
+              {tripIntent === "overnight_overseas" && (
+                <div>
+                  <label htmlFor="trip-date-end" className="block text-sm font-medium text-foreground mb-1">
+                    End date <span className="text-muted">(required)</span>
+                  </label>
+                  <input
+                    id="trip-date-end"
+                    type="date"
+                    value={tripDateEnd}
+                    onChange={(e) => setTripDateEnd(e.target.value)}
+                    min={tripDate || todayYmd()}
+                    className="w-full rounded-lg border border-border px-4 py-2 text-sm focus:border-foreground focus:outline-none"
+                    required
+                  />
+                </div>
+              )}
+
               <div>
                 <label htmlFor="trip-course" className="block text-sm font-medium text-foreground mb-1">
-                  Course
+                  Course <span className="text-muted">(required)</span>
                 </label>
                 <select
                   id="trip-course"
@@ -462,17 +592,21 @@ export default function CreateTripFlowModal({
                     const selectedCourse = courses.find(c => c.id === courseId);
                     if (selectedCourse) {
                       const courseCountry = inferCourseCountryFromLocation(selectedCourse.location);
+                      // Auto-update requiredMemberInfo based on course country
                       if (courseCountry === "ID") {
                         setAnswers(prev => ({
                           ...prev,
-                          travelMode: "together",
-                          requiredMemberInfo: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date"]
+                          requiredMemberInfo: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"]
                         }));
                       } else if (courseCountry === "MY") {
                         setAnswers(prev => ({
                           ...prev,
-                          travelMode: "mixed",
-                          requiredMemberInfo: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date"]
+                          requiredMemberInfo: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"]
+                        }));
+                      } else {
+                        setAnswers(prev => ({
+                          ...prev,
+                          requiredMemberInfo: ["handicap"]
                         }));
                       }
                     }
@@ -485,39 +619,22 @@ export default function CreateTripFlowModal({
                     <option key={c.id} value={c.id}>{c.name} — {c.location}</option>
                   ))}
                 </select>
-                {selectedCourseId && (() => {
-                  const selectedCourse = courses.find(c => c.id === selectedCourseId);
-                  if (selectedCourse) {
-                    const courseCountry = inferCourseCountryFromLocation(selectedCourse.location);
-                    if (courseCountry === "ID") {
-                      return (
-                        <p className="mt-1 text-xs text-muted">
-                          Heads up: this course looks like it's in Indonesia — we'll prefill passport + travel logistics. You can change this later.
-                        </p>
-                      );
-                    } else if (courseCountry === "MY") {
-                      return (
-                        <p className="mt-1 text-xs text-muted">
-                          Heads up: this course looks like it's in Malaysia — we'll prefill passport + travel details. You can change this later.
-                        </p>
-                      );
-                    }
-                  }
-                  return null;
-                })()}
               </div>
 
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={onClose}
+                  onClick={() => {
+                    setStep(1);
+                    setTripIntent(null);
+                  }}
                   disabled={loading}
                   className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
                 >
-                  Cancel
+                  Back
                 </button>
                 <button
-                  onClick={handleStep1Next}
-                  disabled={!tripDate || !tripName.trim() || !selectedCourseId}
+                  onClick={handleStep2Next}
+                  disabled={!tripDate || !tripName.trim() || !selectedCourseId || (tripIntent === "overnight_overseas" && !tripDateEnd)}
                   className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
@@ -526,8 +643,61 @@ export default function CreateTripFlowModal({
             </div>
           )}
 
-          {/* Step 2: Organisation */}
-          {step === 2 && (
+          {/* Step 3: LOGISTICS (assumed, preconfigured) */}
+          {step === 3 && (
+            <div className="space-y-6">
+              <div className="rounded-lg border border-border bg-background p-4">
+                <p className="text-sm text-foreground mb-2">
+                  Logistics are enabled and preconfigured for this trip type.
+                </p>
+                <ul className="text-xs text-muted space-y-1">
+                  {tripIntent === "local_group_day" && (
+                    <>
+                      <li>• Meet-up coordination</li>
+                      <li>• Tee time management</li>
+                    </>
+                  )}
+                  {tripIntent === "away_day" && (
+                    <>
+                      <li>• Travel coordination</li>
+                      <li>• Meet-up point</li>
+                      <li>• Tee time management</li>
+                    </>
+                  )}
+                  {tripIntent === "overnight_overseas" && (
+                    <>
+                      <li>• Travel coordination (ferry/flights)</li>
+                      <li>• Accommodation details</li>
+                      <li>• Meet-up points</li>
+                      <li>• Tee time management</li>
+                    </>
+                  )}
+                </ul>
+                <p className="text-xs text-muted mt-3">
+                  You can configure specific logistics details after creating the trip.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setStep(2)}
+                  disabled={loading}
+                  className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleStep3Next}
+                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* OLD STEP 2 - REMOVED - All old booking responsibility options removed */}
+          {false && (
             <div className="space-y-6">
               {/* Optional AI assist (collapsed helper) */}
               {!showAiHelper && (
@@ -570,26 +740,31 @@ export default function CreateTripFlowModal({
                   >
                     Suggest setup
                   </button>
-                  {aiProposal && aiProposal.confidence >= 0.8 && (
-                    <div className="mt-3 p-3 rounded-lg bg-brand-green/10 border border-brand-green/20">
-                      <p className="text-xs font-medium text-foreground mb-2">Suggested setup:</p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const derivedKey = deriveScenarioKey(aiProposal.answers);
-                          selectScenario(derivedKey, "describe");
-                          setShowAiHelper(false);
-                          setDescribeText("");
-                          setAiProposal(null);
-                          // Auto-skip to signups if confident
-                          setStep(5);
-                        }}
-                        className="w-full rounded-lg bg-brand-green px-3 py-2 text-xs font-medium text-white hover:opacity-90"
-                      >
-                        Use this setup
-                      </button>
-                    </div>
-                  )}
+                  {(() => {
+                    if (!aiProposal) return null;
+                    if ((aiProposal!.confidence ?? 0) < 0.8) return null;
+                    const proposal = aiProposal!; // Type narrowing
+                    return (
+                      <div className="mt-3 p-3 rounded-lg bg-brand-green/10 border border-brand-green/20">
+                        <p className="text-xs font-medium text-foreground mb-2">Suggested setup:</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const derivedKey = deriveScenarioKey(proposal.answers);
+                            selectScenario(derivedKey, "describe");
+                            setShowAiHelper(false);
+                            setDescribeText("");
+                            setAiProposal(null);
+                            // Auto-skip to signups if confident
+                            setStep(5);
+                          }}
+                          className="w-full rounded-lg bg-brand-green px-3 py-2 text-xs font-medium text-white hover:opacity-90"
+                        >
+                          Use this setup
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -597,7 +772,7 @@ export default function CreateTripFlowModal({
               {(lastUsedScenarioKey || defaultScenarioKey) && !showAiHelper && (() => {
                 const keyToUse = defaultScenarioKey || lastUsedScenarioKey;
                 if (!keyToUse) return null;
-                const scenario = getScenario(keyToUse);
+                const scenario = getScenario(keyToUse!);
                 const summaryPoints: string[] = [scenario.label];
                 if (!scenario.modules.logistics) {
                   summaryPoints.push("No logistics to manage");
@@ -646,7 +821,14 @@ export default function CreateTripFlowModal({
                 <button
                   type="button"
                   onClick={() => {
-                    setAnswers((prev) => ({ ...prev, bookingResponsibility: undefined, coordinationOwner: "self", requiredMemberInfo: undefined }));
+                    setAnswers((prev) => ({
+                      ...prev,
+                      bookingResponsibility: undefined,
+                      coordinationOwner: "self",
+                      requiredMemberInfo: undefined,
+                    }));
+                    // Lightweight path: auto-advance, skipping organiser/agent details
+                    setStep(4);
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.bookingResponsibility === undefined && answers.coordinationOwner === "self"
@@ -738,8 +920,8 @@ export default function CreateTripFlowModal({
             </div>
           )}
 
-          {/* Step 3: What else do you need (conditional on organiser/agent) */}
-          {step === 3 && (answers.bookingResponsibility === "organiser" || answers.bookingResponsibility === "agent") && (
+          {/* OLD STEP 3 REMOVED - "What else do you need" no longer used */}
+          {false && step === 3 && (answers.bookingResponsibility === "organiser" || answers.bookingResponsibility === "agent") && (
             <div className="space-y-6">
               <div className="flex flex-col gap-3">
                 <label className="flex items-start gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-background cursor-pointer">
@@ -807,8 +989,8 @@ export default function CreateTripFlowModal({
             </div>
           )}
 
-          {/* Step 4: Getting there */}
-          {step === 4 && (
+          {/* OLD STEP 4 REMOVED - "Getting there" no longer used */}
+          {false && (
             <div className="space-y-6">
               <div className="flex flex-col gap-3">
                 <button
@@ -919,12 +1101,12 @@ export default function CreateTripFlowModal({
             </div>
           )}
 
-          {/* Step 5: Signups */}
-          {step === 5 && (
+          {/* Step 4: PARTICIPATION RULES */}
+          {step === 4 && (
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Last day to join
+                  Signup deadline
                 </label>
                 <div className="flex flex-col gap-2">
                   <button
@@ -937,9 +1119,6 @@ export default function CreateTripFlowModal({
                     }`}
                   >
                     <div className="font-medium">The night before</div>
-                    <div className={`text-xs mt-1 ${cutoffRule === "nightBefore" ? "text-white/80" : "text-muted"}`}>
-                      You can close signups early if you want.
-                    </div>
                   </button>
                   <button
                     type="button"
@@ -969,35 +1148,84 @@ export default function CreateTripFlowModal({
               </div>
 
               <div>
-                <label className="flex items-center gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-background cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hasCapacityLimit}
-                    onChange={(e) => {
-                      setHasCapacityLimit(e.target.checked);
-                      if (!e.target.checked) {
-                        setCapacity(null);
-                      } else if (!capacity) {
-                        setCapacity(16);
-                      }
-                    }}
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium text-sm text-foreground">Limit spots</div>
-                  </div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Max players <span className="text-muted">(required)</span>
                 </label>
-                {hasCapacityLimit && (
-                  <div className="mt-2 ml-12">
-                    <input
-                      type="number"
-                      min="1"
-                      value={capacity || ""}
-                      onChange={(e) => setCapacity(Number(e.target.value) || null)}
-                      placeholder="How many spots?"
-                      className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-surface text-foreground"
-                    />
+                <input
+                  type="number"
+                  min="1"
+                  value={capacity}
+                  onChange={(e) => setCapacity(Number(e.target.value) || 16)}
+                  className="w-full rounded-lg border border-border px-4 py-2 text-sm bg-surface text-foreground"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setStep(3)}
+                  disabled={loading}
+                  className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleStep4Next}
+                  disabled={!capacity}
+                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 5: REVIEW & PUBLISH */}
+          {step === 5 && (
+            <div className="space-y-6">
+              {/* Structured summary */}
+              <div className="rounded-lg border border-border bg-background p-4 space-y-4">
+                <div>
+                  <div className="text-xs font-medium text-muted uppercase tracking-wide mb-1">What it is</div>
+                  <div className="text-sm text-foreground">{tripName || "Untitled trip"}</div>
+                  <div className="text-xs text-muted mt-1">
+                    {tripIntent === "local_group_day" ? "Local group day" :
+                     tripIntent === "away_day" ? "Away day" :
+                     tripIntent === "overnight_overseas" ? "Overnight / overseas trip" : ""}
                   </div>
-                )}
+                </div>
+
+                <div>
+                  <div className="text-xs font-medium text-muted uppercase tracking-wide mb-1">When & where</div>
+                  <div className="text-sm text-foreground">
+                    {tripDate && new Date(tripDate + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                    {tripDateEnd && ` - ${new Date(tripDateEnd + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
+                  </div>
+                  {selectedCourseId && (() => {
+                    const selectedCourse = courses.find(c => c.id === selectedCourseId);
+                    return selectedCourse ? (
+                      <div className="text-xs text-muted mt-1">{selectedCourse.name} — {selectedCourse.location}</div>
+                    ) : null;
+                  })()}
+                </div>
+
+                <div>
+                  <div className="text-xs font-medium text-muted uppercase tracking-wide mb-1">Logistics</div>
+                  <div className="text-xs text-muted">
+                    {tripIntent === "local_group_day" && "Meet-up coordination, tee time management"}
+                    {tripIntent === "away_day" && "Travel coordination, meet-up point, tee time management"}
+                    {tripIntent === "overnight_overseas" && "Travel coordination (ferry/flights), accommodation, meet-up points, tee time management"}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-medium text-muted uppercase tracking-wide mb-1">Participation rules</div>
+                  <div className="text-xs text-muted">
+                    Max {capacity} players
+                    {cutoffRule === "nightBefore" && " • Signups close the night before"}
+                    {cutoffRule === "daysBefore" && cutoffDays && ` • Signups close ${cutoffDays} day${cutoffDays > 1 ? "s" : ""} before`}
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-3 pt-2">
@@ -1009,46 +1237,11 @@ export default function CreateTripFlowModal({
                   Back
                 </button>
                 <button
-                  onClick={handleStep5Next}
-                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 6: Summary */}
-          {step === 6 && (
-            <div className="space-y-6">
-              {/* Human-readable summary */}
-              {humanSummary.length > 0 && (
-                <div className="rounded-lg border border-border bg-background p-4">
-                  <ul className="space-y-2 text-sm text-foreground">
-                    {humanSummary.map((item, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="text-brand-green mt-0.5">•</span>
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setStep(5)}
-                  disabled={loading}
-                  className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={handleStep6Create}
+                  onClick={handleStep5Publish}
                   disabled={loading}
                   className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? "Creating…" : "Create round"}
+                  {loading ? "Publishing…" : "Publish to group"}
                 </button>
               </div>
             </div>

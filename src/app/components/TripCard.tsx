@@ -95,8 +95,32 @@ export function TripCard({
       ? "Signups closed"
       : null;
 
+  // Determine event kind (canonical rule: hosted_round if member, group_event otherwise)
+  const eventKind = trip.tripOrigin === 'member' ? 'hosted_round' : 'group_event';
+  
+  const borderStyle = eventKind === 'group_event' 
+    ? { 
+        borderWidth: '1px', 
+        borderColor: 'rgba(201, 169, 97, 0.65)' /* --event-official-border at 65% opacity */
+      }
+    : { borderWidth: '1px', borderColor: 'var(--color-border)' };
+  
   return (
-    <div className={isHome ? "rounded-xl border border-border bg-surface p-5" : ""}>
+    <div 
+      className={`${isHome ? "rounded-xl bg-surface p-5 relative" : "rounded-lg bg-surface relative"}`}
+      style={{ ...borderStyle, borderStyle: 'solid' }}
+    >
+      {/* Group event label */}
+      {eventKind === 'group_event' && (
+        <div className={`${isHome ? "absolute top-3 right-3" : "absolute top-2 right-2"}`}>
+          <span 
+            className="text-[11px] font-normal tracking-wide uppercase"
+            style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
+          >
+            Group event
+          </span>
+        </div>
+      )}
       {/* Header: Label + Details button (Home variant only) */}
       {isHome && headerLabel && (
         <div className="flex items-center justify-between gap-3 mb-3">

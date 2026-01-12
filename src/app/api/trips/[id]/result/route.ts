@@ -159,10 +159,11 @@ export async function POST(
       .eq("id", trip.id)
       .eq("status", "open"); // Only update if currently open
 
-    // Invalidate trips cache
+    // Invalidate scoped cache tags
     try {
-      // @ts-expect-error - revalidateTag signature may vary by Next.js version
-      revalidateTag(CACHE_TAG);
+      (revalidateTag as any)(`trips:group:${groupId}`);
+      (revalidateTag as any)(`trip:${trip.id}`);
+      (revalidateTag as any)(`results:trip:${trip.id}`);
     } catch {
       // Cache will expire via TTL if revalidation fails
     }

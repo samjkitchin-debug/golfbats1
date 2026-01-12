@@ -65,10 +65,10 @@ export async function POST(
     }
 
     // Idempotent: return success even if no rows were deleted (already left)
-    // Invalidate trips cache
+    // Invalidate scoped cache tags
     try {
-      // @ts-expect-error - revalidateTag signature may vary by Next.js version
-      revalidateTag(CACHE_TAG);
+      (revalidateTag as any)(`trips:group:${trip.group_id}`);
+      (revalidateTag as any)(`trip:${trip.id}`);
     } catch {
       // Cache will expire via TTL if revalidation fails
     }
