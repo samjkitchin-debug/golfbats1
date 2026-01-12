@@ -278,7 +278,7 @@ export default function MembersPage() {
               }}
               className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors ${
                 selectedLetterRange === "all"
-                  ? "bg-foreground text-white border-foreground"
+                  ? "bg-brand-green text-white border-foreground"
                   : "bg-surface text-foreground border-border hover:bg-background"
               }`}
             >
@@ -298,7 +298,7 @@ export default function MembersPage() {
                 }}
                 className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors ${
                   selectedLetterRange === range
-                    ? "bg-foreground text-white border-foreground"
+                    ? "bg-brand-green text-white border-foreground"
                     : "bg-surface text-foreground border-border hover:bg-background"
                 }`}
               >

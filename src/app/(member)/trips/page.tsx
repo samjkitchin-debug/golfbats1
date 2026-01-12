@@ -670,7 +670,7 @@ export default function TripsListPage() {
                   onClick={() => {
                     router.push(`/me?highlight=${completionStatus.missingFields.join(',')}`);
                   }}
-                  className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-white hover:opacity-95"
+                  className="rounded-md bg-brand-green px-3 py-1.5 text-xs font-medium text-white hover:opacity-95"
                 >
                   Complete now
                 </button>
@@ -885,7 +885,7 @@ export default function TripsListPage() {
                   router.push(`/me?highlight=${completionPrompt.missingFields.join(',')}`);
                   setCompletionPrompt(null);
                 }}
-                className="flex-1 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
               >
                 Complete now
               </button>

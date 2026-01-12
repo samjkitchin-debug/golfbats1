@@ -75,7 +75,7 @@ export default function AdminTabs({ groupSlug, pendingCount }: AdminTabsProps) {
             href={tab.href}
             className={`relative rounded-md px-3 py-2 text-sm font-medium transition-colors ${
               isActive(tab.href)
-                ? "bg-foreground text-white"
+                ? "bg-brand-green text-white"
                 : "text-foreground hover:bg-background"
             }`}
           >
@@ -103,7 +103,7 @@ export default function AdminTabs({ groupSlug, pendingCount }: AdminTabsProps) {
             href={tab.href}
             className={`relative shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
               isActive(tab.href)
-                ? "bg-foreground text-white"
+                ? "bg-brand-green text-white"
                 : "text-foreground hover:bg-background"
             }`}
           >
@@ -128,7 +128,7 @@ export default function AdminTabs({ groupSlug, pendingCount }: AdminTabsProps) {
             onClick={() => setMoreMenuOpen(!moreMenuOpen)}
             className={`rounded-md px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
               moreMenuTabs.some((tab) => isActive(tab.href))
-                ? "bg-foreground text-white"
+                ? "bg-brand-green text-white"
                 : "text-foreground hover:bg-background"
             }`}
           >

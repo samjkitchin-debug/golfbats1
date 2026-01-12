@@ -2488,7 +2488,7 @@ export default function AdminTripPage() {
               </div>
               <button
                 onClick={() => onGenerateFlights(false)}
-                className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               >
                 Generate flights
               </button>
@@ -2581,7 +2581,7 @@ export default function AdminTripPage() {
                     // TODO: Open Edit Setup modal for basics
                     alert("Edit basics - coming soon");
                   }}
-                  className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                  className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 >
                   Edit Basics
                 </button>
@@ -2718,7 +2718,7 @@ export default function AdminTripPage() {
                     notes: tripToUse.logistics?.notes || undefined,
                   });
                 }}
-                className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               >
                 Save Itinerary
               </button>
@@ -2759,7 +2759,7 @@ export default function AdminTripPage() {
               {!primaryActionData && currentPhaseId === "signupsClosed" && logisticsEnabled && hasLogisticsData && (
                 <button
                   onClick={moveToGameDay}
-                  className="hidden md:inline-flex rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] items-center"
+                  className="hidden md:inline-flex rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 min-h-[44px] items-center"
                 >
                   Start round →
                 </button>
@@ -2767,7 +2767,7 @@ export default function AdminTripPage() {
               {!primaryActionData && currentPhaseId === "gameDay" && (
                 <button
                   onClick={moveToResults}
-                  className="hidden md:inline-flex rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] items-center"
+                  className="hidden md:inline-flex rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 min-h-[44px] items-center"
                 >
                   Round complete →
                 </button>
@@ -2776,7 +2776,7 @@ export default function AdminTripPage() {
                 <button
                   onClick={onPublishResults}
                   disabled={!phase3Form.leaderboard.trim()}
-                  className="hidden md:inline-flex rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] items-center"
+                  className="hidden md:inline-flex rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] items-center"
                 >
                   Publish & archive →
                 </button>
@@ -2849,7 +2849,7 @@ export default function AdminTripPage() {
                     )}
                     <button
                       onClick={executePrimaryAction}
-                      className="w-full md:w-auto rounded-lg bg-foreground px-4 py-3 md:py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] flex items-center justify-center"
+                      className="w-full md:w-auto rounded-lg bg-brand-green px-4 py-3 md:py-2 text-sm font-medium text-white hover:opacity-90 min-h-[44px] flex items-center justify-center"
                     >
                       {primaryActionData.actionType === "navigate" && primaryActionData.actionPhase === 2 ? "Post logistics" :
                        primaryActionData.actionType === "roundComplete" ? "Round complete" :
@@ -3292,7 +3292,7 @@ export default function AdminTripPage() {
                   <button
                     onClick={onPostPhase0Trip}
                     disabled={!phase0Form.tripName?.trim() || !phase0Form.date || !phase0Form.courseId || !phase0Form.cutoffDate}
-                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Save trip
                   </button>
@@ -3326,7 +3326,7 @@ export default function AdminTripPage() {
                   </button>
                   <button
                     onClick={moveToOpenForSignups}
-                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                   >
                     Open signups →
                   </button>
@@ -3343,7 +3343,7 @@ export default function AdminTripPage() {
                   <button
                     onClick={onSavePhase0Changes}
                     disabled={!phase0Form.date || !phase0Form.courseId}
-                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Save changes
                   </button>
@@ -3442,7 +3442,7 @@ export default function AdminTripPage() {
                   {!decisionLogisticsPosted && (
                     <button
                       onClick={onSaveDecisionLogistics}
-                      className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                      className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                     >
                       Save logistics
                     </button>
@@ -3483,7 +3483,7 @@ export default function AdminTripPage() {
                       </button>
                       <button
                         onClick={onSaveDecisionLogistics}
-                        className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                        className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                       >
                         Save changes
                       </button>
@@ -3497,7 +3497,7 @@ export default function AdminTripPage() {
           <div className="mt-6 flex justify-end">
             <button
               onClick={moveToSignupsClosed}
-              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
             >
               Close signups →
             </button>
@@ -3543,7 +3543,7 @@ export default function AdminTripPage() {
           </div>
           <div className="mt-6 flex justify-end">
             <button
-              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               onClick={moveToGameDay}
             >
               Start round →
@@ -3618,7 +3618,7 @@ export default function AdminTripPage() {
                 {!phase2Posted && (
                   <button
                     onClick={onPostLogistics}
-                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                   >
                     Save logistics
                   </button>
@@ -3643,7 +3643,7 @@ export default function AdminTripPage() {
                 {/* Export for organiser / booking contact - show if export is enabled */}
                 {exportEnabled && (
                   <button
-                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                     onClick={onExportTravelAgentCsv}
                   >
                     Export for organiser / booking contact (CSV)
@@ -3652,7 +3652,7 @@ export default function AdminTripPage() {
                 {/* Passport export - show if exportAgentPack is enabled (e.g., cross_border_agent) */}
                 {exportAgentPackEnabled && (
                   <button
-                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                     onClick={async () => {
                       if (!groupId || !tripToUse) return;
                       try {
@@ -3741,7 +3741,7 @@ export default function AdminTripPage() {
                     Edit
                   </button>
                   <button
-                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                     onClick={moveToGameDay}
                   >
                     Start round →
@@ -3758,7 +3758,7 @@ export default function AdminTripPage() {
                   </button>
                   <button
                     onClick={onSavePhase2Changes}
-                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                   >
                     Save changes
                   </button>
@@ -3787,7 +3787,7 @@ export default function AdminTripPage() {
           <div className="mt-6 flex justify-end">
             <button
               onClick={moveToResults}
-              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
             >
               Round complete →
             </button>
@@ -3847,7 +3847,7 @@ export default function AdminTripPage() {
               <button
                 onClick={onPublishResults}
                 disabled={!phase3Form.leaderboard.trim()}
-                className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Publish & archive →
               </button>

@@ -156,7 +156,7 @@ export default function AdminCoursesPage() {
 
           <button
             onClick={handleAddCourse}
-            className="mt-1 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+            className="mt-1 rounded-md bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
           >
             Add course
           </button>
@@ -527,7 +527,7 @@ function CourseCard({
           <div className="mt-5 flex gap-2">
             <button
               onClick={handleSaveChanges}
-              className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-md bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               {saved ? "Changes Saved" : "Save Changes"}
             </button>

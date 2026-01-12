@@ -36,6 +36,13 @@
   --color-brand-red: var(--color-brand-green);
   --color-brand-black: var(--color-foreground);
 
+  /* Button semantic tokens */
+  --color-btn-primary-bg: var(--color-brand-green);
+  --color-btn-primary-text: #FFFFFF;
+  --color-btn-secondary-bg: var(--color-surface);
+  --color-btn-secondary-text: var(--color-foreground);
+  --color-btn-border: var(--color-border);
+
   /* Fonts — universal */
   --font-sans: var(--font-aptos), "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
     BlinkMacSystemFont, sans-serif;

@@ -12,7 +12,7 @@ function AdminNavLink({ href, label }: { href: string; label: string }) {
       href={href}
       className={[
         "rounded-lg border px-3 py-1.5 text-sm",
-        active ? "border-foreground bg-foreground text-white" : "border-border bg-surface text-foreground",
+        active ? "border-brand-green bg-brand-green text-white" : "border-border bg-surface text-foreground",
       ].join(" ")}
     >
       {label}
