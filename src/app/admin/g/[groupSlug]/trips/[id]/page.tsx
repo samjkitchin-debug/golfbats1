@@ -238,8 +238,10 @@ type NextStepItem = {
 function getNextSteps(
   trip: Trip,
   currentPhaseId: PhaseId,
+  logisticsEnabled: boolean,
   hasLogisticsData: boolean,
-  formatDateForDisplay: (date: string) => string
+  formatDateForDisplay: (date: string) => string,
+  formatBeforeTripText: (date: string | undefined, days: number) => string
 ): NextStepItem[] {
   const steps: NextStepItem[] = [];
 
@@ -282,19 +284,22 @@ function getNextSteps(
   }
 
   if (currentPhaseId === "signupsClosed") {
-    if (!hasLogisticsData) {
-      steps.push({
-        label: "Add logistics (travel details, meet time, meeting point)",
-        status: "todo",
-        kind: "required",
-        metaText: formatBeforeTripText(trip.date, 4),
-      });
-    } else {
-      steps.push({
-        label: "Add logistics (travel details, meet time, meeting point)",
-        status: "done",
-        kind: "required",
-      });
+    // Only show logistics step if logistics is enabled
+    if (logisticsEnabled) {
+      if (!hasLogisticsData) {
+        steps.push({
+          label: "Add logistics (travel details, meet time, meeting point)",
+          status: "todo",
+          kind: "required",
+          metaText: formatBeforeTripText(trip.date, 4),
+        });
+      } else {
+        steps.push({
+          label: "Add logistics (travel details, meet time, meeting point)",
+          status: "done",
+          kind: "required",
+        });
+      }
     }
     steps.push({
         label: "Export for organiser / booking contact (CSV)",
@@ -368,6 +373,7 @@ type PrimaryActionData = {
 function getPrimaryNextAction(
   trip: Trip,
   currentPhaseId: PhaseId,
+  logisticsEnabled: boolean,
   hasLogisticsData: boolean,
   formatDateForDisplay: (date: string) => string,
   formatBeforeTripText: (date: string | undefined, days: number) => string
@@ -382,6 +388,10 @@ function getPrimaryNextAction(
   }
 
   if (currentPhaseId === "signupsClosed") {
+    // Only show logistics action if logistics is enabled by recipe/scenario
+    if (!logisticsEnabled) {
+      return null; // Logistics not required for this trip
+    }
     if (!hasLogisticsData) {
       return {
         label: "Add logistics (travel details, meet time, meeting point)",
@@ -1346,6 +1356,7 @@ export default function AdminTripPage() {
   const primaryActionData = getPrimaryNextAction(
     tripToUse,
     currentPhaseId,
+    logisticsEnabled,
     hasLogisticsData,
     formatDateForDisplay,
     formatBeforeTripText
@@ -2745,7 +2756,7 @@ export default function AdminTripPage() {
             {/* Actions - Desktop: show primary CTA if needed, Mobile: only More */}
             <div className="flex items-center gap-2">
               {/* Primary CTA - Desktop only, only if there's no primary action in "Next step" section */}
-              {!primaryActionData && currentPhaseId === "signupsClosed" && hasLogisticsData && (
+              {!primaryActionData && currentPhaseId === "signupsClosed" && logisticsEnabled && hasLogisticsData && (
                 <button
                   onClick={moveToGameDay}
                   className="hidden md:inline-flex rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-95 min-h-[44px] items-center"
@@ -2815,7 +2826,7 @@ export default function AdminTripPage() {
           )}
 
           {/* NEXT STEP (Primary Section - Mobile: Above progress, Desktop: Current position) */}
-          {tripToUse.status !== "cancelled" && (primaryActionData || (currentPhaseId === "signupsClosed" && hasLogisticsData) || optionalActionsData.length > 0) && (
+          {tripToUse.status !== "cancelled" && (primaryActionData || (currentPhaseId === "signupsClosed" && logisticsEnabled && hasLogisticsData) || optionalActionsData.length > 0) && (
             <div className="border-t border-border pt-4 md:order-1">
               <h3 className="text-sm font-semibold text-foreground mb-3">Next step</h3>
               
@@ -2847,7 +2858,7 @@ export default function AdminTripPage() {
                     </button>
                   </div>
                 </div>
-              ) : currentPhaseId === "signupsClosed" && hasLogisticsData ? (
+              ) : currentPhaseId === "signupsClosed" && logisticsEnabled && hasLogisticsData ? (
                 <div className="flex items-start gap-3">
                   <svg className="w-5 h-5 text-brand-green mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2862,7 +2873,7 @@ export default function AdminTripPage() {
               
               {/* Optional actions - Info only, not clickable */}
               {optionalActionsData.length > 0 && (
-                <div className={`${primaryActionData || (currentPhaseId === "signupsClosed" && hasLogisticsData) ? "mt-4 pt-4 border-t border-border" : ""}`}>
+                <div className={`${primaryActionData || (currentPhaseId === "signupsClosed" && logisticsEnabled && hasLogisticsData) ? "mt-4 pt-4 border-t border-border" : ""}`}>
                   <div className="space-y-2">
                     {optionalActionsData.map((action, index) => (
                       <div
@@ -3065,6 +3076,7 @@ export default function AdminTripPage() {
           )}
 
           {/* Dev Phase Navigation - Keep for development */}
+          {process.env.NODE_ENV !== "production" && (
           <div className="flex items-center gap-1 text-xs text-muted border-t border-border pt-3">
             <span className="text-muted">Dev:</span>
             <button
@@ -3117,6 +3129,7 @@ export default function AdminTripPage() {
               A
             </button>
           </div>
+          )}
         </div>
       </section>
 

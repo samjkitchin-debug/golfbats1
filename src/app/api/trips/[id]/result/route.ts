@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
+import { isEmailAdmin } from "@/app/lib/auth";
 
 const CACHE_TAG = "trips";
 
@@ -15,22 +16,73 @@ export async function POST(
 ) {
   try {
     const params = await Promise.resolve(context.params);
+    
+    // Create two clients: one for auth/reading with RLS, one for writes bypassing RLS
     const supabase = await createSupabaseServerClient();
+    const supabaseService = await createSupabaseServiceClient();
+
+    // Authenticate
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
 
     const legacyId = Number(params.id);
     if (!Number.isFinite(legacyId)) {
       return NextResponse.json({ error: "Invalid trip ID." }, { status: 400 });
     }
 
-    // Find trip by legacy_id
+    // Find trip by legacy_id (with RLS - user must have access)
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
-      .select("id")
+      .select("id, group_id, trip_origin, created_by_member_id")
       .eq("legacy_id", legacyId)
       .single();
 
     if (tripErr || !trip) {
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+    }
+
+    // Authorize: check if user can publish results for this trip
+    const groupId = trip.group_id;
+    const tripOrigin = trip.trip_origin || "group";
+    const createdByMemberId = trip.created_by_member_id;
+
+    // Get user's email for platform admin check
+    const { data: { user: userWithEmail } } = await supabase.auth.getUser();
+    const userEmail = userWithEmail?.email;
+    const isPlatformAdmin = isEmailAdmin(userEmail);
+
+    // Get group member info
+    const { data: groupMember } = await supabase
+      .from("group_members")
+      .select("role, status")
+      .eq("group_id", groupId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const isGroupAdmin =
+      isPlatformAdmin ||
+      (groupMember && groupMember.role === "admin" && groupMember.status === "approved") ||
+      false;
+
+    // Authorization rules
+    let isAuthorized = false;
+    if (tripOrigin === "group") {
+      isAuthorized = isGroupAdmin;
+    } else if (tripOrigin === "member") {
+      // Allow if user is the creator, or is group admin, or is platform admin
+      isAuthorized = 
+        (createdByMemberId && user.id === createdByMemberId) ||
+        isGroupAdmin ||
+        isPlatformAdmin;
+    } else {
+      // Fallback: require group admin
+      isAuthorized = isGroupAdmin;
+    }
+
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
     const body = await req.json();
@@ -45,8 +97,8 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Check if result already exists
-    const { data: existingResult } = await supabase
+    // Check if result already exists (using service client for reads that might be RLS-restricted)
+    const { data: existingResult } = await supabaseService
       .from("trip_results")
       .select("id")
       .eq("trip_id", trip.id)
@@ -54,8 +106,8 @@ export async function POST(
 
     const resultId = existingResult?.id || crypto.randomUUID();
 
-    // Upsert result
-    const { error: resultErr } = await supabase.from("trip_results").upsert(
+    // Upsert result using service client (bypasses RLS)
+    const { error: resultErr } = await supabaseService.from("trip_results").upsert(
       {
         id: resultId,
         trip_id: trip.id,
@@ -75,10 +127,10 @@ export async function POST(
       );
     }
 
-    // Delete existing result_rows
-    await supabase.from("result_rows").delete().eq("result_id", resultId);
+    // Delete existing result_rows using service client
+    await supabaseService.from("result_rows").delete().eq("result_id", resultId);
 
-    // Insert new result_rows
+    // Insert new result_rows using service client
     const resultRows = leaderboard
       .map((entry, index) => ({
         id: crypto.randomUUID(),
@@ -90,7 +142,7 @@ export async function POST(
       }))
       .sort((a, b) => b.position - a.position); // Sort by points descending
 
-    const { error: rowsErr } = await supabase.from("result_rows").insert(resultRows);
+    const { error: rowsErr } = await supabaseService.from("result_rows").insert(resultRows);
 
     if (rowsErr) {
       return NextResponse.json(
@@ -99,8 +151,8 @@ export async function POST(
       );
     }
 
-    // Archive trip if not already archived
-    await supabase
+    // Archive trip if not already archived (using service client)
+    await supabaseService
       .from("trips")
       .update({ status: "archived", updated_at: now })
       .eq("id", trip.id)
