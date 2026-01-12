@@ -650,7 +650,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.bookingResponsibility === undefined && answers.coordinationOwner === "self"
-                      ? "border-foreground bg-foreground text-white"
+                      ? "border-brand-green bg-brand-green text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -667,7 +667,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.bookingResponsibility === "organiser" && answers.coordinationOwner === "self"
-                      ? "border-foreground bg-foreground text-white"
+                      ? "border-brand-green bg-brand-green text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -684,7 +684,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.bookingResponsibility === "agent" && answers.coordinationOwner === "self"
-                      ? "border-foreground bg-foreground text-white"
+                      ? "border-brand-green bg-brand-green text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -701,7 +701,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.bookingResponsibility === "agent" && answers.coordinationOwner === "external"
-                      ? "border-foreground bg-foreground text-white"
+                      ? "border-brand-green bg-brand-green text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -823,7 +823,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.travelMode === "own"
-                      ? "border-foreground bg-foreground text-white"
+                      ? "border-brand-green bg-brand-green text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -834,7 +834,7 @@ export default function CreateTripFlowModal({
                   onClick={() => setAnswers((prev) => ({ ...prev, travelMode: "together" }))}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.travelMode === "together"
-                      ? "border-foreground bg-foreground text-white"
+                      ? "border-brand-green bg-brand-green text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -845,7 +845,7 @@ export default function CreateTripFlowModal({
                   onClick={() => setAnswers((prev) => ({ ...prev, travelMode: "mixed", overnight: undefined, carpool: undefined }))}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.travelMode === "mixed"
-                      ? "border-foreground bg-foreground text-white"
+                      ? "border-brand-green bg-brand-green text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -861,7 +861,7 @@ export default function CreateTripFlowModal({
                     onClick={() => setAnswers((prev) => ({ ...prev, overnight: false }))}
                     className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
                       answers.overnight === false
-                        ? "border-foreground bg-foreground text-white"
+                        ? "border-brand-green bg-brand-green text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
@@ -872,7 +872,7 @@ export default function CreateTripFlowModal({
                     onClick={() => setAnswers((prev) => ({ ...prev, overnight: true }))}
                     className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
                       answers.overnight === true
-                        ? "border-foreground bg-foreground text-white"
+                        ? "border-brand-green bg-brand-green text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
@@ -932,7 +932,7 @@ export default function CreateTripFlowModal({
                     onClick={() => setCutoffRule("nightBefore")}
                     className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
                       cutoffRule === "nightBefore"
-                        ? "border-foreground bg-foreground text-white"
+                        ? "border-brand-green bg-brand-green text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
@@ -946,7 +946,7 @@ export default function CreateTripFlowModal({
                     onClick={() => setCutoffRule("daysBefore")}
                     className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
                       cutoffRule === "daysBefore"
-                        ? "border-foreground bg-foreground text-white"
+                        ? "border-brand-green bg-brand-green text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
