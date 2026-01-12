@@ -543,7 +543,7 @@ export default function HomePage() {
         <div className="grid grid-cols-[minmax(0,1fr)_120px] sm:grid-cols-[minmax(0,1fr)_140px] md:grid-cols-[minmax(0,1fr)_160px] gap-3">
           {/* Next Trip Card (left, flexible width, equal height with Handicap) */}
           <div 
-            className="min-w-0 rounded-2xl bg-surface p-4 sm:p-5 md:p-6 shadow-sm flex flex-col h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] relative overflow-hidden"
+            className="min-w-0 rounded-2xl p-4 sm:p-5 md:p-6 shadow-sm flex flex-col h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] relative overflow-hidden next-trip-card-warm"
             style={{
               borderWidth: '1px',
               borderColor: primaryTrip?.tripOrigin === 'member' 
@@ -552,9 +552,9 @@ export default function HomePage() {
               borderStyle: 'solid',
             }}
           >
-            {/* Subtle warm surface tint overlay */}
+            {/* Subtle warm surface tint overlay (dark mode only) */}
             <div 
-              className="absolute inset-0 pointer-events-none"
+              className="absolute inset-0 pointer-events-none dark-mode-warm-overlay"
               style={{
                 background: 'var(--sunrise-warm-surface)',
                 borderRadius: 'inherit',
@@ -580,8 +580,8 @@ export default function HomePage() {
             
             {/* Date */}
             <div className="mb-2 sm:mb-3 text-sm sm:text-base flex items-center gap-1.5 relative z-10">
-              <span className="inline-block w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--sunrise-warm-surface)', opacity: 0.8 }} />
-              <span style={{ color: 'var(--sunrise-warm-text)' }}>{formatTripDate(primaryTrip)}</span>
+              <span className="inline-block w-1 h-1 rounded-full date-dot-accent" />
+              <span className="date-text-warm">{formatTripDate(primaryTrip)}</span>
             </div>
             
             {/* Course details (if available) */}
@@ -670,8 +670,8 @@ export default function HomePage() {
               {secondaryTrip.name || secondaryCourseText?.title || (secondaryTrip ? (getGolfNoun(secondaryTrip) === "trip" ? "Trip" : "Round") : "Round")}
             </div>
             <div className="text-xs text-muted flex items-center gap-1.5">
-              <span className="inline-block w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--sunrise-warm-surface)', opacity: 0.8 }} />
-              <span style={{ color: 'var(--sunrise-warm-text)' }}>{formatTripDate(secondaryTrip)}</span>
+              <span className="inline-block w-1 h-1 rounded-full date-dot-accent" />
+              <span className="date-text-warm">{formatTripDate(secondaryTrip)}</span>
             </div>
             {secondaryCourseText && secondaryCourseText.title !== "Course TBD" && (
               <div className="mt-1 text-xs text-muted/80">

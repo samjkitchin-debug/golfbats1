@@ -32,11 +32,11 @@ export default function BottomNav() {
             const active = isActivePath(pathname, item.href);
 
             return (
-              <li key={item.href} className="flex-1">
+              <li key={item.href} className="flex-1 relative">
                 <Link
                   href={item.href}
-                  className={`block px-2 py-3 text-center text-sm ${
-                    active ? "font-semibold text-brand-green" : "text-muted hover:text-foreground"
+                  className={`block px-2 py-3 text-center text-sm relative ${
+                    active ? "font-semibold text-brand-green nav-active-warm" : "text-muted hover:text-foreground"
                   }`}
                 >
                   {item.label}
