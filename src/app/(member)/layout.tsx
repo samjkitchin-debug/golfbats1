@@ -26,7 +26,7 @@ export default async function MemberLayout({ children }: { children: React.React
     <div className="min-h-dvh bg-background">
       {/* Header */}
       <header className="sticky top-0 z-20 bg-surface border-b border-border">
-        <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
+        <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 pt-3 pb-2">
           <div className="flex w-16 justify-start">
             <MainNav />
           </div>
