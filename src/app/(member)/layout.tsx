@@ -22,8 +22,15 @@ export default async function MemberLayout({ children }: { children: React.React
   return (
     <div className="min-h-dvh bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-surface border-b border-border">
-        <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 pt-3 pb-2">
+      <header className="sticky top-0 z-20 bg-surface border-b border-border relative">
+        {/* Subtle vertical gradient overlay (sunrise warmth) */}
+        <div 
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to bottom, transparent 0%, var(--sunrise-warm-overlay) 100%)',
+          }}
+        />
+        <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 pt-3 pb-2 relative">
           <div className="flex w-16 justify-start">
             <MainNav />
           </div>

@@ -33,6 +33,11 @@
   --event-official-border-opacity: 0.65; /* 65% opacity for gilt effect */
   --event-official-label: var(--color-muted); /* Label text color */
 
+  /* Sunrise energy lift (dark mode warmth) */
+  --sunrise-warm-overlay: rgba(249, 115, 22, 0.06); /* 6% sunrise warmth for header gradient */
+  --sunrise-warm-surface: rgba(249, 115, 22, 0.04); /* 4% sunrise warmth for card surface */
+  --sunrise-warm-text: #F9F7F4; /* Warm off-white for text accents */
+
   /* Danger colors (errors, destructive actions) */
   --color-danger: #DC2626;
   --color-danger-light: #FEE2E2;
@@ -65,6 +70,9 @@
     --muted: #9CA3AF;
     /* Danger colors adjusted for dark mode */
     --color-danger-light: #7F1D1D;
+    /* Sunrise energy lift adjusted for dark mode (slightly more visible) */
+    --sunrise-warm-overlay: rgba(249, 115, 22, 0.08); /* 8% sunrise warmth for header gradient */
+    --sunrise-warm-surface: rgba(249, 115, 22, 0.05); /* 5% sunrise warmth for card surface */
   }
 }
 

@@ -543,7 +543,7 @@ export default function HomePage() {
         <div className="grid grid-cols-[minmax(0,1fr)_120px] sm:grid-cols-[minmax(0,1fr)_140px] md:grid-cols-[minmax(0,1fr)_160px] gap-3">
           {/* Next Trip Card (left, flexible width, equal height with Handicap) */}
           <div 
-            className="min-w-0 rounded-2xl bg-surface p-4 sm:p-5 md:p-6 shadow-sm flex flex-col h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] relative"
+            className="min-w-0 rounded-2xl bg-surface p-4 sm:p-5 md:p-6 shadow-sm flex flex-col h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] relative overflow-hidden"
             style={{
               borderWidth: '1px',
               borderColor: primaryTrip?.tripOrigin === 'member' 
@@ -552,9 +552,17 @@ export default function HomePage() {
               borderStyle: 'solid',
             }}
           >
+            {/* Subtle warm surface tint overlay */}
+            <div 
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background: 'var(--sunrise-warm-surface)',
+                borderRadius: 'inherit',
+              }}
+            />
             {/* Group event label */}
             {primaryTrip && primaryTrip.tripOrigin !== 'member' && (
-              <div className="absolute top-3 right-3">
+              <div className="absolute top-3 right-3 z-10">
                 <span 
                   className="text-[11px] font-normal tracking-wide uppercase"
                   style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
@@ -563,21 +571,22 @@ export default function HomePage() {
                 </span>
               </div>
             )}
-            <div className="mb-3 sm:mb-4 text-xs font-medium text-muted uppercase tracking-wide">Next trip</div>
+            <div className="mb-3 sm:mb-4 text-xs font-medium text-muted uppercase tracking-wide relative z-10">Next trip</div>
             
             {/* Trip name or course */}
-            <div className="mb-2 text-lg sm:text-xl font-semibold text-foreground">
+            <div className="mb-2 text-lg sm:text-xl font-semibold text-foreground relative z-10">
               {primaryTrip.name || primaryCourseText.title || (getGolfNoun(primaryTrip) === "trip" ? "Trip" : "Round")}
             </div>
             
             {/* Date */}
-            <div className="mb-2 sm:mb-3 text-sm sm:text-base text-foreground">
-              {formatTripDate(primaryTrip)}
+            <div className="mb-2 sm:mb-3 text-sm sm:text-base flex items-center gap-1.5 relative z-10">
+              <span className="inline-block w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--sunrise-warm-surface)', opacity: 0.8 }} />
+              <span style={{ color: 'var(--sunrise-warm-text)' }}>{formatTripDate(primaryTrip)}</span>
             </div>
             
             {/* Course details (if available) */}
             {primaryCourseText.title !== "Course TBD" && (
-              <div className="mb-2 sm:mb-3 text-xs sm:text-sm text-muted">
+              <div className="mb-2 sm:mb-3 text-xs sm:text-sm text-muted relative z-10">
                 {primaryCourseText.title}
                 {primaryCourseText.detail && (
                   <span className="ml-2">· {primaryCourseText.detail}</span>
@@ -586,7 +595,7 @@ export default function HomePage() {
             )}
             
             {/* Placeholder CTA area - push to bottom */}
-            <div className="mt-auto rounded-lg border border-border bg-surface/50 px-3 sm:px-4 py-2 sm:py-3">
+            <div className="mt-auto rounded-lg border border-border bg-surface/50 px-3 sm:px-4 py-2 sm:py-3 relative z-10">
               <div className="text-xs sm:text-sm text-muted">Placeholder: Trip actions will appear here</div>
             </div>
           </div>
@@ -598,8 +607,11 @@ export default function HomePage() {
               className="rounded-xl border border-border bg-surface/50 p-3 sm:p-4 flex flex-col shrink-0 h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] hover:bg-surface/70 transition-colors"
             >
               <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-2 sm:mb-3">Your handicap</div>
-              <div className="text-2xl sm:text-3xl md:text-4xl font-semibold text-foreground mb-auto">
-                {typeof declaredHandicap === 'number' ? declaredHandicap.toFixed(1) : declaredHandicap}
+              <div className="mb-auto relative">
+                <div className="text-2xl sm:text-3xl md:text-4xl font-semibold" style={{ color: 'var(--sunrise-warm-text)' }}>
+                  {typeof declaredHandicap === 'number' ? declaredHandicap.toFixed(1) : declaredHandicap}
+                </div>
+                <div className="absolute -bottom-1 left-0 right-0 h-px" style={{ backgroundColor: 'var(--sunrise-warm-surface)', opacity: 0.6 }} />
               </div>
               <div className="mt-auto text-xs text-muted">Used for flights and scoring</div>
             </Link>
@@ -609,7 +621,7 @@ export default function HomePage() {
               className="rounded-xl border border-border bg-surface/50 p-3 sm:p-4 flex flex-col shrink-0 h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] hover:bg-surface/70 transition-colors"
             >
               <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-2 sm:mb-3">Your handicap</div>
-              <div className="text-2xl sm:text-3xl md:text-4xl font-semibold text-foreground mb-auto">Not set</div>
+              <div className="text-2xl sm:text-3xl md:text-4xl font-semibold mb-auto" style={{ color: 'var(--sunrise-warm-text)' }}>Not set</div>
               <div className="mt-auto text-xs text-muted">Add it in Me</div>
             </Link>
           )}
@@ -657,8 +669,9 @@ export default function HomePage() {
             <div className="mb-1 text-sm font-medium text-foreground">
               {secondaryTrip.name || secondaryCourseText?.title || (secondaryTrip ? (getGolfNoun(secondaryTrip) === "trip" ? "Trip" : "Round") : "Round")}
             </div>
-            <div className="text-xs text-muted">
-              {formatTripDate(secondaryTrip)}
+            <div className="text-xs text-muted flex items-center gap-1.5">
+              <span className="inline-block w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--sunrise-warm-surface)', opacity: 0.8 }} />
+              <span style={{ color: 'var(--sunrise-warm-text)' }}>{formatTripDate(secondaryTrip)}</span>
             </div>
             {secondaryCourseText && secondaryCourseText.title !== "Course TBD" && (
               <div className="mt-1 text-xs text-muted/80">
