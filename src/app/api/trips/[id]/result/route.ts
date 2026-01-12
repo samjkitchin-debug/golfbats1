@@ -111,6 +111,7 @@ export async function POST(
       {
         id: resultId,
         trip_id: trip.id,
+        group_id: groupId,
         published: true,
         published_at: existingResult ? undefined : now, // Only set on first publish
         notes: notes || null,
