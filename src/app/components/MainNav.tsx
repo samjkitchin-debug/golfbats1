@@ -33,10 +33,10 @@ export default function MainNav() {
         className="inline-flex items-center justify-center text-foreground hover:text-brand-green"
       >
         <span className="sr-only">Menu</span>
-        <div className="space-y-1">
-          <span className="block h-0.5 w-[1.1rem] rounded bg-foreground" />
-          <span className="block h-0.5 w-[1.1rem] rounded bg-foreground" />
-          <span className="block h-0.5 w-[1.1rem] rounded bg-foreground" />
+        <div className="space-y-[4.8px]">
+          <span className="block h-[2.4px] w-[1.32rem] rounded bg-foreground" />
+          <span className="block h-[2.4px] w-[1.32rem] rounded bg-foreground" />
+          <span className="block h-[2.4px] w-[1.32rem] rounded bg-foreground" />
         </div>
       </button>
 
