@@ -121,9 +121,6 @@ export default function MePage() {
   // Sign out state
   const [signingOut, setSigningOut] = useState(false);
 
-  // Sign out state
-  const [signingOut, setSigningOut] = useState(false);
-
   useEffect(() => {
     document.title = "DayForeIt - Profile";
   }, []);
