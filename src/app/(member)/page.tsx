@@ -461,9 +461,16 @@ export default function HomePage() {
     const primaryCourseText = getTripCourseText(primaryTrip, courses);
     const secondaryCourseText = secondaryTrip ? getTripCourseText(secondaryTrip, courses) : null;
 
+    // Get user's RSVP status for primary trip
+    const primaryTripStatus = primaryTrip && currentUserId
+      ? primaryTrip.attendees.find((a) => a.memberId === currentUserId)?.status
+      : primaryTrip && currentUserName
+      ? primaryTrip.attendees.find((a) => a.name === currentUserName)?.status
+      : undefined;
+
     content = (
-      <div className="space-y-4">
-        {/* Host a round button */}
+      <div className="space-y-8">
+        {/* Primary Action - Host a round */}
         <div>
           <Link
             href="/host"
@@ -473,10 +480,114 @@ export default function HomePage() {
           </Link>
         </div>
 
-        {/* Happening soon - Quick rounds feed */}
+        {/* Primary Narrative - Next Thing You're Playing */}
+        <div 
+          className={`relative ${primaryTrip?.tripOrigin !== 'member' ? 'pb-4' : 'pb-2'}`}
+          style={{
+            ...(primaryTrip?.tripOrigin !== 'member' && {
+              borderWidth: '1px',
+              borderColor: 'rgba(201, 169, 97, 0.65)',
+              borderStyle: 'solid',
+              borderRadius: '0.5rem',
+              padding: '1.5rem',
+            }),
+          }}
+        >
+          {/* Group event label (only if group event) */}
+          {primaryTrip && primaryTrip.tripOrigin !== 'member' && (
+            <div className="absolute top-3 right-3">
+              <span 
+                className="text-[11px] font-normal tracking-wide uppercase"
+                style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
+              >
+                Group event
+              </span>
+            </div>
+          )}
+
+          {/* Subtle warm surface tint overlay (dark mode only, for group events) */}
+          {primaryTrip && primaryTrip.tripOrigin !== 'member' && (
+            <div 
+              className="absolute inset-0 pointer-events-none dark-mode-warm-overlay"
+              style={{
+                background: 'var(--sunrise-warm-surface)',
+                borderRadius: 'inherit',
+              }}
+            />
+          )}
+
+          {/* Trip name */}
+          <div className="text-2xl sm:text-3xl font-semibold text-foreground mb-3 relative">
+            {primaryTrip.name || primaryCourseText.title || (getGolfNoun(primaryTrip) === "trip" ? "Trip" : "Round")}
+          </div>
+          
+          {/* Date */}
+          <div className="text-base sm:text-lg flex items-center gap-1.5 mb-3 relative">
+            <span className="inline-block w-1 h-1 rounded-full date-dot-accent" />
+            <span className="date-text-warm">{formatTripDate(primaryTrip)}</span>
+          </div>
+          
+          {/* Course name */}
+          {primaryCourseText.title !== "Course TBD" && (
+            <div className="text-sm sm:text-base text-muted mb-4 relative">
+              {primaryCourseText.title}
+              {primaryCourseText.detail && (
+                <span className="ml-2">· {primaryCourseText.detail}</span>
+              )}
+            </div>
+          )}
+
+          {/* Trip actions */}
+          <div className="relative">
+            {/* Placeholder for trip actions - will be replaced with TripRsvpActions when ready */}
+            <div className="text-xs text-muted">
+              Trip actions will appear here
+            </div>
+          </div>
+        </div>
+
+        {/* Identity Companion - Handicap */}
+        <div className="text-sm text-muted">
+          {declaredHandicap !== null ? (
+            <>
+              You play off{' '}
+              <Link href="/me" className="font-medium text-foreground hover:text-brand-green">
+                {typeof declaredHandicap === 'number' ? declaredHandicap.toFixed(1) : declaredHandicap}
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link href="/me" className="font-medium text-foreground hover:text-brand-green">
+                Add your handicap
+              </Link>
+              {' '}in Me
+            </>
+          )}
+        </div>
+
+        {/* Continuation - After That */}
+        {secondaryTrip && (
+          <div className="pt-4 border-t border-border/50">
+            <div className="text-xs text-muted/70 mb-3">After that</div>
+            <div className="text-base font-medium text-foreground mb-1">
+              {secondaryTrip.name || secondaryCourseText?.title || (getGolfNoun(secondaryTrip) === "trip" ? "Trip" : "Round")}
+            </div>
+            <div className="text-sm text-muted flex items-center gap-1.5 mb-1">
+              <span className="inline-block w-1 h-1 rounded-full date-dot-accent" />
+              <span className="date-text-warm">{formatTripDateShort(secondaryTrip)}</span>
+            </div>
+            {secondaryCourseText && secondaryCourseText.title !== "Course TBD" && (
+              <div className="text-sm text-muted/80">
+                {secondaryCourseText.title}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Happening soon - Quick rounds feed (repositioned, demoted) */}
         {quickRounds.length > 0 && (
-          <div className="space-y-3">
-            <div className="text-sm font-semibold text-foreground">Happening soon</div>
+          <div className="pt-4 border-t border-border/50 space-y-2">
+            <div className="text-xs text-muted/70 mb-2">Happening soon</div>
             <div className="space-y-2">
               {quickRounds.map((trip) => {
                 const hostName = trip.createdByMemberName || "Someone";
@@ -489,7 +600,7 @@ export default function HomePage() {
                 return (
                   <div
                     key={trip.id}
-                    className="rounded-lg border border-border bg-surface p-3 flex items-center gap-3"
+                    className="rounded-lg border border-border/50 bg-surface/30 p-3 flex items-center gap-3"
                   >
                     {/* Host avatar (initials) */}
                     <div className="flex-shrink-0 w-10 h-10 rounded-full bg-brand-green/10 flex items-center justify-center text-sm font-medium text-brand-green">
@@ -525,164 +636,28 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Admin tools section (admins only) */}
+        {/* Last played (quiet, demoted) */}
+        {lastTrip && (
+          <div className="pt-4 border-t border-border/50">
+            <div className="text-xs text-muted/60">
+              Last played{' '}
+              <span className="text-foreground/70">
+                {lastTrip.name || getTripCourseText(lastTrip, courses).title}
+              </span>
+              {' '}· {formatLastTripDate(lastTrip)}
+            </div>
+          </div>
+        )}
+
+        {/* Admin tools (demoted) */}
         {isGroupAdmin && activeGroupId && (
-          <div className="space-y-2 pt-2 border-t border-border">
-            <div className="text-xs font-medium text-muted uppercase tracking-wide">Admin tools</div>
+          <div className="pt-4 border-t border-border/30">
             <Link
               href={`/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)?.slug || ''}/trips`}
-              className="block w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50 text-center"
+              className="text-xs text-muted/60 hover:text-muted"
             >
-              Organise a group trip
+              Admin: Organise a group trip →
             </Link>
-            <p className="text-xs text-muted text-center">For official group events</p>
-          </div>
-        )}
-
-        {/* Home Header: Two sibling cards - Next Trip (left) + Handicap (right) - equal heights, stays split on all screens */}
-        <div className="grid grid-cols-[minmax(0,1fr)_120px] sm:grid-cols-[minmax(0,1fr)_140px] md:grid-cols-[minmax(0,1fr)_160px] gap-3">
-          {/* Next Trip Card (left, flexible width, equal height with Handicap) */}
-          <div 
-            className="min-w-0 rounded-2xl p-4 sm:p-5 md:p-6 shadow-sm flex flex-col h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] relative overflow-hidden next-trip-card-warm"
-            style={{
-              borderWidth: '1px',
-              borderColor: primaryTrip?.tripOrigin === 'member' 
-                ? 'var(--color-border)'
-                : 'rgba(201, 169, 97, 0.65)' /* --event-official-border at 65% opacity */,
-              borderStyle: 'solid',
-            }}
-          >
-            {/* Subtle warm surface tint overlay (dark mode only) */}
-            <div 
-              className="absolute inset-0 pointer-events-none dark-mode-warm-overlay"
-              style={{
-                background: 'var(--sunrise-warm-surface)',
-                borderRadius: 'inherit',
-              }}
-            />
-            {/* Group event label */}
-            {primaryTrip && primaryTrip.tripOrigin !== 'member' && (
-              <div className="absolute top-3 right-3 z-10">
-                <span 
-                  className="text-[11px] font-normal tracking-wide uppercase"
-                  style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
-                >
-                  Group event
-                </span>
-              </div>
-            )}
-            <div className="mb-3 sm:mb-4 text-xs font-medium text-muted uppercase tracking-wide relative z-10">Next trip</div>
-            
-            {/* Trip name or course */}
-            <div className="mb-2 text-lg sm:text-xl font-semibold text-foreground relative z-10">
-              {primaryTrip.name || primaryCourseText.title || (getGolfNoun(primaryTrip) === "trip" ? "Trip" : "Round")}
-            </div>
-            
-            {/* Date */}
-            <div className="mb-2 sm:mb-3 text-sm sm:text-base flex items-center gap-1.5 relative z-10">
-              <span className="inline-block w-1 h-1 rounded-full date-dot-accent" />
-              <span className="date-text-warm">{formatTripDate(primaryTrip)}</span>
-            </div>
-            
-            {/* Course details (if available) */}
-            {primaryCourseText.title !== "Course TBD" && (
-              <div className="mb-2 sm:mb-3 text-xs sm:text-sm text-muted relative z-10">
-                {primaryCourseText.title}
-                {primaryCourseText.detail && (
-                  <span className="ml-2">· {primaryCourseText.detail}</span>
-                )}
-              </div>
-            )}
-            
-            {/* Placeholder CTA area - push to bottom */}
-            <div className="mt-auto rounded-lg border border-border bg-surface/50 px-3 sm:px-4 py-2 sm:py-3 relative z-10">
-              <div className="text-xs sm:text-sm text-muted">Placeholder: Trip actions will appear here</div>
-            </div>
-          </div>
-
-          {/* Handicap Tile (right, fixed width, equal height) */}
-          {declaredHandicap !== null ? (
-            <Link
-              href="/me"
-              className="rounded-xl border border-border bg-surface/50 p-3 sm:p-4 flex flex-col shrink-0 h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] hover:bg-surface/70 transition-colors"
-            >
-              <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-2 sm:mb-3">Your handicap</div>
-              <div className="mb-auto relative">
-                <div className="text-2xl sm:text-3xl md:text-4xl font-semibold" style={{ color: 'var(--sunrise-warm-text)' }}>
-                  {typeof declaredHandicap === 'number' ? declaredHandicap.toFixed(1) : declaredHandicap}
-                </div>
-                <div className="absolute -bottom-1 left-0 right-0 h-px" style={{ backgroundColor: 'var(--sunrise-warm-surface)', opacity: 0.6 }} />
-              </div>
-              <div className="mt-auto text-xs text-muted">Used for flights and scoring</div>
-            </Link>
-          ) : (
-            <Link
-              href="/me"
-              className="rounded-xl border border-border bg-surface/50 p-3 sm:p-4 flex flex-col shrink-0 h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] hover:bg-surface/70 transition-colors"
-            >
-              <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-2 sm:mb-3">Your handicap</div>
-              <div className="text-2xl sm:text-3xl md:text-4xl font-semibold mb-auto" style={{ color: 'var(--sunrise-warm-text)' }}>Not set</div>
-              <div className="mt-auto text-xs text-muted">Add it in Me</div>
-            </Link>
-          )}
-        </div>
-
-        {/* Last played tile (separate, below header row) */}
-        {lastTrip && (
-          <div className="rounded-lg border border-border bg-surface/50 p-2.5 w-fit">
-            <div className="text-[10px] font-medium text-muted uppercase tracking-wide mb-1">Last played</div>
-            <div className="text-xs text-foreground font-medium mb-0.5 line-clamp-1">
-              {lastTrip.name || getTripCourseText(lastTrip, courses).title}
-            </div>
-            <div className="text-[10px] text-muted">
-              {formatLastTripDate(lastTrip)}
-            </div>
-          </div>
-        )}
-
-        {/* Secondary Upcoming Trip Block (visually demoted, appears AFTER header section with increased spacing) */}
-        {secondaryTrip && (
-          <div 
-            className="mt-6 rounded-lg bg-surface/30 p-3 relative"
-            style={{
-              borderWidth: '1px',
-              borderColor: secondaryTrip.tripOrigin === 'member' 
-                ? 'var(--color-border)'
-                : 'rgba(201, 169, 97, 0.65)' /* --event-official-border at 65% opacity */,
-              borderStyle: 'solid',
-            }}
-          >
-            {/* Group event label */}
-            {secondaryTrip.tripOrigin !== 'member' && (
-              <div className="absolute top-2 right-2">
-                <span 
-                  className="text-[11px] font-normal tracking-wide uppercase"
-                  style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
-                >
-                  Group event
-                </span>
-              </div>
-            )}
-            <div className="mb-1.5 text-[10px] font-medium text-muted uppercase tracking-wide">Up next</div>
-            
-            {/* Compact trip info - reduced typography */}
-            <div className="mb-1 text-sm font-medium text-foreground">
-              {secondaryTrip.name || secondaryCourseText?.title || (secondaryTrip ? (getGolfNoun(secondaryTrip) === "trip" ? "Trip" : "Round") : "Round")}
-            </div>
-            <div className="text-xs text-muted flex items-center gap-1.5">
-              <span className="inline-block w-1 h-1 rounded-full date-dot-accent" />
-              <span className="date-text-warm">{formatTripDate(secondaryTrip)}</span>
-            </div>
-            {secondaryCourseText && secondaryCourseText.title !== "Course TBD" && (
-              <div className="mt-1 text-xs text-muted/80">
-                {secondaryCourseText.title}
-              </div>
-            )}
-            
-            {/* Placeholder info - reduced visual weight */}
-            <div className="mt-2 text-[10px] text-muted/60">
-              Placeholder: Secondary trip details
-            </div>
           </div>
         )}
       </div>
