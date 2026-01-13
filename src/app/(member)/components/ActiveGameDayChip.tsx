@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { gamedayHole, gamedayStartApi, coordinationActiveApi } from "../../lib/routes";
+import { apiJson } from "../../lib/apiClient";
 import {
-  apiJson,
-  validateCoordinationActiveResponse,
-  validateGamedayStartResponse,
-} from "../../lib/apiClient";
+  validateCoordinationActive,
+  validateGamedayStart,
+} from "../../lib/apiContracts";
 
 type ActiveGameDay = {
   tripId: string;
@@ -82,17 +82,17 @@ export default function ActiveGameDayChip() {
 
         // If /api/gameday/active returns null, try /api/coordination/active as fallback
         try {
-          const coordinationData = await apiJson<CoordinationActiveResponse>(coordinationActiveApi());
-          validateCoordinationActiveResponse(coordinationData);
-          if (coordinationData.active) {
+          const coordinationData = await apiJson(coordinationActiveApi());
+          const validated = validateCoordinationActive(coordinationData);
+          if (validated.active) {
             setActive(null);
-            setActiveCoordination(coordinationData.active);
+            setActiveCoordination(validated.active);
             setLastFetch(now);
 
             // Read hole number from localStorage (use tripId or tripLegacyId)
-            const tripIdForStorage = coordinationData.active.tripLegacyId 
-              ? String(coordinationData.active.tripLegacyId)
-              : coordinationData.active.tripId;
+            const tripIdForStorage = validated.active.tripLegacyId 
+              ? String(validated.active.tripLegacyId)
+              : validated.active.tripId;
             const lastHoleKey = `gameday:last:${tripIdForStorage}`;
             const lastHoleData = localStorage.getItem(lastHoleKey);
             if (lastHoleData) {
@@ -145,7 +145,7 @@ export default function ActiveGameDayChip() {
             method: "POST",
             body: JSON.stringify({ tripId: activeCoordination.tripId }),
           });
-          validateGamedayStartResponse(data);
+          validateGamedayStart(data);
           // Navigate after successful start
           const routeWithHole = activeCoordination.resume.route + (holeNumber > 1 ? `?hole=${holeNumber}` : '');
           router.push(routeWithHole);

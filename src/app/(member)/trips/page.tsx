@@ -15,6 +15,8 @@ import { useRouter } from "next/navigation";
 import { getGolfNoun } from "../../lib/roundNounHelper";
 import { getEffectiveCoordinationStatus } from "../../lib/tripCoordination";
 import { coordinationTripsStatusApi } from "../../lib/routes";
+import { apiJson } from "../../lib/apiClient";
+import { validateTripsStatus } from "../../lib/apiContracts";
 
 // Helper function to check if cutoff has passed (11:59pm SGT on cutoff date)
 function isCutoffPassed(cutoffAt: string | undefined): boolean {
@@ -469,17 +471,15 @@ export default function TripsListPage() {
         // Collect trip IDs (numeric IDs from Trip type)
         const tripIds = upcomingFiltered.map(t => t.id);
         
-        const res = await fetch(coordinationTripsStatusApi(), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ tripIds }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          setCoordinationStatusData(data);
-        } else {
+        try {
+          const statusData = await apiJson(coordinationTripsStatusApi(), {
+            method: "POST",
+            body: JSON.stringify({ tripIds }),
+          });
+          const validated = validateTripsStatus(statusData);
+          setCoordinationStatusData(validated);
+        } catch (error) {
+          console.error("Failed to fetch coordination status:", error);
           setCoordinationStatusData(null);
         }
       } catch (error) {

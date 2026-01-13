@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
+import { requireAuthedUser, requireApprovedGroupMembership } from "@/app/lib/serverAuth";
 
 /**
  * POST /api/gameday/start
@@ -29,9 +30,12 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
     
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
+    // Require authenticated user
+    let userId: string;
+    try {
+      const authResult = await requireAuthedUser();
+      userId = authResult.userId;
+    } catch (error) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
 
@@ -60,16 +64,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check group membership
-    const { data: groupMemberData } = await supabase
-      .from("group_members")
-      .select("group_id")
-      .eq("group_id", tripData.group_id)
-      .eq("user_id", user.id)
-      .eq("status", "approved")
-      .maybeSingle();
-
-    if (!groupMemberData) {
+    // Check group membership using shared helper
+    try {
+      await requireApprovedGroupMembership({
+        supabase,
+        userId,
+        groupId: tripData.group_id,
+      });
+    } catch (error) {
       return NextResponse.json(
         { ok: false, error: "forbidden" },
         { status: 403 }

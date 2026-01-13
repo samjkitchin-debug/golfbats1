@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 import { getEffectiveCoordinationStatus, type TripEffectiveCoordinationStatus } from "@/app/lib/tripCoordination";
 import { todayInSGT } from "@/app/lib/tripDates";
+import { requireAuthedUser } from "@/app/lib/serverAuth";
 
 /**
  * GET /api/coordination/active
@@ -26,9 +27,12 @@ export async function GET(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
     
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
+    // Require authenticated user
+    let userId: string;
+    try {
+      const authResult = await requireAuthedUser();
+      userId = authResult.userId;
+    } catch (error) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -36,7 +40,7 @@ export async function GET(req: Request) {
     const { data: memberData } = await supabase
       .from("members")
       .select("id")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle();
 
     if (!memberData) {
@@ -54,7 +58,7 @@ export async function GET(req: Request) {
     const { data: groupMembersData } = await supabase
       .from("group_members")
       .select("group_id")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("status", "approved");
 
     const groupIds = (groupMembersData || []).map((gm: any) => gm.group_id);

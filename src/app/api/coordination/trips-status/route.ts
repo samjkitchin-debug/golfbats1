@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 import { todayInSGT } from "@/app/lib/tripDates";
+import { requireAuthedUser } from "@/app/lib/serverAuth";
 
 /**
  * POST /api/coordination/trips-status
@@ -21,9 +22,10 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
     
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
+    // Require authenticated user
+    try {
+      await requireAuthedUser();
+    } catch (error) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

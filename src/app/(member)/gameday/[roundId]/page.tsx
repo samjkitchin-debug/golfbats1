@@ -11,11 +11,11 @@ import {
   tripFlightStartHoleApi,
   gamedayFlightStartApi,
 } from "../../../lib/routes";
+import { apiJson } from "../../../lib/apiClient";
 import {
-  apiJson,
-  validateFlightsResponse,
-  validateGamedayFlightStartResponse,
-} from "../../../lib/apiClient";
+  validateFlightsList,
+  validateFlightStart,
+} from "../../../lib/apiContracts";
 
 type GameDayData = {
   roundId: number;
@@ -130,7 +130,7 @@ export default function GameDayPage() {
 
   // Sync selectedHole to currentHoleIndex when in_progress
   useEffect(() => {
-    if (!gameDayData || gameDayData.gameday?.state !== "in_progress") return;
+    if (!gameDayData || !gameDayData.gameday || gameDayData.gameday.state !== "in_progress") return;
 
     const startHoleVal = gameDayData.gameday.startHole ?? 1;
     const holesToPlayVal = (gameDayData.gameday.holesToPlay ?? 18) as 9 | 18;
@@ -229,9 +229,9 @@ export default function GameDayPage() {
 
             // Load flights for this trip (if any)
             try {
-              const flightsJson = await apiJson(tripFlightsApi(gameDay.roundId));
-              validateFlightsResponse(flightsJson);
-              const rawFlights = Array.isArray(flightsJson.flights) ? flightsJson.flights : [];
+              const flightsJson = await apiJson<unknown>(tripFlightsApi(gameDay.roundId));
+              const validated = validateFlightsList(flightsJson);
+              const rawFlights = validated.flights;
               const flightsForMember: Flight[] = rawFlights.map((f: any) => {
                 const slots: FlightSlot[] = Array.isArray(f.slots) ? f.slots : [];
                 const isMember =
@@ -731,7 +731,7 @@ export default function GameDayPage() {
       const holeNum = playOrder[i];
       const holeInfo = coursePack.holes.find((h) => h.holeNumber === holeNum);
       
-      if (holeInfo?.par !== null && holeInfo.par !== undefined) {
+      if (holeInfo && holeInfo.par !== null && holeInfo.par !== undefined) {
         parTotal += holeInfo.par;
       }
 
@@ -851,14 +851,14 @@ export default function GameDayPage() {
   return (
     <div className="container mx-auto max-w-2xl px-4 py-8">
       {/* Remove header/logo section when in_progress - scoring surface is the hero */}
-      {gameDayData.gameday?.state !== "in_progress" && (
+      {gameDayData.gameday && gameDayData.gameday.state !== "in_progress" && (
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-foreground">GameDay</h1>
           <p className="mt-2 text-sm text-muted">Your round is live</p>
         </div>
       )}
 
-      {gameDayData.gameday?.state !== "in_progress" && (
+      {gameDayData.gameday && gameDayData.gameday.state !== "in_progress" && (
       <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
         <div>
           <div className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Round</div>
@@ -909,7 +909,7 @@ export default function GameDayPage() {
                         method: "POST",
                         body: JSON.stringify({ flightId: flight.id }),
                       });
-                      validateGamedayFlightStartResponse(data);
+                      validateFlightStart(data);
                     } catch (error) {
                       // If 409 flight_finished, still refresh GameDay data
                       if (error instanceof Error && error.message.includes("409")) {
@@ -946,7 +946,7 @@ export default function GameDayPage() {
                     // Refresh GameDay + flights after starting
                     const [gameDayRes, flightsJson] = await Promise.all([
                       fetch(`/api/gameday/${roundId}`, { credentials: "include" }),
-                      apiJson(tripFlightsApi(gameDayData.roundId)),
+                      apiJson<unknown>(tripFlightsApi(gameDayData.roundId)),
                     ]);
 
                     if (gameDayRes.ok) {
@@ -956,8 +956,8 @@ export default function GameDayPage() {
                       }
                     }
 
-                    validateFlightsResponse(flightsJson);
-                    const rawFlights = Array.isArray(flightsJson.flights) ? flightsJson.flights : [];
+                    const validated = validateFlightsList(flightsJson);
+                    const rawFlights = validated.flights;
                     const memberId = currentMemberId;
                     const updatedFlights: Flight[] = rawFlights.map((f: any) => {
                       const slots: FlightSlot[] = Array.isArray(f.slots) ? f.slots : [];
@@ -1166,7 +1166,7 @@ export default function GameDayPage() {
         )}
 
         {/* Course pack summary (if loaded) - only show when not in_progress */}
-        {coursePack && gameDayData.gameday?.state !== "in_progress" && (
+        {coursePack && gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
           <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
             <div className="text-sm font-medium text-foreground">{coursePack.course.name}</div>
             <div className="text-xs text-muted">
@@ -1178,7 +1178,7 @@ export default function GameDayPage() {
         )}
 
         {/* Course selected - show course name - only show when not in_progress */}
-        {gameDayData.courseId && gameDayData.gameday?.state !== "in_progress" && (
+        {gameDayData.courseId && gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
           <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
             <div>
               <div className="text-sm font-medium text-foreground mb-1">
@@ -1669,7 +1669,7 @@ export default function GameDayPage() {
           </div>
         )}
 
-        {gameDayData.courseId && gameDayData.gameday?.state !== "in_progress" && (
+        {gameDayData.courseId && gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
           <div>
             <div className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Course</div>
             <div className="text-sm text-foreground">
@@ -1678,7 +1678,7 @@ export default function GameDayPage() {
           </div>
         )}
 
-        {gameDayData.gameday?.state !== "in_progress" && (
+        {gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
         <>
         <div>
           <div className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Participants</div>

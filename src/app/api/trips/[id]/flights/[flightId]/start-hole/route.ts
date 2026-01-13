@@ -3,6 +3,7 @@ import {
   createSupabaseServerClient,
   createSupabaseServiceClient,
 } from "@/app/lib/supabaseServer";
+import { requireAuthedUser, requireMemberIdForUser, isGroupAdmin } from "@/app/lib/serverAuth";
 
 type Params = {
   id: string;
@@ -25,11 +26,11 @@ export async function PATCH(
     const supabase = await createSupabaseServerClient();
 
     // 1) Require auth
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    let userId: string;
+    try {
+      const authResult = await requireAuthedUser();
+      userId = authResult.userId;
+    } catch (error) {
       return NextResponse.json(
         { ok: false, error: "unauthorized" },
         { status: 401 }
@@ -52,21 +53,16 @@ export async function PATCH(
       );
     }
 
-    // Get current member ID via members.user_id mapping
-    const { data: memberRow } = await supabase
-      .from("members")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!memberRow) {
+    // Get current member ID via shared helper
+    let memberId: string;
+    try {
+      memberId = await requireMemberIdForUser(userId, supabase);
+    } catch (error) {
       return NextResponse.json(
         { ok: false, error: "forbidden" },
         { status: 403 }
       );
     }
-
-    const memberId: string = memberRow.id;
 
     // 3) Fetch the flight joined to its trip to obtain trip + host
     const { data: flightRow, error: flightError } = await supabase
@@ -107,18 +103,14 @@ export async function PATCH(
     const isHost =
       !!memberId && !!hostMemberId && memberId === hostMemberId;
 
-    // Group admin check via group_members (user_id-based)
-    const { data: gmRow } = await supabase
-      .from("group_members")
-      .select("id, role")
-      .eq("group_id", tripGroupId)
-      .eq("user_id", user.id)
-      .eq("status", "approved")
-      .maybeSingle();
+    // Group admin check via shared helper
+    const userIsGroupAdmin = await isGroupAdmin({
+      supabase,
+      userId,
+      groupId: tripGroupId,
+    });
 
-    const isGroupAdmin = !!gmRow && (gmRow as any).role === "admin";
-
-    if (!isHost && !isGroupAdmin) {
+    if (!isHost && !userIsGroupAdmin) {
       return NextResponse.json(
         { ok: false, error: "forbidden" },
         { status: 403 }

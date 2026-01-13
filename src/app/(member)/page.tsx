@@ -15,11 +15,11 @@ import { perfMark, perfMeasure, perfLog } from "../lib/perf";
 import { getGolfNoun } from "../lib/roundNounHelper";
 import { useRouter } from "next/navigation";
 import { gamedayStartApi, coordinationActiveApi } from "../lib/routes";
+import { apiJson } from "../lib/apiClient";
 import {
-  apiJson,
-  validateCoordinationActiveResponse,
-  validateGamedayStartResponse,
-} from "../lib/apiClient";
+  validateCoordinationActive,
+  validateGamedayStart,
+} from "../lib/apiContracts";
 
 type ActiveCoordination = {
   tripId: string;
@@ -250,9 +250,9 @@ export default function HomePage() {
     async function fetchActiveCoordination() {
       try {
         const coordinationData = await apiJson(coordinationActiveApi());
-        validateCoordinationActiveResponse(coordinationData);
-        if (coordinationData.active) {
-          setActiveCoordination(coordinationData.active);
+        const validated = validateCoordinationActive(coordinationData);
+        if (validated.active) {
+          setActiveCoordination(validated.active);
           setLastCoordinationFetch(now);
         } else {
           setActiveCoordination(null);
@@ -401,7 +401,7 @@ export default function HomePage() {
                 method: "POST",
                 body: JSON.stringify({ tripId: activeCoordination.tripId }),
               });
-              validateGamedayStartResponse(data);
+              validateGamedayStart(data);
               // Navigate after successful start
               router.push(activeCoordination.resume.route);
             } catch (error) {

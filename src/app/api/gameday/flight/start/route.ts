@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
+import { requireAuthedUser, requireMemberIdForUser, requireApprovedGroupMembership } from "@/app/lib/serverAuth";
 
 /**
  * POST /api/gameday/flight/start
@@ -31,9 +32,12 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
     
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
+    // Require authenticated user
+    let userId: string;
+    try {
+      const authResult = await requireAuthedUser();
+      userId = authResult.userId;
+    } catch (error) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
 
@@ -47,21 +51,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // Get current member ID - in canonical schema: members.id == auth.user.id
-    const { data: memberData } = await supabase
-      .from("members")
-      .select("id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (!memberData) {
+    // Get current member ID using shared helper
+    let memberId: string;
+    try {
+      memberId = await requireMemberIdForUser(userId, supabase);
+    } catch (error) {
       return NextResponse.json(
         { ok: false, error: "member_not_found" },
         { status: 403 }
       );
     }
-
-    const memberId = memberData.id;
 
     // Fetch the flight row joined to its trip to get trip_id + group_id
     const { data: flightData, error: flightError } = await supabase
@@ -92,15 +91,13 @@ export async function POST(req: Request) {
 
     // Verify the user is allowed to start THIS flight:
     // 1) They must be a member of the trip's group
-    const { data: groupMemberData } = await supabase
-      .from("group_members")
-      .select("group_id")
-      .eq("group_id", groupId)
-      .eq("user_id", user.id)
-      .eq("status", "approved")
-      .maybeSingle();
-
-    if (!groupMemberData) {
+    try {
+      await requireApprovedGroupMembership({
+        supabase,
+        userId,
+        groupId,
+      });
+    } catch (error) {
       return NextResponse.json(
         { ok: false, error: "forbidden" },
         { status: 403 }
@@ -136,7 +133,7 @@ export async function POST(req: Request) {
     // If already in_progress, return success (idempotent)
     if (currentStatus === 'in_progress') {
       // Still ensure trip-level gameday_rounds is in_progress
-      await ensureTripGamedayInProgress(supabase, tripId, user.id);
+      await ensureTripGamedayInProgress(supabase, tripId, userId);
       
       return NextResponse.json({
         ok: true,
@@ -191,7 +188,7 @@ export async function POST(req: Request) {
       }
 
       // Ensure trip-level gameday_rounds is in_progress
-      await ensureTripGamedayInProgress(supabaseService, tripId, user.id);
+      await ensureTripGamedayInProgress(supabaseService, tripId, userId);
 
       return NextResponse.json({
         ok: true,
@@ -210,7 +207,7 @@ export async function POST(req: Request) {
     }
 
     // Ensure trip-level gameday_rounds is in_progress
-    await ensureTripGamedayInProgress(supabase, tripId, user.id);
+    await ensureTripGamedayInProgress(supabase, tripId, userId);
 
     return NextResponse.json({
       ok: true,
