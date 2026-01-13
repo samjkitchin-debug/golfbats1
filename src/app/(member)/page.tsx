@@ -1,16 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { loadTrips, joinTrip, leaveTrip, type Trip } from "../lib/tripActions";
+import { loadTrips, type Trip } from "../lib/tripActions";
 import { loadCourses, type Course } from "../lib/courseActions";
-import { getTripCourseText, formatTripDateLong } from "../lib/tripDisplay";
+import { getTripCourseText } from "../lib/tripDisplay";
 import { isTripUpcoming } from "../lib/tripDates";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { PromptModal } from "../components/PromptModal";
-import { TripCard } from "../components/TripCard";
 import { perfMark, perfMeasure, perfLog } from "../lib/perf";
 import { getGolfNoun } from "../lib/roundNounHelper";
 import { useRouter } from "next/navigation";
@@ -80,14 +78,12 @@ export default function HomePage() {
   }, []);
 
   // Find primary trip: If user has RSVP'd "in" to a trip, that's primary. Otherwise, next eligible upcoming trip.
+  // Visibility rule: If RSVP is closed AND user is not attending, exclude that trip.
   const primaryTrip = useMemo(() => {
     const now = new Date();
-    const upcoming = allTripsWithGroups
-      .filter((t) => isTripUpcoming(t, now))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    // First, check if user has RSVP'd "in" (confirmed) to any upcoming trip
-    const joinedTrip = upcoming.find((trip) => {
+    
+    // Helper to check if user is attending
+    const isUserAttending = (trip: Trip) => {
       if (currentUserId) {
         const entry = trip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
         return entry?.status === "confirmed";
@@ -96,44 +92,32 @@ export default function HomePage() {
         return entry?.status === "confirmed";
       }
       return false;
-    });
+    };
+
+    // Helper to check if RSVP is closed (approximate: status is 'closed' or capacity is full)
+    const isRsvpClosed = (trip: Trip) => {
+      if (trip.status === 'closed') return true;
+      const confirmedCount = trip.attendees.filter((a) => a.status === "confirmed").length;
+      if (trip.capacity && confirmedCount >= trip.capacity) return true;
+      return false;
+    };
+
+    const upcoming = allTripsWithGroups
+      .filter((t) => {
+        if (!isTripUpcoming(t, now)) return false;
+        // Visibility rule: hide if RSVP closed AND user not attending
+        if (isRsvpClosed(t) && !isUserAttending(t)) return false;
+        return true;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // First, check if user has RSVP'd "in" (confirmed) to any upcoming trip
+    const joinedTrip = upcoming.find((trip) => isUserAttending(trip));
 
     // If user has joined a trip, that's the primary. Otherwise, use the next eligible trip.
     return joinedTrip || upcoming[0] || null;
   }, [allTripsWithGroups, currentUserId, currentUserName]);
 
-  // Find secondary trip: Next upcoming trip after the primary trip
-  const secondaryTrip = useMemo(() => {
-    if (!primaryTrip) return null;
-    const now = new Date();
-    const upcoming = allTripsWithGroups
-      .filter((t) => isTripUpcoming(t, now) && t.id !== primaryTrip.id)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    return upcoming[0] || null;
-  }, [allTripsWithGroups, primaryTrip]);
-
-  // Find most recent completed trip (for lightweight past context)
-  const lastTrip = useMemo(() => {
-    const completed = allTripsWithGroups
-      .filter((t) => t.result) // Has results = completed
-      .sort((a, b) => b.date.localeCompare(a.date)); // Most recent first
-    return completed[0] || null;
-  }, [allTripsWithGroups]);
-
-  // Filter member-hosted rounds for "Happening soon" feed
-  const quickRounds = useMemo(() => {
-    const now = new Date();
-    return allTripsWithGroups
-      .filter((t) => {
-        // Only member-hosted rounds
-        if (t.tripOrigin !== 'member') return false;
-        // Exclude cancelled
-        if (t.status === 'cancelled') return false;
-        // Only upcoming (reuse existing logic)
-        return isTripUpcoming(t, now);
-      })
-      .sort((a, b) => a.date.localeCompare(b.date)); // Earliest first
-  }, [allTripsWithGroups]);
 
   // All useEffect hooks - must be before any early returns
   useEffect(() => {
@@ -266,187 +250,110 @@ export default function HomePage() {
     fetchActiveCoordination();
   }, [hasMemberships, lastCoordinationFetch, activeCoordination]);
 
-  // Helper functions for placeholder display
-  function formatTripDate(trip: Trip & { groupName?: string; groupId?: string }): string {
-    return new Date(trip.date + "T00:00:00").toLocaleDateString("en-GB", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  }
 
-  function formatTripDateShort(trip: Trip & { groupName?: string; groupId?: string }): string {
-    return new Date(trip.date + "T00:00:00").toLocaleDateString("en-GB", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-    });
-  }
-
-  function formatLastTripDate(trip: Trip & { groupName?: string; groupId?: string }): string {
-    return new Date(trip.date + "T00:00:00").toLocaleDateString("en-GB", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-    });
-  }
-
-  // Helper function to generate initials from name
-  function getInitials(fullName: string | null, displayName: string | null): string {
-    const name = displayName?.trim() || fullName?.trim() || "";
-    if (!name) return "?";
-    const parts = name.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase().slice(0, 2);
-    }
-    return name.toUpperCase().slice(0, 2);
-  }
-
-  // Helper to get time label for quick rounds
-  function getTimeLabel(trip: Trip): string {
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const tripDate = trip.date;
-
-    if (tripDate === today) {
-      // Check if it's "now" (within a reasonable window, e.g., same day and time is close)
-      // For simplicity, if it's today, show "Today" unless we have more specific time info
-      return "Today";
-    }
-
-    // Show weekday for upcoming days
-    const date = new Date(tripDate + "T00:00:00");
-    return date.toLocaleDateString("en-GB", { weekday: "short" });
-  }
-
-  // Helper to calculate spots available
-  function getSpotsAvailable(trip: Trip): number {
-    const confirmedCount = trip.attendees.filter((a) => a.status === "confirmed").length;
-    return Math.max(0, trip.capacity - confirmedCount);
-  }
-
-  // Helper function to generate a consistent color from a group ID
-  function getGroupColor(groupId: string): string {
-    // Generate a hash from the group ID
-    let hash = 0;
-    for (let i = 0; i < groupId.length; i++) {
-      hash = groupId.charCodeAt(i) + ((hash << 5) - hash);
-    }
+  // Helper to get relative time phrasing (deterministic, calm)
+  function getRelativeTimePhrase(tripDate: string): string {
+    if (!tripDate) return "";
     
-    // Use a palette of muted, accessible colors
-    const colors = [
-      "hsl(210, 50%, 55%)",  // Blue
-      "hsl(160, 50%, 50%)",  // Teal/Green
-      "hsl(30, 65%, 55%)",   // Orange
-      "hsl(280, 50%, 60%)",  // Purple
-      "hsl(340, 55%, 60%)",  // Pink
-      "hsl(200, 60%, 50%)",  // Cyan
-      "hsl(15, 70%, 55%)",   // Red-orange
-      "hsl(260, 50%, 60%)",  // Indigo
-    ];
-    
-    return colors[Math.abs(hash) % colors.length];
+    try {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const trip = new Date(tripDate + "T00:00:00");
+      
+      // Guard against invalid dates
+      if (isNaN(trip.getTime())) {
+        return "";
+      }
+      
+      const tripDay = new Date(trip.getFullYear(), trip.getMonth(), trip.getDate());
+      const diffMs = tripDay.getTime() - today.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 0) {
+        return "Today";
+      }
+      
+      if (diffDays === 1) {
+        return "Tomorrow";
+      }
+
+      // Only process future dates
+      if (diffDays < 0) {
+        return trip.toLocaleDateString("en-GB", { 
+          weekday: "short",
+          day: "numeric",
+          month: "short"
+        });
+      }
+
+      // Check if within current calendar week (same week, future day)
+      const nowWeekStart = new Date(today);
+      nowWeekStart.setDate(today.getDate() - today.getDay()); // Sunday of this week
+      const nowWeekEnd = new Date(nowWeekStart);
+      nowWeekEnd.setDate(nowWeekStart.getDate() + 6); // Saturday of this week
+
+      if (tripDay >= nowWeekStart && tripDay <= nowWeekEnd && diffDays > 0) {
+        return `This ${trip.toLocaleDateString("en-GB", { weekday: "long" })}`;
+      }
+
+      if (diffDays >= 2 && diffDays <= 14) {
+        return `In ${diffDays} days`;
+      }
+
+      if (diffDays > 14) {
+        const weeks = Math.round(diffDays / 7);
+        return `In ${weeks} weeks`;
+      }
+
+      // Fallback to absolute date
+      return trip.toLocaleDateString("en-GB", { 
+        weekday: "short",
+        day: "numeric",
+        month: "short"
+      });
+    } catch {
+      // Fallback for any date parsing errors
+      return "";
+    }
   }
+
 
   // Compute onboarding states (based on real data)
   const profileComplete = isProfileComplete === true;
   const hasApprovedGroup = hasMemberships === true;
 
-  // Handler functions (placeholder - not currently used but kept for future implementation)
-  async function handleImIn() {
-    if (!primaryTrip) return;
-    // Placeholder: Handler logic will be implemented when CTAs are finalized
-    alert("Placeholder: Join trip functionality will be implemented");
-  }
-
-  async function handleImOut() {
-    if (!primaryTrip) return;
-    // Placeholder: Handler logic will be implemented when CTAs are finalized
-    alert("Placeholder: Leave trip functionality will be implemented");
-  }
-
   // Build content based on state - no early returns
   let content: React.ReactNode;
 
-  // Reusable Host a round CTA
-  const HostRoundCTA = (
-    <div className="mb-6">
-      <Link
-        href="/host"
-        className="block w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
-      >
-        ⛳ Host a round
-      </Link>
-    </div>
-  );
-
-  // Coordination tile (dominant, appears above all other CTAs)
-  const CoordinationTile = activeCoordination ? (
-    <div className="mb-6 rounded-xl border-2 border-brand-green bg-brand-green/10 p-5">
-      <div className="text-lg font-semibold text-foreground mb-1">
-        {activeCoordination.effectiveStatus === 'in_progress' ? 'Round in progress' : 'GameDay'}
-      </div>
-      <div className="text-sm text-muted mb-4">
-        {activeCoordination.label}
-      </div>
-      <button
-        onClick={async () => {
-          if (startingGameDay) return;
-          setStartingGameDay(true);
-          try {
-            // Call start endpoint before navigating
-            try {
-              const data = await apiJson(gamedayStartApi(), {
-                method: "POST",
-                body: JSON.stringify({ tripId: activeCoordination.tripId }),
-              });
-              validateGamedayStart(data);
-              // Navigate after successful start
-              router.push(activeCoordination.resume.route);
-            } catch (error) {
-              // If 409 already_published, still navigate (read-only viewing may exist)
-              if (error instanceof Error && error.message.includes("409")) {
-                try {
-                  const res = await fetch(gamedayStartApi(), {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({ tripId: activeCoordination.tripId }),
-                  });
-                  if (res.status === 409) {
-                    const data = await res.json();
-                    if (data.reason === 'already_published') {
-                      router.push(activeCoordination.resume.route);
-                      return;
-                    }
-                  }
-                } catch {
-                  // Fall through to navigate anyway
-                }
-              }
-              // Still navigate on error (user can try again on GameDay page)
-              router.push(activeCoordination.resume.route);
-            }
-          } catch (error) {
-            console.error("Failed to start GameDay:", error);
-            // Still navigate on error (user can try again on GameDay page)
-            router.push(activeCoordination.resume.route);
-          } finally {
-            setStartingGameDay(false);
-          }
-        }}
-        disabled={startingGameDay}
-        className="w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {startingGameDay ? 'Starting…' : (activeCoordination.effectiveStatus === 'in_progress' ? 'Resume GameDay' : 'Enter GameDay')}
-      </button>
-    </div>
-  ) : null;
+  // Helper to determine next game (active coordination or primary trip)
+  const nextGame = useMemo(() => {
+    // If there's active coordination, that's the next game
+    if (activeCoordination) {
+      const trip = allTripsWithGroups.find(t => String(t.id) === String(activeCoordination.tripId));
+      if (trip) {
+        return {
+          type: 'coordination' as const,
+          trip,
+          status: activeCoordination.effectiveStatus,
+          route: activeCoordination.resume.route,
+        };
+      }
+    }
+    // Otherwise, use primary trip
+    if (primaryTrip) {
+      return {
+        type: 'trip' as const,
+        trip: primaryTrip,
+        status: 'upcoming' as const,
+        route: null,
+      };
+    }
+    return null;
+  }, [activeCoordination, primaryTrip, allTripsWithGroups]);
 
   if (loadingBootstrap) {
     content = (
-      <div className="rounded-xl border border-border bg-surface p-8 text-center">
+      <div className="py-12 text-center">
         <p className="text-sm text-muted">Loading…</p>
       </div>
     );
@@ -569,230 +476,217 @@ export default function HomePage() {
         )}
       </div>
     );
-  } else if (!primaryTrip) {
-    content = (
-      <div>
-        {CoordinationTile}
-        {HostRoundCTA}
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <div className="text-lg font-semibold text-foreground">No upcoming trips</div>
-          <div className="mt-2 text-sm text-muted">
-            When the admin creates the next outing, it'll appear here.
-          </div>
-          <div className="mt-4">
-            <Link href="/trips" className="text-sm text-muted hover:text-foreground">
-              Go to Trips →
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
   } else {
-    // Get trip display info for placeholders
-    const primaryCourseText = getTripCourseText(primaryTrip, courses);
-    const secondaryCourseText = secondaryTrip ? getTripCourseText(secondaryTrip, courses) : null;
+    // Helper to determine user relationship to trip
+    const getUserRelationship = (trip: Trip): 'attending' | 'eligible' | null => {
+      if (currentUserId) {
+        const entry = trip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
+        if (entry?.status === "confirmed") return 'attending';
+      } else if (currentUserName) {
+        const entry = trip.attendees.find((a) => a.name === currentUserName);
+        if (entry?.status === "confirmed") return 'attending';
+      }
+      // Approximate "eligible": trip is upcoming and not closed
+      if (trip.status !== 'closed') {
+        const confirmedCount = trip.attendees.filter((a) => a.status === "confirmed").length;
+        if (!trip.capacity || confirmedCount < trip.capacity) {
+          return 'eligible';
+        }
+      }
+      return null;
+    };
 
-    // Get user's RSVP status for primary trip
-    const primaryTripStatus = primaryTrip && currentUserId
-      ? primaryTrip.attendees.find((a) => a.memberId === currentUserId)?.status
-      : primaryTrip && currentUserName
-      ? primaryTrip.attendees.find((a) => a.name === currentUserName)?.status
-      : undefined;
+    // Helper to calculate days until trip
+    const getDaysUntilTrip = (tripDate: string): number => {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const trip = new Date(tripDate + "T00:00:00");
+      const tripDay = new Date(trip.getFullYear(), trip.getMonth(), trip.getDate());
+      const diffMs = tripDay.getTime() - today.getTime();
+      return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    };
+
+    // Get trip display info
+    const nextGameTrip = nextGame?.trip;
+    const courseText = nextGameTrip ? getTripCourseText(nextGameTrip, courses) : null;
+    const relationship = nextGameTrip ? getUserRelationship(nextGameTrip) : null;
+    const daysUntil = nextGameTrip ? getDaysUntilTrip(nextGameTrip.date) : null;
+    const timeHorizon = daysUntil !== null ? (daysUntil <= 7 ? 'near' : daysUntil <= 14 ? 'mid' : 'long') : null;
+
+    // Handler for tapping the Next Game surface
+    const handleNextGameTap = async () => {
+      if (!nextGame || !nextGameTrip) return;
+      
+      if (nextGame.status === 'in_progress' || nextGame.status === 'today') {
+        if (startingGameDay || !nextGame.route) return;
+        setStartingGameDay(true);
+        try {
+          if (nextGame.type === 'coordination') {
+            try {
+              const data = await apiJson(gamedayStartApi(), {
+                method: "POST",
+                body: JSON.stringify({ tripId: activeCoordination!.tripId }),
+              });
+              validateGamedayStart(data);
+              router.push(nextGame.route);
+            } catch (error) {
+              if (error instanceof Error && error.message.includes("409")) {
+                try {
+                  const res = await fetch(gamedayStartApi(), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ tripId: activeCoordination!.tripId }),
+                  });
+                  if (res.status === 409) {
+                    const data = await res.json();
+                    if (data.reason === 'already_published') {
+                      router.push(nextGame.route);
+                      return;
+                    }
+                  }
+                } catch {
+                  // Fall through
+                }
+              }
+              router.push(nextGame.route);
+            }
+          } else {
+            router.push(`/trips/${nextGameTrip.id}`);
+          }
+        } catch (error) {
+          console.error("Failed to navigate:", error);
+          if (nextGame.route) {
+            router.push(nextGame.route);
+          } else {
+            router.push(`/trips/${nextGameTrip.id}`);
+          }
+        } finally {
+          setStartingGameDay(false);
+        }
+      } else {
+        router.push(`/trips/${nextGameTrip.id}`);
+      }
+    };
+
+    // Build display lines based on relationship and time horizon
+    const getNextGameLines = () => {
+      if (!nextGameTrip || !relationship || !nextGameTrip.date) return null;
+
+      const lines: string[] = [];
+      
+      // Line 1: Time anchor (dominant) - always present
+      const timePhrase = getRelativeTimePhrase(nextGameTrip.date);
+      if (!timePhrase) return null; // Guard against empty date phrase
+      lines.push(timePhrase);
+
+      // Line 2: Identity (trip name or host)
+      const identity = nextGameTrip.name || 
+        (nextGameTrip.createdByMemberName ? `${nextGameTrip.createdByMemberName}'s round` : null) ||
+        courseText?.title ||
+        (getGolfNoun(nextGameTrip) === "trip" ? "Trip" : "Round");
+      if (identity) {
+        lines.push(identity);
+      }
+
+      // Line 3: Place (course name if different from identity)
+      if (courseText && courseText.title !== "Course TBD" && courseText.title !== identity) {
+        const placeLine = courseText.detail 
+          ? `${courseText.title} · ${courseText.detail}`
+          : courseText.title;
+        lines.push(placeLine);
+      }
+
+      // Line 4: Optional based on relationship and time horizon
+      if (relationship === 'attending') {
+        // Anticipation mode: logistics if available (meetup time/location)
+        // Note: Meetup data may not be in current trip structure, so skipping for now
+        // This can be extended when meetup data is available
+      } else if (relationship === 'eligible') {
+        // Invitation mode: social presence for near-term, identity for long-term
+        if (timeHorizon === 'near' && Array.isArray(nextGameTrip.attendees)) {
+          const confirmedCount = nextGameTrip.attendees.filter((a) => a.status === "confirmed").length;
+          if (confirmedCount > 0) {
+            lines.push(`${confirmedCount} ${confirmedCount === 1 ? 'player' : 'players'} attending`);
+          }
+        }
+      }
+
+      return lines;
+    };
+
+    const nextGameLines = getNextGameLines();
 
     content = (
-      <div className="space-y-8">
-        {CoordinationTile}
-        {HostRoundCTA}
-
-        {/* Primary Narrative - Next Thing You're Playing */}
-        <div 
-          className={`relative rounded-xl p-5 sm:p-6 primary-narrative-panel ${
-            primaryTrip?.tripOrigin !== 'member' ? 'primary-narrative-panel-group' : 'primary-narrative-panel-hosted'
-          }`}
-          style={{
-            ...(primaryTrip?.tripOrigin !== 'member' && {
-              borderWidth: '1px',
-              borderColor: 'rgba(201, 169, 97, 0.65)',
-              borderStyle: 'solid',
-            }),
-          }}
-        >
-          {/* Group event label (only if group event) */}
-          {primaryTrip && primaryTrip.tripOrigin !== 'member' && (
-            <div className="absolute top-3 right-3 z-10">
-              <span 
-                className="text-[11px] font-normal tracking-wide uppercase"
-                style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
-              >
-                Group event
-              </span>
+      <div className="space-y-12">
+        {/* Primary surface: Next Game Instrument */}
+        {nextGame && nextGameTrip && nextGameLines ? (
+          <div 
+            onClick={handleNextGameTap}
+            className="py-8 cursor-pointer active:opacity-70 transition-opacity"
+          >
+            {/* Line 1: Time anchor (dominant) */}
+            <div className="text-4xl font-light text-foreground mb-3">
+              {nextGameLines[0]}
             </div>
-          )}
+            
+            {/* Line 2: Identity */}
+            {nextGameLines[1] && (
+              <div className="text-lg text-foreground mb-2">
+                {nextGameLines[1]}
+              </div>
+            )}
+            
+            {/* Line 3: Place */}
+            {nextGameLines[2] && (
+              <div className="text-sm text-muted mb-2">
+                {nextGameLines[2]}
+              </div>
+            )}
 
-          {/* Subtle warm surface tint overlay (dark mode only, for group events) */}
-          {primaryTrip && primaryTrip.tripOrigin !== 'member' && (
-            <div 
-              className="absolute inset-0 pointer-events-none dark-mode-warm-overlay"
-              style={{
-                background: 'var(--sunrise-warm-surface)',
-                borderRadius: 'inherit',
-              }}
-            />
-          )}
-
-          {/* Trip name */}
-          <div className="text-2xl sm:text-3xl font-semibold text-foreground mb-3 relative z-10">
-            {primaryTrip.name || primaryCourseText.title || (getGolfNoun(primaryTrip) === "trip" ? "Trip" : "Round")}
+            {/* Line 4: Optional context line */}
+            {nextGameLines[3] && (
+              <div className="text-xs text-muted">
+                {nextGameLines[3]}
+              </div>
+            )}
           </div>
-          
-          {/* Date */}
-          <div className="text-base sm:text-lg flex items-center gap-1.5 mb-3 relative z-10">
-            <span className="inline-block w-1 h-1 rounded-full date-dot-accent" />
-            <span className="date-text-warm">{formatTripDate(primaryTrip)}</span>
+        ) : (
+          <div className="py-8">
+            <div className="text-lg text-muted mb-8">No upcoming rounds</div>
           </div>
-          
-          {/* Course name */}
-          {primaryCourseText.title !== "Course TBD" && (
-            <div className="text-sm sm:text-base text-muted mb-4 relative z-10">
-              {primaryCourseText.title}
-              {primaryCourseText.detail && (
-                <span className="ml-2">· {primaryCourseText.detail}</span>
-              )}
-            </div>
-          )}
+        )}
 
-          {/* Trip actions */}
-          <div className="relative z-10">
-            {/* Placeholder for trip actions - will be replaced with TripRsvpActions when ready */}
-            <div className="text-xs text-muted">
-              Trip actions will appear here
-            </div>
-          </div>
-        </div>
-
-        {/* Identity Companion - Handicap */}
-        <div className="text-sm text-muted">
+        {/* Handicap Snapshot */}
+        <div className="py-6">
           {declaredHandicap !== null ? (
-            <>
-              You play off{' '}
-              <Link href="/me" className="font-medium text-foreground hover:text-brand-green">
+            <div>
+              <div className="text-5xl font-light text-foreground mb-1">
                 {typeof declaredHandicap === 'number' ? declaredHandicap.toFixed(1) : declaredHandicap}
-              </Link>
-            </>
+              </div>
+              <div className="text-sm text-muted">
+                Handicap index
+              </div>
+            </div>
           ) : (
-            <>
-              <Link href="/me" className="font-medium text-foreground hover:text-brand-green">
+            <div>
+              <div className="text-sm text-muted mb-2">Handicap index</div>
+              <Link href="/me" className="text-base text-foreground hover:text-brand-green">
                 Add your handicap
               </Link>
-              {' '}in Me
-            </>
+            </div>
           )}
         </div>
 
-        {/* Continuation - After That */}
-        {secondaryTrip && (
-          <div className="pt-4 border-t border-border/50">
-            <div className="text-xs text-muted/70 mb-2">After that</div>
-            <div className="flex items-start gap-3">
-              {/* Tiny sunrise dot accent */}
-              <div className="flex-shrink-0 mt-1.5">
-                <span className="inline-block w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--sunrise-warm-surface)', opacity: 0.6 }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground mb-0.5">
-                  {secondaryTrip.name || secondaryCourseText?.title || (getGolfNoun(secondaryTrip) === "trip" ? "Trip" : "Round")}
-                </div>
-                <div className="text-xs text-muted flex items-center gap-1.5 mb-0.5">
-                  <span className="date-text-warm">{formatTripDateShort(secondaryTrip)}</span>
-                </div>
-                {secondaryCourseText && secondaryCourseText.title !== "Course TBD" && (
-                  <div className="text-xs text-muted/70">
-                    {secondaryCourseText.title}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Happening soon - Quick rounds feed (repositioned, demoted) */}
-        {quickRounds.length > 0 && (
-          <div className="pt-4 border-t border-border/50 space-y-2">
-            <div className="text-xs text-muted/70 mb-2">Happening soon</div>
-            <div className="space-y-2">
-              {quickRounds.map((trip) => {
-                const hostName = trip.createdByMemberName || "Someone";
-                const courseText = getTripCourseText(trip, courses);
-                const courseName = courseText.title !== "Course TBD" ? courseText.title : "Course TBC";
-                const timeLabel = getTimeLabel(trip);
-                const spotsAvailable = getSpotsAvailable(trip);
-                const hostInitials = getInitials(null, trip.createdByMemberName || null);
-
-                return (
-                  <div
-                    key={trip.id}
-                    className="rounded-lg border border-border/50 bg-surface/30 p-3 flex items-center gap-3"
-                  >
-                    {/* Host avatar (initials) */}
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-brand-green/10 flex items-center justify-center text-sm font-medium text-brand-green">
-                      {hostInitials}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground">
-                        {hostName} is playing
-                      </div>
-                      <div className="text-xs text-muted mt-0.5">
-                        {courseName} · {timeLabel}
-                      </div>
-                      {spotsAvailable > 0 && (
-                        <div className="text-xs text-muted mt-0.5">
-                          {spotsAvailable} {spotsAvailable === 1 ? "spot" : "spots"} available
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Join button */}
-                    <Link
-                      href={`/trips/${trip.id}`}
-                      className="flex-shrink-0 rounded-lg bg-brand-green px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-                    >
-                      Join
-                    </Link>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Last played (quiet, demoted) */}
-        {lastTrip && (
-          <div className="pt-4 border-t border-border/50">
-            <div className="text-xs text-muted/60">
-              Last played{' '}
-              <span className="text-foreground/70">
-                {lastTrip.name || getTripCourseText(lastTrip, courses).title}
-              </span>
-              {' '}· {formatLastTripDate(lastTrip)}
-            </div>
-          </div>
-        )}
-
-        {/* Utility Footer - Admin tools */}
-        {isGroupAdmin && activeGroupId && (
-          <div className="pt-6 mt-6 border-t border-border/30">
-            <div className="utility-footer">
-              <Link
-                href={`/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)?.slug || ''}/trips`}
-                className="text-xs text-muted/60 hover:text-muted"
-              >
-                Admin: Organise a group trip →
-              </Link>
-            </div>
-          </div>
-        )}
+        {/* Primary Action: Host a round */}
+        <div className="pt-8">
+          <Link
+            href="/host"
+            className="block w-full py-4 text-base font-medium text-center text-white bg-brand-green hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
+          >
+            Host a round
+          </Link>
+        </div>
       </div>
     );
   }

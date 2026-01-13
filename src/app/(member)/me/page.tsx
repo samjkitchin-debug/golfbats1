@@ -89,6 +89,9 @@ export default function MePage() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Data security modal state
+  const [showDataSecurityModal, setShowDataSecurityModal] = useState(false);
+
   // Group memberships state
   const [groupMemberships, setGroupMemberships] = useState<Array<{
     groupId: string;
@@ -903,23 +906,31 @@ export default function MePage() {
                 Required for overseas trips (e.g. ferries). Your passport number is encrypted and secure.
               </p>
             </div>
-            <button
-              onClick={() => {
-                setEditingPassport(!editingPassport);
-                setPassportSaveSuccess(false);
-                if (!editingPassport) {
-                  // Reset to current values when starting edit
-                  setPassportFullName(profile?.passport_full_name ?? "");
-                  setPassportNumber(profile?.passport_number ?? "");
-                  setPassportNationality(profile?.passport_nationality ?? "");
-                  setPassportDateOfBirth(profile?.passport_date_of_birth ?? "");
-                  setPassportExpiryDate(profile?.passport_expiry_date ?? "");
-                }
-              }}
-              className="rounded-xl border border-border px-3 py-1 text-xs font-semibold hover:bg-background"
-            >
-              {editingPassport ? "Cancel" : profile ? "Edit" : "Add"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowDataSecurityModal(true)}
+                className="text-xs text-muted hover:text-foreground underline"
+              >
+                Data security
+              </button>
+              <button
+                onClick={() => {
+                  setEditingPassport(!editingPassport);
+                  setPassportSaveSuccess(false);
+                  if (!editingPassport) {
+                    // Reset to current values when starting edit
+                    setPassportFullName(profile?.passport_full_name ?? "");
+                    setPassportNumber(profile?.passport_number ?? "");
+                    setPassportNationality(profile?.passport_nationality ?? "");
+                    setPassportDateOfBirth(profile?.passport_date_of_birth ?? "");
+                    setPassportExpiryDate(profile?.passport_expiry_date ?? "");
+                  }
+                }}
+                className="rounded-xl border border-border px-3 py-1 text-xs font-semibold hover:bg-background"
+              >
+                {editingPassport ? "Cancel" : profile ? "Edit" : "Add"}
+              </button>
+            </div>
           </div>
 
           {!editingPassport ? (
@@ -1076,26 +1087,30 @@ export default function MePage() {
           )}
         </div>
 
-        {/* Data security (note on passport data protection) */}
-        <div className="rounded-2xl border border-border bg-surface/50 p-4">
+        {/* Preferences */}
+        <div className="rounded-xl border border-border bg-surface shadow-sm p-4">
           <div className="mb-3">
-            <div className="text-xs font-medium text-muted">Data security</div>
+            <div className="text-sm font-medium text-foreground">Preferences</div>
           </div>
-          <div className="space-y-2 text-xs text-muted leading-relaxed">
-              <div>
-                <div className="font-medium text-foreground">Protection measures</div>
-              <ul className="mt-1 ml-4 list-disc space-y-0.5">
-                <li>Passport numbers are encrypted using AES-256-GCM with server-side key management and cannot be read by anyone except authorised administrators with proper access controls</li>
-                <li>You can view, update, or delete your own passport information at any time</li>
-                <li>All administrator access to passport data is logged and audited</li>
-                <li>Images are stored securely and are only accessible to you and authorised administrators</li>
-              </ul>
-            </div>
-
+          <div className="space-y-3">
             <div>
-              <div className="font-medium text-foreground">Disclaimer</div>
-              <p className="mt-1">
-                Passport information is collected only to organise trip logistics, such as ferry bookings and travel arrangements. Please do not upload passport data unless it is required for a specific trip you are attending. Your passport information may be deleted after the relevant trip is completed.
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-medium text-muted">Appearance</span>
+                <span className="text-muted">·</span>
+                <span className="text-foreground">Light (locked)</span>
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                We're staying in light mode for now while design stabilises.
+              </p>
+            </div>
+            <div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-medium text-muted">Distance units</span>
+                <span className="text-muted">·</span>
+                <span className="text-foreground">Coming soon</span>
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                Metres / yards will be added when GPS lands.
               </p>
             </div>
           </div>
@@ -1274,6 +1289,50 @@ export default function MePage() {
                 className="flex-1 rounded-lg bg-brand-orange px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deletingAccount ? "Deleting..." : "Delete account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Data security modal */}
+      {showDataSecurityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4" onClick={() => setShowDataSecurityModal(false)}>
+          <div className="w-full max-w-md rounded-xl bg-surface border border-border p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-foreground">Data security</h3>
+              <button
+                onClick={() => setShowDataSecurityModal(false)}
+                className="rounded-lg p-1 text-muted hover:text-foreground hover:bg-background"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-4 text-xs text-muted leading-relaxed">
+              <div>
+                <div className="font-medium text-foreground mb-2">Protection measures</div>
+                <ul className="ml-4 list-disc space-y-1">
+                  <li>Passport numbers are encrypted using AES-256-GCM with server-side key management and cannot be read by anyone except authorised administrators with proper access controls</li>
+                  <li>You can view, update, or delete your own passport information at any time</li>
+                  <li>All administrator access to passport data is logged and audited</li>
+                  <li>Images are stored securely and are only accessible to you and authorised administrators</li>
+                </ul>
+              </div>
+              <div>
+                <div className="font-medium text-foreground mb-2">Disclaimer</div>
+                <p>
+                  Passport information is collected only to organise trip logistics, such as ferry bookings and travel arrangements. Please do not upload passport data unless it is required for a specific trip you are attending. Your passport information may be deleted after the relevant trip is completed.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowDataSecurityModal(false)}
+                className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
+              >
+                Done
               </button>
             </div>
           </div>

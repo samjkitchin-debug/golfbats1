@@ -611,16 +611,16 @@ export default function TripsListPage() {
     let statusStyles: string = "";
     if (rsvpStatus === "joined") {
       statusBadge = "Joined";
-      statusStyles = "bg-brand-green/10 text-brand-green font-medium";
+      statusStyles = "bg-brand-green/5 text-brand-green/70";
     } else if (rsvpStatus === "waitlist") {
       statusBadge = "Waitlist";
-      statusStyles = "bg-muted/10 text-foreground";
+      statusStyles = "bg-muted/5 text-muted";
     } else if (signupTiming.status === "locked") {
       statusBadge = "Locked";
-      statusStyles = "bg-muted/10 text-muted";
+      statusStyles = "bg-muted/5 text-muted/70";
     } else {
       statusBadge = "Open";
-      statusStyles = "bg-muted/5 text-muted";
+      statusStyles = "bg-muted/5 text-muted/70";
     }
 
     // Compute effective coordination status
@@ -669,7 +669,7 @@ export default function TripsListPage() {
     
     return (
       <div 
-        className="rounded-lg bg-surface relative"
+        className={`rounded-lg bg-surface relative ${eventKind === 'group_event' ? 'shadow-sm' : ''}`}
         style={{
           borderWidth: '1px',
           borderColor: eventKind === 'group_event' 
@@ -682,8 +682,7 @@ export default function TripsListPage() {
         {eventKind === 'group_event' && (
           <div className="absolute top-2 right-2 z-10">
             <span 
-              className="text-[11px] font-normal tracking-wide uppercase"
-              style={{ color: `var(--event-official-label)`, opacity: 0.7 }}
+              className="text-[9px] font-normal tracking-wide uppercase text-muted/40"
             >
               Group event
             </span>
@@ -692,7 +691,11 @@ export default function TripsListPage() {
         {/* Card Header - Collapsed row - fixed 3-column grid for strict alignment */}
         <button
           onClick={onToggle}
-          className="w-full grid grid-cols-[auto_1fr_auto] gap-2 sm:gap-3 items-start py-2 px-2.5 sm:py-2.5 sm:px-4 rounded-lg hover:bg-surface/80 transition-colors text-left"
+          className={`w-full grid grid-cols-[auto_1fr_auto] gap-2 sm:gap-3 items-start rounded-lg hover:bg-surface/80 transition-colors text-left ${
+            eventKind === 'group_event' 
+              ? 'py-2.5 px-2.5 sm:py-3 sm:px-4' 
+              : 'py-2 px-2.5 sm:py-2.5 sm:px-4'
+          }`}
         >
           {/* Date column (adaptive width, 2 lines: weekday + date, tabular numerals) */}
           <div className="flex flex-col leading-tight shrink-0 w-fit min-w-[48px] sm:min-w-[56px]">
@@ -721,22 +724,9 @@ export default function TripsListPage() {
           </div>
         </button>
 
-        {/* Expanded content - inside the same card, below a divider */}
+          {/* Expanded content - inside the same card, below a divider */}
         {isExpanded && (
           <div className="border-t border-border px-3 sm:px-4 py-3">
-            {/* A) "At a glance" row */}
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-medium text-foreground">{expandedDate}</div>
-              <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                rsvpStatus === "joined" ? "bg-brand-green/10 text-brand-green" :
-                rsvpStatus === "waitlist" ? "bg-muted/10 text-foreground" :
-                "bg-muted/10 text-muted"
-              }`}>
-                {rsvpStatus === "joined" ? "Joined" :
-                 rsvpStatus === "waitlist" ? "Waitlist" :
-                 "Not joined"}
-              </span>
-            </div>
 
             {/* Completion prompt for Batam trips */}
             {trip.scenarioKey === "cross_border_agent" && rsvpStatus === "joined" && completionStatus && !completionStatus.isReady && (
@@ -770,95 +760,114 @@ export default function TripsListPage() {
               </div>
             )}
 
-            {/* B) Key logistics grid - multi-column layout using grid */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-3">
+            {/* Key logistics - compact key·value rows */}
+            <div className="space-y-1.5 mb-3">
               {/* Meet time */}
-              <div className="flex flex-col gap-1">
-                <div className="text-xs text-muted-foreground">Meet time</div>
-                <div className={`text-sm leading-snug ${trip.logistics?.meetTime ? "font-medium text-foreground" : "text-muted"}`}>
-                  {trip.logistics?.meetTime || "Time TBC"}
-                </div>
+              <div className="text-sm">
+                <span className="text-muted">Meet time</span>
+                <span className="text-foreground ml-1">·</span>
+                <span className={`ml-1 ${trip.logistics?.meetTime ? "text-foreground" : "text-muted"}`}>
+                  {trip.logistics?.meetTime || "TBC"}
+                </span>
               </div>
-              {/* Meeting point - spans full width on sm+ */}
-              <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-3">
-                <div className="text-xs text-muted-foreground">Meeting point</div>
-                <div className={`text-sm leading-snug ${trip.logistics?.meetingPoint ? "font-medium text-foreground" : "text-muted"}`}>
-                  {trip.logistics?.meetingPoint || "Meeting point TBC"}
-                </div>
+              {/* Meeting point */}
+              <div className="text-sm">
+                <span className="text-muted">Meeting point</span>
+                <span className="text-foreground ml-1">·</span>
+                <span className={`ml-1 ${trip.logistics?.meetingPoint ? "text-foreground" : "text-muted"}`}>
+                  {trip.logistics?.meetingPoint || "TBC"}
+                </span>
               </div>
               {/* Ferry */}
-              <div className="flex flex-col gap-1">
-                <div className="text-xs text-muted-foreground">Ferry</div>
-                <div className={`text-sm leading-snug ${trip.ferry ? "font-medium text-foreground" : "text-muted"}`}>
+              <div className="text-sm">
+                <span className="text-muted">Ferry</span>
+                <span className="text-foreground ml-1">·</span>
+                <span className={`ml-1 ${trip.ferry ? "text-foreground" : "text-muted"}`}>
                   {trip.ferry ? (trip.ferry.toLowerCase() === "yes" ? "Yes" : trip.ferry.toLowerCase() === "no" ? "No" : trip.ferry) : "TBC"}
-                </div>
+                </span>
               </div>
               {/* Course */}
-              <div className="flex flex-col gap-1">
-                <div className="text-xs text-muted-foreground">Course</div>
-                <div className={`text-sm leading-snug ${courseName !== "Course TBC" ? "font-medium text-foreground" : "text-muted"}`}>
+              <div className="text-sm">
+                <span className="text-muted">Course</span>
+                <span className="text-foreground ml-1">·</span>
+                <span className={`ml-1 ${courseName !== "Course TBC" ? "text-foreground" : "text-muted"}`}>
                   {courseName}
-                </div>
+                </span>
               </div>
               {/* Format */}
               {trip.format && (
-                <div className="flex flex-col gap-1">
-                  <div className="text-xs text-muted-foreground">Format</div>
-                  <div className="text-sm font-medium leading-snug text-foreground">{trip.format}</div>
+                <div className="text-sm">
+                  <span className="text-muted">Format</span>
+                  <span className="text-foreground ml-1">·</span>
+                  <span className="ml-1 text-foreground">{trip.format}</span>
                 </div>
               )}
-            </div>
-
-            {/* C) Capacity, attendance, and signup timing - use grid for better layout */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-3">
               {/* Spots */}
               {maxAttendees > 0 && (
-                <div className="flex flex-col gap-1">
-                  <div className="text-xs text-muted-foreground">Spots</div>
-                  <div className="text-sm font-medium leading-snug text-foreground">{confirmedCount} / {maxAttendees}</div>
+                <div className="text-sm">
+                  <span className="text-muted">Spots</span>
+                  <span className="text-foreground ml-1">·</span>
+                  <span className="ml-1 text-foreground">{confirmedCount} / {maxAttendees}</span>
                 </div>
               )}
               {/* Waitlist */}
               {waitlistCount > 0 && (
-                <div className="flex flex-col gap-1">
-                  <div className="text-xs text-muted-foreground">Waitlist</div>
-                  <div className="text-sm font-medium leading-snug text-foreground">{waitlistCount}</div>
+                <div className="text-sm">
+                  <span className="text-muted">Waitlist</span>
+                  <span className="text-foreground ml-1">·</span>
+                  <span className="ml-1 text-foreground">{waitlistCount}</span>
                 </div>
               )}
-              {/* Signup timing */}
-              <div className="flex flex-col gap-1">
-                <div className="text-xs text-muted-foreground">Sign-ups</div>
-                <div className="text-sm leading-snug text-foreground">
-                  <div>{signupTiming.message}</div>
-                  {signupTiming.opensDate && signupTiming.status === "not_open" && (
-                    <div className="text-xs text-muted-foreground mt-0.5">Open {signupTiming.opensDate}</div>
-                  )}
-                  {signupTiming.closesDate && signupTiming.status === "open" && (
-                    <div className="text-xs text-muted-foreground mt-0.5">Closes {signupTiming.closesDate}</div>
-                  )}
-                </div>
+              {/* Sign-ups */}
+              <div className="text-sm">
+                <span className="text-muted">Sign-ups</span>
+                <span className="text-foreground ml-1">·</span>
+                <span className="ml-1 text-foreground">
+                  {signupTiming.status === "open" ? "Open" : signupTiming.status === "locked" ? "Closed" : "Not open"}
+                </span>
               </div>
             </div>
 
-            {/* E) CTAs */}
+            {/* Actions */}
             <div className="flex items-center gap-2 pt-1">
-              {/* Primary action (future-ready) */}
-              <button
-                disabled
-                className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted/70 cursor-not-allowed opacity-60"
-                title="Actions coming soon"
-              >
-                {rsvpStatus === "joined" ? "Leave" :
-                 rsvpStatus === "waitlist" ? "Leave waitlist" :
-                 "Join"}
-              </button>
-              {/* Secondary button */}
-              <Link
-                href={`/trips/${trip.id}`}
-                className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background transition-colors"
-              >
-                Details
-              </Link>
+              {rsvpStatus === "joined" ? (
+                <>
+                  <Link
+                    href={`/trips/${trip.id}`}
+                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/50 active:scale-[0.98] transition-all"
+                  >
+                    Details
+                  </Link>
+                  <button
+                    onClick={() => handleLeaveTrip(trip.id)}
+                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-muted/50 active:scale-[0.98] transition-all"
+                  >
+                    Leave
+                  </button>
+                </>
+              ) : signupTiming.status === "open" ? (
+                <>
+                  <button
+                    onClick={() => handleJoinTrip(trip.id, trip)}
+                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/50 active:scale-[0.98] transition-all"
+                  >
+                    Join
+                  </button>
+                  <Link
+                    href={`/trips/${trip.id}`}
+                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-muted/50 active:scale-[0.98] transition-all"
+                  >
+                    Details
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  href={`/trips/${trip.id}`}
+                  className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/50 active:scale-[0.98] transition-all"
+                >
+                  Details
+                </Link>
+              )}
             </div>
           </div>
         )}
@@ -872,7 +881,7 @@ export default function TripsListPage() {
         <div className="text-xl font-semibold text-foreground">Trips</div>
         <Link
           href="/host"
-          className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-[0.98] transition-transform"
         >
           ⛳ Host a round
         </Link>
@@ -899,7 +908,6 @@ export default function TripsListPage() {
 
       {/* Upcoming Trips Section (primary, expandable rows) */}
       <section className="space-y-2">
-        <div className="text-sm font-semibold text-foreground">Upcoming trips</div>
         {upcomingFiltered.length === 0 ? (
           <div className="text-sm text-muted py-2">No upcoming trips</div>
         ) : (

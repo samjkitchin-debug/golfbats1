@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
@@ -53,6 +53,10 @@ export default function HostPage() {
   // Submission
   const [submitting, setSubmitting] = useState(false);
   const [createdTripId, setCreatedTripId] = useState<number | null>(null);
+
+  // Refs for date/time inputs
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const timeInputRef = useRef<HTMLInputElement>(null);
 
   const supabase = useMemo(() => {
     return createBrowserClient(
@@ -196,6 +200,43 @@ export default function HostPage() {
     if (!dateStr) return "";
     const date = new Date(dateStr + "T00:00:00");
     return date.toLocaleDateString("en-GB", { weekday: "long" });
+  }
+
+  // Format date for instrument display
+  function formatDateForDisplay(dateStr: string): string {
+    if (!dateStr) return "Select date";
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const date = new Date(dateStr + "T00:00:00");
+    const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    
+    const diffMs = dateDay.getTime() - today.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      return "Today";
+    }
+    
+    if (diffDays === 1) {
+      return "Tomorrow";
+    }
+
+    // Check if within current calendar week (same week, future day)
+    const nowWeekStart = new Date(today);
+    nowWeekStart.setDate(today.getDate() - today.getDay()); // Sunday of this week
+    const nowWeekEnd = new Date(nowWeekStart);
+    nowWeekEnd.setDate(nowWeekStart.getDate() + 6); // Saturday of this week
+
+    if (dateDay >= nowWeekStart && dateDay <= nowWeekEnd && diffDays > 0) {
+      return `This ${date.toLocaleDateString("en-GB", { weekday: "long" })}`;
+    }
+
+    // Otherwise: <DayOfWeek> <D> <Mon>
+    return date.toLocaleDateString("en-GB", { 
+      weekday: "short",
+      day: "numeric",
+      month: "short"
+    });
   }
 
   function generateDefaultName(): string {
@@ -390,33 +431,21 @@ export default function HostPage() {
         <div className="space-y-3">
           <button
             onClick={() => toggleWho("just_me")}
-            className={`w-full rounded-lg border p-4 text-left transition-colors ${
-              whoSelections.has("just_me")
-                ? "border-brand-green bg-brand-green/10"
-                : "border-border bg-surface hover:bg-muted/50"
-            }`}
+            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all"
           >
             <div className="font-medium text-foreground">🧍 Just me</div>
           </button>
 
           <button
             onClick={() => toggleWho("with_mates")}
-            className={`w-full rounded-lg border p-4 text-left transition-colors ${
-              whoSelections.has("with_mates")
-                ? "border-brand-green bg-brand-green/10"
-                : "border-border bg-surface hover:bg-muted/50"
-            }`}
+            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all"
           >
             <div className="font-medium text-foreground">👥 With mates</div>
           </button>
 
           <button
             onClick={() => toggleWho("open_to_groups")}
-            className={`w-full rounded-lg border p-4 text-left transition-colors ${
-              whoSelections.has("open_to_groups")
-                ? "border-brand-green bg-brand-green/10"
-                : "border-border bg-surface hover:bg-muted/50"
-            }`}
+            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all"
           >
             <div className="font-medium text-foreground">🌍 Open to groups</div>
           </button>
@@ -446,7 +475,7 @@ export default function HostPage() {
           <button
             onClick={handlePlayingNow}
             disabled={submitting}
-            className="w-full rounded-lg border border-brand-green bg-brand-green/10 p-4 text-left transition-colors hover:bg-brand-green/20 disabled:opacity-50"
+            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all disabled:opacity-50"
           >
             <div className="font-medium text-foreground">▶️ Playing now</div>
             {submitting && <div className="mt-1 text-sm text-muted">Creating round…</div>}
@@ -457,7 +486,7 @@ export default function HostPage() {
               setPlayMode("planning_ahead");
               setCurrentStep("planning");
             }}
-            className="w-full rounded-lg border border-border bg-surface p-4 text-left transition-colors hover:bg-muted/50"
+            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all"
           >
             <div className="font-medium text-foreground">🗓️ Planning ahead</div>
           </button>
@@ -480,6 +509,91 @@ export default function HostPage() {
 
   // Step 3B: PLANNING AHEAD - When & where (combined)
   if (currentStep === "planning") {
+    // Generate date options (next 60 days)
+    const generateDateOptions = () => {
+      const options: Array<{ value: string; label: string; weekday: string; date: string }> = [];
+      const today = new Date();
+      
+      for (let i = 0; i < 60; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+        const dateStr = date.toISOString().split("T")[0];
+        const weekday = date.toLocaleDateString("en-GB", { weekday: "long" });
+        const dateShort = date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+        
+        let label = "";
+        if (i === 0) {
+          label = "Today";
+        } else if (i === 1) {
+          label = "Tomorrow";
+        } else if (i <= 7) {
+          label = `This ${weekday}`;
+        } else {
+          label = dateShort;
+        }
+        
+        options.push({ value: dateStr, label, weekday, date: dateShort });
+      }
+      
+      return options;
+    };
+
+    // Generate time options (15-minute increments from 6:00 AM to 7:30 PM)
+    const generateTimeOptions = () => {
+      const options: Array<{ value: string; label: string }> = [];
+      
+      // If in "playing_now" mode, add "Now" as first option
+      if (playMode === "playing_now") {
+        options.push({ value: "Now", label: "Now" });
+      }
+      
+      // Generate times in 15-minute increments
+      for (let hour = 6; hour < 20; hour++) {
+        for (let minute = 0; minute < 60; minute += 15) {
+          const timeStr = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+          const ampm = hour >= 12 ? "PM" : "AM";
+          const hour12 = hour % 12 || 12;
+          const label = `${hour12}:${minute.toString().padStart(2, "0")} ${ampm}`;
+          options.push({ value: timeStr, label });
+        }
+      }
+      
+      return options;
+    };
+
+    const dateOptions = generateDateOptions();
+    const timeOptions = generateTimeOptions();
+
+    // Find selected indices (default to first option if not set)
+    const selectedDateIndex = tripDate
+      ? Math.max(0, dateOptions.findIndex((opt) => opt.value === tripDate))
+      : 0;
+    const selectedTimeIndex = tripTime
+      ? Math.max(0, timeOptions.findIndex((opt) => opt.value === tripTime))
+      : playMode === "playing_now" ? 0 : Math.max(0, timeOptions.findIndex((opt) => opt.value === "07:00"));
+
+    // Handle date selection from scroll
+    const handleDateScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      const container = e.currentTarget;
+      const scrollTop = container.scrollTop;
+      const itemHeight = 56;
+      const selectedIndex = Math.round(scrollTop / itemHeight);
+      if (dateOptions[selectedIndex] && dateOptions[selectedIndex].value !== tripDate) {
+        setTripDate(dateOptions[selectedIndex].value);
+      }
+    };
+
+    // Handle time selection from scroll
+    const handleTimeScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      const container = e.currentTarget;
+      const scrollTop = container.scrollTop;
+      const itemHeight = 56;
+      const selectedIndex = Math.round(scrollTop / itemHeight);
+      if (timeOptions[selectedIndex] && timeOptions[selectedIndex].value !== tripTime) {
+        setTripTime(timeOptions[selectedIndex].value);
+      }
+    };
+
     return (
       <div className="container mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
@@ -487,40 +601,100 @@ export default function HostPage() {
         </div>
 
         <div className="space-y-6">
+          {/* Date wheel instrument */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Date <span className="text-muted">(required)</span>
-            </label>
-            <input
-              type="date"
-              value={tripDate}
-              onChange={(e) => setTripDate(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-foreground"
-              min={new Date().toISOString().split("T")[0]}
-            />
+            <div className="text-xs text-muted mb-2">Date</div>
+            <div className="relative rounded-lg bg-white shadow-sm overflow-hidden">
+              {/* Fade overlays */}
+              <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
+              <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-b from-transparent to-white z-10 pointer-events-none" />
+              
+              {/* Selection indicator */}
+              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-14 border-t border-b border-border/20 z-0" />
+              
+              {/* Scrollable date list */}
+              <div
+                className="relative overflow-y-auto"
+                style={{
+                  height: "200px",
+                  scrollSnapType: "y mandatory",
+                }}
+                onScroll={handleDateScroll}
+              >
+                <div style={{ height: "72px" }} /> {/* Top padding for centering */}
+                {dateOptions.map((option, index) => (
+                  <div
+                    key={option.value}
+                    style={{
+                      height: "56px",
+                      scrollSnapAlign: "center",
+                    }}
+                    className={`flex flex-col justify-center px-4 transition-colors ${
+                      index === selectedDateIndex ? "bg-brand-green/5 font-medium" : ""
+                    }`}
+                  >
+                    <div className="text-base font-medium text-foreground">
+                      {option.weekday}
+                    </div>
+                    <div className="text-xs text-muted">{option.label}</div>
+                  </div>
+                ))}
+                <div style={{ height: "72px" }} /> {/* Bottom padding for centering */}
+              </div>
+            </div>
           </div>
 
+          {/* Time wheel instrument */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Time
-            </label>
-            <input
-              type="text"
-              value={tripTime}
-              onChange={(e) => setTripTime(e.target.value)}
-              placeholder="Now"
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-foreground"
-            />
+            <div className="text-xs text-muted mb-2">Time</div>
+            <div className="relative rounded-lg bg-white shadow-sm overflow-hidden">
+              {/* Fade overlays */}
+              <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
+              <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-b from-transparent to-white z-10 pointer-events-none" />
+              
+              {/* Selection indicator */}
+              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-14 border-t border-b border-border/20 z-0" />
+              
+              {/* Scrollable time list */}
+              <div
+                className="relative overflow-y-auto"
+                style={{
+                  height: "200px",
+                  scrollSnapType: "y mandatory",
+                }}
+                onScroll={handleTimeScroll}
+              >
+                <div style={{ height: "72px" }} /> {/* Top padding for centering */}
+                {timeOptions.map((option, index) => (
+                  <div
+                    key={option.value}
+                    style={{
+                      height: "56px",
+                      scrollSnapAlign: "center",
+                    }}
+                    className={`flex items-center justify-center px-4 transition-colors ${
+                      index === selectedTimeIndex ? "bg-brand-green/5 font-medium" : ""
+                    }`}
+                  >
+                    <div className="text-base font-medium text-foreground">
+                      {option.label}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ height: "72px" }} /> {/* Bottom padding for centering */}
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+          {/* Course instrument */}
+          <div className="relative">
+            <div className="absolute top-0 left-0 text-xs text-muted pt-4 pl-4 pointer-events-none">
               Course <span className="text-muted">(required)</span>
-            </label>
+            </div>
             <select
               value={selectedCourseId || ""}
               onChange={(e) => setSelectedCourseId(e.target.value || null)}
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-foreground"
+              className="w-full rounded-lg bg-white shadow-sm active:scale-[0.985] active:shadow-none transition-all cursor-pointer text-base font-medium text-foreground appearance-none border-0 outline-none pt-8 pb-4 px-4"
             >
               <option value="">Select a course</option>
               {courses.map((course) => (
@@ -552,7 +726,7 @@ export default function HostPage() {
               }
             }}
             disabled={!tripDate || !selectedCourseId || submitting}
-            className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
           >
             {submitting ? "Creating…" : "Host round"}
           </button>
@@ -725,6 +899,11 @@ export default function HostPage() {
 
   // Step 5: CONFIRMATION (shown after successful creation)
   if (currentStep === "confirm" && createdTripId) {
+    // Detect spare slots: capacity is 4, host + selectedMemberIds.length
+    const totalPlayers = 1 + selectedMemberIds.length; // host + invited mates
+    const capacity = 4;
+    const hasSpareSlot = totalPlayers < capacity;
+
     return (
       <div className="container mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
@@ -735,6 +914,15 @@ export default function HostPage() {
           <div className="text-sm text-muted">
             Your round is ready. Share it with your mates or start playing.
           </div>
+
+          {hasSpareSlot && (
+            <div className="rounded-lg border border-border bg-surface/50 p-4 space-y-2">
+              <div className="text-sm font-medium text-foreground">Got a spare spot?</div>
+              <div className="text-xs text-muted">
+                Share the invite link in the group chat so someone can join.
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <Link
