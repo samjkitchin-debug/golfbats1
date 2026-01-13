@@ -97,6 +97,7 @@ export default function GameDayPage() {
   const [isSavingHole, setIsSavingHole] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: "", visible: false });
   const [undoState, setUndoState] = useState<{ holeNumber: number; snapshot: Record<string, number | null> } | null>(null);
+  const [expandedScoreRows, setExpandedScoreRows] = useState<Set<string>>(new Set()); // memberId -> expanded
 
   // Build play order helper
   function buildPlayOrder(startHole: number, holesToPlay: 9 | 18): number[] {
@@ -660,7 +661,7 @@ export default function GameDayPage() {
           if (data.ok) {
             setGameDayData(data);
             
-            // Auto-advance to next hole after delay
+            // Auto-advance to next hole after delay (600ms)
             const updatedHoleIndex = data.gameday?.currentHoleIndex ?? currentHoleIndexVal;
             const canGoNext = updatedHoleIndex < playOrder.length - 1;
             if (canGoNext) {
@@ -669,7 +670,7 @@ export default function GameDayPage() {
                 const newHole = playOrder[newIndex];
                 router.push(gamedayHole(roundId, newHole));
                 setSelectedHole(newHole);
-              }, 500);
+              }, 600);
             }
           }
         }
@@ -709,6 +710,55 @@ export default function GameDayPage() {
     setDraftScores(snapshot);
     setUndoState(null);
     setToast({ message: "", visible: false });
+  }
+
+  // Compute running totals for current member
+  function computeMyTotals(
+    playOrder: number[],
+    currentHoleIndex: number,
+    coursePack: CoursePack | null
+  ): { strokesTotal: number | null; toPar: number | null } {
+    if (!currentMemberId || !coursePack) {
+      return { strokesTotal: null, toPar: null };
+    }
+
+    let strokesTotal = 0;
+    let parTotal = 0;
+    let hasAllScores = true;
+
+    // Sum scores and par for holes 1..currentHole
+    for (let i = 0; i <= currentHoleIndex && i < playOrder.length; i++) {
+      const holeNum = playOrder[i];
+      const holeInfo = coursePack.holes.find((h) => h.holeNumber === holeNum);
+      
+      if (holeInfo?.par !== null && holeInfo.par !== undefined) {
+        parTotal += holeInfo.par;
+      }
+
+      const savedScore = savedScores[currentMemberId]?.[holeNum];
+      if (savedScore !== undefined && savedScore !== null) {
+        strokesTotal += savedScore;
+      } else {
+        // Check if current hole has draft score
+        if (i === currentHoleIndex) {
+          const draftScore = draftScores[currentMemberId];
+          if (draftScore !== null && draftScore !== undefined) {
+            strokesTotal += draftScore;
+          } else {
+            hasAllScores = false;
+          }
+        } else {
+          hasAllScores = false;
+        }
+      }
+    }
+
+    if (!hasAllScores) {
+      return { strokesTotal: null, toPar: null };
+    }
+
+    const toPar = strokesTotal - parTotal;
+    return { strokesTotal, toPar };
   }
 
   async function handleCloseRound() {
@@ -800,11 +850,15 @@ export default function GameDayPage() {
 
   return (
     <div className="container mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">GameDay</h1>
-        <p className="mt-2 text-sm text-muted">Your round is live</p>
-      </div>
+      {/* Remove header/logo section when in_progress - scoring surface is the hero */}
+      {gameDayData.gameday?.state !== "in_progress" && (
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-foreground">GameDay</h1>
+          <p className="mt-2 text-sm text-muted">Your round is live</p>
+        </div>
+      )}
 
+      {gameDayData.gameday?.state !== "in_progress" && (
       <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
         <div>
           <div className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Round</div>
@@ -1111,8 +1165,8 @@ export default function GameDayPage() {
           </div>
         )}
 
-        {/* Course pack summary (if loaded) */}
-        {coursePack && (
+        {/* Course pack summary (if loaded) - only show when not in_progress */}
+        {coursePack && gameDayData.gameday?.state !== "in_progress" && (
           <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
             <div className="text-sm font-medium text-foreground">{coursePack.course.name}</div>
             <div className="text-xs text-muted">
@@ -1123,8 +1177,8 @@ export default function GameDayPage() {
           </div>
         )}
 
-        {/* Course selected - show course name */}
-        {gameDayData.courseId && (
+        {/* Course selected - show course name - only show when not in_progress */}
+        {gameDayData.courseId && gameDayData.gameday?.state !== "in_progress" && (
           <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
             <div>
               <div className="text-sm font-medium text-foreground mb-1">
@@ -1183,7 +1237,7 @@ export default function GameDayPage() {
           </div>
         )}
 
-        {/* Round setup and Start round button */}
+        {/* Round setup and Start round button - only show when not in_progress */}
         {gameDayData.teeId && gameDayData.gameday?.state === "not_started" && (
           <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-4">
             <div>
@@ -1244,6 +1298,8 @@ export default function GameDayPage() {
             </button>
           </div>
         )}
+      </div>
+      )}
 
         {/* Premium scoring UI (when in_progress) */}
         {gameDayData.gameday?.state === "in_progress" && (() => {
@@ -1261,6 +1317,23 @@ export default function GameDayPage() {
           const holePar = currentHoleInfo?.par ?? null;
           const holeSI = currentHoleInfo?.strokeIndex ?? null;
           const teeLabel = coursePack?.tee.label ?? null;
+          const courseName = coursePack?.course.name ?? null;
+          
+          // Get next hole info
+          const nextHoleIndex = currentHoleIndexVal + 1;
+          const nextHoleNumber = nextHoleIndex < playOrder.length ? playOrder[nextHoleIndex] : null;
+          const nextHoleInfo = nextHoleNumber ? coursePack?.holes.find((h) => h.holeNumber === nextHoleNumber) : null;
+          const nextHolePar = nextHoleInfo?.par ?? null;
+          
+          // Compute my totals
+          const myTotals = computeMyTotals(playOrder, currentHoleIndexVal, coursePack);
+          const myToParSigned = myTotals.toPar === null 
+            ? "—" 
+            : myTotals.toPar === 0 
+              ? "E" 
+              : myTotals.toPar > 0 
+                ? `+${myTotals.toPar}` 
+                : `${myTotals.toPar}`;
           
           // Check if there are changes or existing scores to confirm
           const hasChanges = gameDayData.participants.some((p) => {
@@ -1275,83 +1348,136 @@ export default function GameDayPage() {
           
           return (
             <>
-              {/* Sticky header */}
-              <div className="sticky top-0 z-10 bg-surface border-b border-border px-4 py-3 -mx-4 mb-4">
-                <div className="flex items-center justify-between">
+              {/* In-Round HUD */}
+              <div className="mb-6 space-y-3">
+                {/* Top row: Hole context + Player snapshot */}
+                <div className="flex items-start justify-between gap-4">
+                  {/* Left: Hole context */}
                   <div className="flex-1">
-                    <div className="text-lg font-semibold text-foreground">Hole {currentHoleNumber}</div>
-                    <div className="text-xs text-muted mt-0.5">
-                      {holePar !== null && `Par ${holePar}`}
-                      {holePar !== null && holeSI !== null && " · "}
-                      {holeSI !== null && `SI ${holeSI}`}
-                      {teeLabel && (holePar !== null || holeSI !== null) && " · "}
-                      {teeLabel}
+                    <div className="text-2xl font-bold text-foreground">Hole {currentHoleNumber}</div>
+                    <div className="text-xs text-muted mt-1">
+                      {holePar !== null ? `Par ${holePar}` : "Par —"}
+                      {holeSI !== null && ` • Handicap Index ${holeSI}`}
+                      {teeLabel && ` • ${teeLabel}`}
+                      {courseName && teeLabel && ` • ${courseName}`}
+                      {courseName && !teeLabel && ` • Course: ${courseName}`}
                     </div>
                   </div>
-                  <div className="text-sm text-muted">
-                    {currentHoleIndexVal + 1}/{playOrder.length}
+                  
+                  {/* Right: Player snapshot */}
+                  <div className="text-right">
+                    <div className="text-sm text-muted">Today: {myTotals.strokesTotal ?? "—"}</div>
+                    <div className={`text-2xl font-bold mt-1 ${
+                      myTotals.toPar === null 
+                        ? "text-foreground" 
+                        : myTotals.toPar < 0 
+                          ? "text-emerald-600" 
+                          : myTotals.toPar > 0 
+                            ? "text-red-600" 
+                            : "text-foreground"
+                    }`}>
+                      To par: {myToParSigned}
+                    </div>
                   </div>
+                </div>
+                
+                {/* Next hole line */}
+                <div className="text-xs text-muted">
+                  {nextHoleNumber ? (
+                    <>Next: Hole {nextHoleNumber}{nextHolePar !== null ? ` (Par ${nextHolePar})` : ""}</>
+                  ) : (
+                    <>Next: Finish</>
+                  )}
                 </div>
               </div>
 
-              {/* Scorecard strip */}
-              <div className="space-y-3 mb-6">
+              {/* Quick-tap scorecard strip */}
+              <div className="space-y-4 mb-6">
                 {gameDayData.participants.map((participant) => {
                   const currentScore = draftScores[participant.id] ?? null;
-                  const savedScore = savedScores[participant.id]?.[currentHoleNumber];
+                  const isExpanded = expandedScoreRows.has(participant.id);
+                  const defaultPar = holePar ?? 4;
+                  const scoreRange = [
+                    Math.max(1, defaultPar - 1),
+                    defaultPar,
+                    defaultPar + 1,
+                    defaultPar + 2,
+                    defaultPar + 3,
+                  ];
                   
                   return (
-                    <div
-                      key={participant.id}
-                      className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-4"
-                    >
-                      {/* Player name */}
-                      <div className="flex-shrink-0 w-24 text-sm font-medium text-foreground truncate">
-                        {participant.displayName}
-                      </div>
-                      
-                      {/* Score controls */}
-                      <div className="flex-1 flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDraftScores((prev) => ({
-                              ...prev,
-                              [participant.id]: Math.max(0, (prev[participant.id] ?? 0) - 1),
-                            }));
-                          }}
-                          className="w-10 h-10 rounded-lg border border-border bg-surface text-lg font-medium text-foreground hover:bg-muted/50 flex items-center justify-center"
-                        >
-                          −
-                        </button>
-                        
-                        <div
-                          className="w-16 h-12 rounded-lg border-2 border-border bg-surface text-lg font-semibold text-foreground flex items-center justify-center cursor-pointer hover:border-brand-green"
-                          onClick={() => {
-                            // Focus on input or increment
-                            const current = draftScores[participant.id] ?? null;
-                            setDraftScores((prev) => ({
-                              ...prev,
-                              [participant.id]: current === null ? 1 : current + 1,
-                            }));
-                          }}
-                        >
-                          {currentScore === null ? "—" : currentScore}
+                    <div key={participant.id} className="space-y-2">
+                      {/* Player name + quick-tap pills */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0 w-20 text-sm font-medium text-foreground truncate">
+                          {participant.displayName}
                         </div>
                         
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDraftScores((prev) => ({
-                              ...prev,
-                              [participant.id]: (prev[participant.id] ?? 0) + 1,
-                            }));
-                          }}
-                          className="w-10 h-10 rounded-lg border border-border bg-surface text-lg font-medium text-foreground hover:bg-muted/50 flex items-center justify-center"
-                        >
-                          +
-                        </button>
+                        <div className="flex-1 flex items-center gap-2 flex-wrap">
+                          {scoreRange.map((score) => (
+                            <button
+                              key={score}
+                              type="button"
+                              onClick={() => {
+                                setDraftScores((prev) => ({
+                                  ...prev,
+                                  [participant.id]: score,
+                                }));
+                              }}
+                              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                currentScore === score
+                                  ? "bg-brand-green text-white"
+                                  : "bg-surface border border-border text-foreground hover:bg-muted/50"
+                              }`}
+                            >
+                              {score}
+                            </button>
+                          ))}
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExpandedScoreRows((prev) => {
+                                const next = new Set(prev);
+                                if (isExpanded) {
+                                  next.delete(participant.id);
+                                } else {
+                                  next.add(participant.id);
+                                }
+                                return next;
+                              });
+                            }}
+                            className="px-3 py-2 rounded-lg text-sm font-medium bg-surface border border-border text-foreground hover:bg-muted/50"
+                          >
+                            {isExpanded ? "Less" : "More"}
+                          </button>
+                        </div>
                       </div>
+                      
+                      {/* Expanded row with full 1..12 options */}
+                      {isExpanded && (
+                        <div className="flex items-center gap-2 flex-wrap pl-20">
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map((score) => (
+                            <button
+                              key={score}
+                              type="button"
+                              onClick={() => {
+                                setDraftScores((prev) => ({
+                                  ...prev,
+                                  [participant.id]: score,
+                                }));
+                              }}
+                              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                currentScore === score
+                                  ? "bg-brand-green text-white"
+                                  : "bg-surface border border-border text-foreground hover:bg-muted/50"
+                              }`}
+                            >
+                              {score}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1381,7 +1507,11 @@ export default function GameDayPage() {
                   disabled={isSavingHole || !canConfirm}
                   className="w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSavingHole ? "Saving…" : "Confirm hole"}
+                  {isSavingHole 
+                    ? "Saving…" 
+                    : currentHoleNumber === 18 && !canGoNext
+                      ? "Finish round"
+                      : "Confirm hole"}
                 </button>
               </div>
 
@@ -1539,7 +1669,7 @@ export default function GameDayPage() {
           </div>
         )}
 
-        {gameDayData.courseId && (
+        {gameDayData.courseId && gameDayData.gameday?.state !== "in_progress" && (
           <div>
             <div className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Course</div>
             <div className="text-sm text-foreground">
@@ -1548,6 +1678,8 @@ export default function GameDayPage() {
           </div>
         )}
 
+        {gameDayData.gameday?.state !== "in_progress" && (
+        <>
         <div>
           <div className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Participants</div>
           {gameDayData.participants.length === 0 ? (
@@ -1589,7 +1721,8 @@ export default function GameDayPage() {
             Exit GameDay
           </Link>
         </div>
-      </div>
+        </>
+        )}
     </div>
   );
 }

@@ -29,6 +29,10 @@ type ActiveCoordination = {
   updatedAt: string;
 };
 
+type CoordinationActiveResponse = {
+  active: ActiveCoordination | null;
+};
+
 export default function ActiveGameDayChip() {
   const router = useRouter();
   const pathname = usePathname();
@@ -78,7 +82,7 @@ export default function ActiveGameDayChip() {
 
         // If /api/gameday/active returns null, try /api/coordination/active as fallback
         try {
-          const coordinationData = await apiJson(coordinationActiveApi());
+          const coordinationData = await apiJson<CoordinationActiveResponse>(coordinationActiveApi());
           validateCoordinationActiveResponse(coordinationData);
           if (coordinationData.active) {
             setActive(null);
