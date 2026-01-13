@@ -18,6 +18,46 @@ export type Course = {
   tees: Tee[];
 };
 
+// Lightweight types for course lookup (used in setup flows)
+export type TeeLookup = {
+  id: string;
+  label: string;
+};
+
+export type CourseLookup = {
+  id: string;
+  name: string;
+  location: string;
+  tees: TeeLookup[];
+};
+
+// GameDay course pack types (heavy data for scoring)
+export type HolePack = {
+  holeNumber: number;
+  par: number | null;
+  meters: number | null;
+  strokeIndex: number | null;
+};
+
+export type TeePack = {
+  id: string;
+  label: string;
+  meters: number;
+  par: number;
+  slope: number;
+  rating: number | null;
+};
+
+export type CoursePack = {
+  course: {
+    id: string;
+    name: string;
+    location: string;
+  };
+  tee: TeePack;
+  holes: HolePack[];
+};
+
 const LS_KEY = "golfbats:courses:v1";
 
 function getSupabase() {
@@ -92,6 +132,56 @@ export function saveCourses(courses: Course[]) {
  */
 export async function refreshCoursesFromDb(): Promise<Course[]> {
   return loadCourses();
+}
+
+/**
+ * Load lightweight course lookup data for setup flows (e.g., Host Round)
+ * Returns courses with minimal tee information (id, label only)
+ */
+export async function loadCourseLookup(): Promise<CourseLookup[]> {
+  if (typeof window === "undefined") return [];
+  
+  try {
+    const res = await fetch("/api/courses/lookup");
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error("loadCourseLookup: API error", { status: res.status, error: json?.error });
+      return [];
+    }
+
+    return json.courses || [];
+  } catch (error) {
+    console.error("loadCourseLookup: exception", { error: error instanceof Error ? error.message : String(error) });
+    return [];
+  }
+}
+
+/**
+ * Load course pack (heavy data: course + tee + holes) for GameDay scoring
+ * Returns coursePack or null if not found/missing tee
+ */
+export async function loadCoursePack(roundId: string): Promise<CoursePack | null> {
+  if (typeof window === "undefined") return null;
+  
+  try {
+    const res = await fetch(`/api/gameday/${roundId}/course-pack`, { credentials: "include" });
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error("loadCoursePack: API error", { status: res.status, error: json?.error });
+      return null;
+    }
+
+    if (json.ok && json.coursePack) {
+      return json.coursePack;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("loadCoursePack: exception", { error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
 }
 
 async function getClubId(supabase: ReturnType<typeof getSupabase>): Promise<string | null> {

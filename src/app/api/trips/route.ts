@@ -24,7 +24,7 @@ async function fetchTripsData(
   let query = supabase
     .from("trips")
     .select(
-      "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group"
+      "id,legacy_id,name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group"
     )
     .eq("group_id", groupId)
     .gte("trip_date", todayYmd); // Only trips with date >= today (upcoming only)
@@ -225,6 +225,7 @@ async function fetchTripsData(
       ferry: trip.ferry || undefined,
       capacity: trip.capacity,
       status: trip.status as "open" | "closed" | "archived",
+      coordinationStatus: (trip as any).coordination_status as "draft" | "forming" | "scheduled" | "completed",
       cutoffAt: trip.cutoff_at ? new Date(trip.cutoff_at).toISOString() : undefined,
       courseId: trip.course_id,
       teeId: trip.tee_id,
@@ -628,17 +629,17 @@ export async function POST(req: Request) {
       // For member trips, get member ID from user
       let createdByMemberId: string | null = null;
       if (tripOrigin === 'member') {
-        // Get member ID from user_id
+        // Get member ID - in canonical schema: members.id == auth.user.id
         const { data: memberData } = await supabase
           .from("members")
-          .select("id")
-          .eq("user_id", user.id)
+          .select("id,email,display_name,status")
+          .eq("id", user.id)
           .maybeSingle();
         
         if (!memberData) {
           return NextResponse.json(
-            { error: "Member profile not found. Cannot create member trip." },
-            { status: 403 }
+            { error: "Member record not found. Please complete onboarding first." },
+            { status: 409 }
           );
         }
         createdByMemberId = memberData.id;
@@ -687,6 +688,33 @@ export async function POST(req: Request) {
           { error: insertError.message || "Failed to create trip." },
           { status: 400 }
         );
+      }
+
+      // For member trips, automatically create attendee row for the creator
+      if (tripOrigin === 'member' && createdByMemberId) {
+        // Use upsert for idempotency (onConflict handles case where row already exists)
+        const { error: attendeeError } = await supabase
+          .from("trip_attendees")
+          .upsert(
+            {
+              trip_id: tripId,
+              group_id: groupId,
+              member_id: createdByMemberId,
+              status: "confirmed",
+              joined_at: now,
+              handicap_snapshot: null,
+            },
+            { onConflict: "trip_id,member_id" }
+          );
+
+        if (attendeeError) {
+          console.error("Failed to create attendee for member trip creator:", attendeeError);
+          // This is required for GameDay visibility, so return error
+          return NextResponse.json(
+            { error: "Trip created but failed to add creator as attendee. Please try again." },
+            { status: 400 }
+          );
+        }
       }
 
       // Invalidate scoped cache tags

@@ -26,6 +26,7 @@ export default async function LoginPage() {
             width={160}
             height={80}
             className="h-auto w-auto max-h-[80px] object-contain"
+            style={{ width: "auto" }}
             priority
           />
         </div>

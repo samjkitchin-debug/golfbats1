@@ -66,7 +66,7 @@ export async function POST(
     // Find trip
     let tripQuery = supabase
       .from("trips")
-      .select("id,created_by_member_id,trip_origin")
+      .select("id,group_id,created_by_member_id,trip_origin")
       .eq("trip_origin", "member");
 
     if (isNumeric) {
@@ -107,6 +107,7 @@ export async function POST(
     }
 
     const tripId = tripData.id;
+    const groupId = tripData.group_id;
 
     if (action === "add") {
       // Add participant (upsert to trip_attendees with status="confirmed")
@@ -115,6 +116,7 @@ export async function POST(
         .upsert(
           {
             trip_id: tripId,
+            group_id: groupId,
             member_id: memberId,
             status: "confirmed",
             joined_at: new Date().toISOString(),

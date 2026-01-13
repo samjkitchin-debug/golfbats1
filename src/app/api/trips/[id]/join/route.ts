@@ -9,7 +9,7 @@ const CACHE_TAG = "trips";
 // Map a single trip row + related rows into the Trip JSON shape used by /api/trips
 async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, tripIdentifier: string | number) {
   // Determine if identifier is legacy_id (number) or id (UUID)
-  let tripQuery = supabase.from("trips").select("id,group_id,legacy_id,trip_date,status,cutoff_at,course_id,tee_id,name,format,capacity,ferry,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,scenario_key");
+  let tripQuery = supabase.from("trips").select("id,group_id,legacy_id,trip_date,status,coordination_status,cutoff_at,course_id,tee_id,name,format,capacity,ferry,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,scenario_key");
   
   if (typeof tripIdentifier === "number") {
     tripQuery = tripQuery.eq("legacy_id", tripIdentifier);
@@ -93,6 +93,7 @@ async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupaba
     ferry: trip.ferry || undefined,
     capacity: trip.capacity,
     status: trip.status as "open" | "closed" | "archived",
+    coordinationStatus: (trip as any).coordination_status as "draft" | "forming" | "scheduled" | "completed" || "forming",
     cutoffAt: trip.cutoff_at ? new Date(trip.cutoff_at).toISOString() : undefined,
     courseId: trip.course_id,
     teeId: trip.tee_id,
@@ -182,6 +183,7 @@ export async function POST(
       ferry: tripPayload.ferry,
       capacity: tripPayload.capacity,
       status: tripPayload.status as "open" | "closed" | "archived",
+      coordinationStatus: tripPayload.coordinationStatus,
       cutoffAt: tripPayload.cutoffAt,
       courseId: tripPayload.courseId,
       teeId: tripPayload.teeId,

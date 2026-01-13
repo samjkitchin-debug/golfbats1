@@ -13,6 +13,8 @@ import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
 import { checkMemberExportReadiness } from "../../lib/memberExportReadiness";
 import { useRouter } from "next/navigation";
 import { getGolfNoun } from "../../lib/roundNounHelper";
+import { getEffectiveCoordinationStatus } from "../../lib/tripCoordination";
+import { coordinationTripsStatusApi } from "../../lib/routes";
 
 // Helper function to check if cutoff has passed (11:59pm SGT on cutoff date)
 function isCutoffPassed(cutoffAt: string | undefined): boolean {
@@ -59,6 +61,7 @@ export default function TripsListPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [pastTripsExpanded, setPastTripsExpanded] = useState<boolean>(false);
   const [completionPrompt, setCompletionPrompt] = useState<{ tripId: number; missingFields: string[] } | null>(null);
+  const [coordinationStatusData, setCoordinationStatusData] = useState<{ todayYmd: string; inProgressTripIds: string[]; inProgressLegacyIds: number[] } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -454,6 +457,40 @@ export default function TripsListPage() {
     }
   }, [upcomingFiltered, expandedTripId, currentUserId]);
 
+  // Fetch coordination status data for all trips (batch query)
+  useEffect(() => {
+    if (upcomingFiltered.length === 0) {
+      setCoordinationStatusData(null);
+      return;
+    }
+
+    async function fetchCoordinationStatus() {
+      try {
+        // Collect trip IDs (numeric IDs from Trip type)
+        const tripIds = upcomingFiltered.map(t => t.id);
+        
+        const res = await fetch(coordinationTripsStatusApi(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ tripIds }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setCoordinationStatusData(data);
+        } else {
+          setCoordinationStatusData(null);
+        }
+      } catch (error) {
+        console.error("Failed to fetch coordination status:", error);
+        setCoordinationStatusData(null);
+      }
+    }
+
+    fetchCoordinationStatus();
+  }, [upcomingFiltered]);
+
   // Helper to get user RSVP status for a trip
   function getUserRsvpStatus(trip: Trip & { groupName?: string; groupId?: string }): "joined" | "waitlist" | "not_joined" {
     const myEntry = currentUserId
@@ -584,6 +621,25 @@ export default function TripsListPage() {
     } else {
       statusBadge = "Open";
       statusStyles = "bg-muted/5 text-muted";
+    }
+
+    // Compute effective coordination status
+    let effectiveCoordinationStatus: string | null = null;
+    if (coordinationStatusData) {
+      // Check if this trip has an in-progress gameday by matching legacy_id
+      const hasInProgressGameDay = coordinationStatusData.inProgressLegacyIds.includes(trip.id);
+      
+      // Compute effective status using the coordination derivation rules
+      const effectiveStatus = getEffectiveCoordinationStatus({
+        coordinationStatus: trip.coordinationStatus ?? 'forming',
+        tripDateYmd: trip.date,
+        todayYmd: coordinationStatusData.todayYmd,
+        hasInProgressGameDay,
+      });
+      
+      if (effectiveStatus === 'in_progress' || effectiveStatus === 'today') {
+        effectiveCoordinationStatus = effectiveStatus;
+      }
     }
 
     // Format date with day for expanded view

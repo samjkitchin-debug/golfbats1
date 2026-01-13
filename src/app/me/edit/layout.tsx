@@ -33,6 +33,7 @@ export default async function MeEditLayout({
               width={120}
               height={60}
               className="h-auto w-auto max-h-[60px] object-contain"
+              style={{ width: "auto" }}
               priority
             />
           </Link>

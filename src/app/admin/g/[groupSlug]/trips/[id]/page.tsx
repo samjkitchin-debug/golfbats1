@@ -719,6 +719,7 @@ export default function AdminTripPage() {
               format: data.format || "",
               capacity: Number(data.capacity || 0),
               status: (data.status as any) || "open",
+              coordinationStatus: (data.coordination_status as any) || "forming",
               cutoffAt: data.cutoff_at || undefined,
               courseId: data.course_id || null,
               teeId: data.tee_id || null,

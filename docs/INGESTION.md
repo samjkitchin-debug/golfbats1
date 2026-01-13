@@ -7,10 +7,13 @@
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `GOLFCOURSE_API_KEY`
 
-2. **Database Migration**:
-   Run the migration first:
+2. **Database Migrations**:
+   Run required migrations first in Supabase SQL Editor:
    ```sql
-   -- Execute in Supabase SQL Editor:
+   -- GameDay tables (required for scoring):
+   -- docs/migrations/gameday_rounds_and_scores.sql
+   
+   -- Tee holes and rating (required for course ingestion):
    -- docs/migrations/add-tee-holes-and-rating.sql
    ```
 

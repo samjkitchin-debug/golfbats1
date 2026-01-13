@@ -13,8 +13,28 @@ import { PromptModal } from "../components/PromptModal";
 import { TripCard } from "../components/TripCard";
 import { perfMark, perfMeasure, perfLog } from "../lib/perf";
 import { getGolfNoun } from "../lib/roundNounHelper";
+import { useRouter } from "next/navigation";
+import { gamedayStartApi, coordinationActiveApi } from "../lib/routes";
+import {
+  apiJson,
+  validateCoordinationActiveResponse,
+  validateGamedayStartResponse,
+} from "../lib/apiClient";
+
+type ActiveCoordination = {
+  tripId: string;
+  tripLegacyId: number | null;
+  groupId: string;
+  label: string;
+  effectiveStatus: 'today' | 'in_progress';
+  resume: {
+    route: string;
+  };
+  updatedAt: string;
+};
 
 export default function HomePage() {
+  const router = useRouter();
   // All state hooks - must be at the top
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -31,6 +51,9 @@ export default function HomePage() {
   const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string; role?: string }>>([]);
   const [isGroupAdmin, setIsGroupAdmin] = useState(false);
   const [allTripsWithGroups, setAllTripsWithGroups] = useState<Array<Trip & { groupName: string; groupId: string }>>([]);
+  const [activeCoordination, setActiveCoordination] = useState<ActiveCoordination | null>(null);
+  const [lastCoordinationFetch, setLastCoordinationFetch] = useState<number>(0);
+  const [startingGameDay, setStartingGameDay] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -214,6 +237,35 @@ export default function HomePage() {
     loadData();
   }, [approvedGroups, activeGroupId]);
 
+  // Fetch active coordination context
+  useEffect(() => {
+    if (!hasMemberships) return; // Only fetch if user has memberships
+
+    // Simple cache: fetch at most once every 30 seconds
+    const now = Date.now();
+    if (now - lastCoordinationFetch < 30000 && activeCoordination) {
+      return;
+    }
+
+    async function fetchActiveCoordination() {
+      try {
+        const coordinationData = await apiJson(coordinationActiveApi());
+        validateCoordinationActiveResponse(coordinationData);
+        if (coordinationData.active) {
+          setActiveCoordination(coordinationData.active);
+          setLastCoordinationFetch(now);
+        } else {
+          setActiveCoordination(null);
+        }
+      } catch (error) {
+        console.error("Failed to fetch active coordination:", error);
+        setActiveCoordination(null);
+      }
+    }
+
+    fetchActiveCoordination();
+  }, [hasMemberships, lastCoordinationFetch, activeCoordination]);
+
   // Helper functions for placeholder display
   function formatTripDate(trip: Trip & { groupName?: string; groupId?: string }): string {
     return new Date(trip.date + "T00:00:00").toLocaleDateString("en-GB", {
@@ -316,6 +368,81 @@ export default function HomePage() {
 
   // Build content based on state - no early returns
   let content: React.ReactNode;
+
+  // Reusable Host a round CTA
+  const HostRoundCTA = (
+    <div className="mb-6">
+      <Link
+        href="/host"
+        className="block w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
+      >
+        ⛳ Host a round
+      </Link>
+    </div>
+  );
+
+  // Coordination tile (dominant, appears above all other CTAs)
+  const CoordinationTile = activeCoordination ? (
+    <div className="mb-6 rounded-xl border-2 border-brand-green bg-brand-green/10 p-5">
+      <div className="text-lg font-semibold text-foreground mb-1">
+        {activeCoordination.effectiveStatus === 'in_progress' ? 'Round in progress' : 'GameDay'}
+      </div>
+      <div className="text-sm text-muted mb-4">
+        {activeCoordination.label}
+      </div>
+      <button
+        onClick={async () => {
+          if (startingGameDay) return;
+          setStartingGameDay(true);
+          try {
+            // Call start endpoint before navigating
+            try {
+              const data = await apiJson(gamedayStartApi(), {
+                method: "POST",
+                body: JSON.stringify({ tripId: activeCoordination.tripId }),
+              });
+              validateGamedayStartResponse(data);
+              // Navigate after successful start
+              router.push(activeCoordination.resume.route);
+            } catch (error) {
+              // If 409 already_published, still navigate (read-only viewing may exist)
+              if (error instanceof Error && error.message.includes("409")) {
+                try {
+                  const res = await fetch(gamedayStartApi(), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ tripId: activeCoordination.tripId }),
+                  });
+                  if (res.status === 409) {
+                    const data = await res.json();
+                    if (data.reason === 'already_published') {
+                      router.push(activeCoordination.resume.route);
+                      return;
+                    }
+                  }
+                } catch {
+                  // Fall through to navigate anyway
+                }
+              }
+              // Still navigate on error (user can try again on GameDay page)
+              router.push(activeCoordination.resume.route);
+            }
+          } catch (error) {
+            console.error("Failed to start GameDay:", error);
+            // Still navigate on error (user can try again on GameDay page)
+            router.push(activeCoordination.resume.route);
+          } finally {
+            setStartingGameDay(false);
+          }
+        }}
+        disabled={startingGameDay}
+        className="w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {startingGameDay ? 'Starting…' : (activeCoordination.effectiveStatus === 'in_progress' ? 'Resume GameDay' : 'Enter GameDay')}
+      </button>
+    </div>
+  ) : null;
 
   if (loadingBootstrap) {
     content = (
@@ -444,15 +571,19 @@ export default function HomePage() {
     );
   } else if (!primaryTrip) {
     content = (
-      <div className="rounded-xl border border-border bg-surface p-5">
-        <div className="text-lg font-semibold text-foreground">No upcoming trips</div>
-        <div className="mt-2 text-sm text-muted">
-          When the admin creates the next outing, it'll appear here.
-        </div>
-        <div className="mt-4">
-          <Link href="/trips" className="text-sm text-muted hover:text-foreground">
-            Go to Trips →
-          </Link>
+      <div>
+        {CoordinationTile}
+        {HostRoundCTA}
+        <div className="rounded-xl border border-border bg-surface p-5">
+          <div className="text-lg font-semibold text-foreground">No upcoming trips</div>
+          <div className="mt-2 text-sm text-muted">
+            When the admin creates the next outing, it'll appear here.
+          </div>
+          <div className="mt-4">
+            <Link href="/trips" className="text-sm text-muted hover:text-foreground">
+              Go to Trips →
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -470,15 +601,8 @@ export default function HomePage() {
 
     content = (
       <div className="space-y-8">
-        {/* Primary Action - Host a round */}
-        <div>
-          <Link
-            href="/host"
-            className="block w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
-          >
-            ⛳ Host a round
-          </Link>
-        </div>
+        {CoordinationTile}
+        {HostRoundCTA}
 
         {/* Primary Narrative - Next Thing You're Playing */}
         <div 

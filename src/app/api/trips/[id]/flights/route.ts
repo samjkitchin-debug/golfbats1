@@ -52,6 +52,10 @@ export async function GET(
       .select(`
         id,
         flight_number,
+        execution_status,
+        started_at,
+        finished_at,
+        start_hole,
         trip_flight_slots(
           id,
           member_id,
@@ -75,6 +79,10 @@ export async function GET(
     const flights = (flightsData || []).map((f: any) => ({
       id: f.id,
       flightNumber: f.flight_number,
+      executionStatus: f.execution_status ?? "not_started",
+      startedAt: f.started_at ?? null,
+      finishedAt: f.finished_at ?? null,
+      startHole: f.start_hole ?? 1,
       slots: (f.trip_flight_slots || [])
         .sort((a: any, b: any) => a.slot_position - b.slot_position)
         .map((slot: any) => {

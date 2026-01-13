@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
 import MainNav from "../components/MainNav";
+import ActiveGameDayChip from "./components/ActiveGameDayChip";
 
 function parseAdminEmails(raw: string | undefined) {
   return (raw ?? "")
@@ -39,6 +40,7 @@ export default async function MemberLayout({ children }: { children: React.React
               width={160}
               height={80}
               className="h-auto w-auto max-h-[80px] object-contain"
+              style={{ width: "auto" }}
               priority
             />
           </Link>
@@ -52,6 +54,9 @@ export default async function MemberLayout({ children }: { children: React.React
 
       {/* Content */}
       <main className="mx-auto w-full max-w-md px-4 pt-6 pb-5">{children}</main>
+
+      {/* Active GameDay chip */}
+      <ActiveGameDayChip />
 
       {/* Bottom navigation */}
       <BottomNav />

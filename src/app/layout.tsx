@@ -82,11 +82,8 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "DayForeIt",
   },
+  // Icons are handled by icon.tsx file in app directory for proper aspect ratio
   icons: {
-    icon: [
-      { url: "/browserIcon.png", sizes: "192x192", type: "image/png" },
-      { url: "/browserIcon.png", sizes: "512x512", type: "image/png" },
-    ],
     apple: [
       { url: "/browserIcon.png", sizes: "192x192", type: "image/png" },
     ],

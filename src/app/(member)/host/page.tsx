@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
-import { loadCourses, type Course } from "../../lib/courseActions";
+import { loadCourseLookup, type CourseLookup } from "../../lib/courseActions";
 import { createTrip } from "../../lib/tripActions";
 
 type MemberLite = {
@@ -25,7 +25,7 @@ export default function HostPage() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [approvedGroups, setApprovedGroups] = useState<GroupRow[]>([]);
   const [isProfileComplete, setIsProfileComplete] = useState<boolean | null>(null);
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<CourseLookup[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState<"who" | "mode" | "planning" | "social" | "confirm">("who");
   
@@ -96,10 +96,10 @@ export default function HostPage() {
     loadBootstrap();
   }, [router]);
 
-  // Load courses
+  // Load courses (lookup - lightweight for setup flows)
   useEffect(() => {
     async function loadCoursesData() {
-      const coursesData = await loadCourses();
+      const coursesData = await loadCourseLookup();
       setCourses(coursesData);
     }
     loadCoursesData();

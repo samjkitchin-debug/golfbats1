@@ -28,12 +28,13 @@
   --color-surface-card-dark: var(--surface);
 
   /* Brand colors */
-  --color-brand-green: #1F7A4A;      /* Primary — use for main actions, accents */
+  --color-brand-green: #2FA36A;      /* Primary — use for main actions, accents */
   --color-brand-orange: #F97316;     /* CTA/emphasis — buttons, highlights only */
   --color-brand-blue: #2BA4D9;       /* Accent — rare use, subtle highlights */
   
   /* Soft tints */
-  --color-brand-green-light: #E6F3EC;
+  --color-brand-green-light: #EAF8F1;
+  --color-brand-green-sunlit: #7ED9A6;
   --color-brand-orange-light: #FFF1E6;
   --color-brand-blue-light: #E8F5FB;
   
