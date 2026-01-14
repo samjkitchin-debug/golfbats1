@@ -9,7 +9,7 @@ import {
   validateGamedayStart,
 } from "../../lib/apiContracts";
 
-type ActiveGameDay = {
+export type ActiveGameDay = {
   tripId: string;
   groupId: string;
   state: string;
@@ -17,7 +17,7 @@ type ActiveGameDay = {
   updatedAt: string;
 };
 
-type ActiveCoordination = {
+export type ActiveCoordination = {
   tripId: string;
   tripLegacyId: number | null;
   groupId: string;
@@ -32,6 +32,123 @@ type ActiveCoordination = {
 type CoordinationActiveResponse = {
   active: ActiveCoordination | null;
 };
+
+export type ActiveGameDayInfo = {
+  roundId: string | null;
+  currentHoleIndex: number | null;
+  roundName: string | null;
+  courseName: string | null;
+  route: string | null;
+};
+
+// Hook to get active GameDay info for use in Home page
+export function useActiveGameDay(): ActiveGameDayInfo | null {
+  const [active, setActive] = useState<ActiveGameDay | null>(null);
+  const [activeCoordination, setActiveCoordination] = useState<ActiveCoordination | null>(null);
+  const [holeNumber, setHoleNumber] = useState<number>(1);
+  const [lastFetch, setLastFetch] = useState<number>(0);
+
+  useEffect(() => {
+    // Simple cache: fetch at most once every 5 seconds
+    const now = Date.now();
+    if (now - lastFetch < 5000 && (active || activeCoordination)) {
+      return;
+    }
+
+    async function fetchActive() {
+      try {
+        // First, try the existing /api/gameday/active endpoint
+        const gamedayRes = await fetch("/api/gameday/active", { credentials: "include" });
+        if (gamedayRes.ok) {
+          const gamedayData = await gamedayRes.json();
+          if (gamedayData.active) {
+            setActive(gamedayData.active);
+            setActiveCoordination(null);
+            setLastFetch(now);
+
+            // Read hole number from localStorage
+            const lastHoleKey = `gameday:last:${gamedayData.active.tripId}`;
+            const lastHoleData = localStorage.getItem(lastHoleKey);
+            if (lastHoleData) {
+              try {
+                const parsed = JSON.parse(lastHoleData);
+                if (parsed.holeNumber && typeof parsed.holeNumber === "number") {
+                  setHoleNumber(parsed.holeNumber);
+                }
+              } catch {
+                // Invalid JSON, use default
+              }
+            }
+            return;
+          }
+        }
+
+        // If /api/gameday/active returns null, try /api/coordination/active as fallback
+        try {
+          const coordinationData = await apiJson(coordinationActiveApi());
+          const validated = validateCoordinationActive(coordinationData);
+          if (validated.active) {
+            setActive(null);
+            setActiveCoordination(validated.active);
+            setLastFetch(now);
+
+            // Read hole number from localStorage (use tripId or tripLegacyId)
+            const tripIdForStorage = validated.active.tripLegacyId 
+              ? String(validated.active.tripLegacyId)
+              : validated.active.tripId;
+            const lastHoleKey = `gameday:last:${tripIdForStorage}`;
+            const lastHoleData = localStorage.getItem(lastHoleKey);
+            if (lastHoleData) {
+              try {
+                const parsed = JSON.parse(lastHoleData);
+                if (parsed.holeNumber && typeof parsed.holeNumber === "number") {
+                  setHoleNumber(parsed.holeNumber);
+                }
+              } catch {
+                // Invalid JSON, use default
+              }
+            }
+            return;
+          }
+        } catch (error) {
+          console.error("Failed to fetch coordination active:", error);
+        }
+
+        // Both endpoints returned null
+        setActive(null);
+        setActiveCoordination(null);
+      } catch (error) {
+        console.error("Failed to fetch active gameday:", error);
+        setActive(null);
+        setActiveCoordination(null);
+      }
+    }
+
+    fetchActive();
+  }, [active, activeCoordination, lastFetch]);
+
+  if (active) {
+    return {
+      roundId: active.tripId,
+      currentHoleIndex: holeNumber - 1, // Convert to 0-based index
+      roundName: active.label,
+      courseName: null,
+      route: null, // Will be constructed from roundId
+    };
+  }
+
+  if (activeCoordination) {
+    return {
+      roundId: activeCoordination.tripId,
+      currentHoleIndex: holeNumber - 1, // Convert to 0-based index
+      roundName: activeCoordination.label,
+      courseName: null,
+      route: activeCoordination.resume.route,
+    };
+  }
+
+  return null;
+}
 
 export default function ActiveGameDayChip() {
   const router = useRouter();
@@ -132,6 +249,11 @@ export default function ActiveGameDayChip() {
   }
 
   const handleClick = async () => {
+    // Set intent tracking for GameDay mode
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dayforeit:last_mode', 'gameday');
+    }
+    
     if (active) {
       // Use existing GameDay active route (no start call needed - already in progress)
       router.push(gamedayHole(active.tripId, holeNumber));

@@ -11,7 +11,7 @@ export async function GET() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#1F7A4A',
+          background: '#FAF7F0',
         }}
       >
         <div
@@ -22,6 +22,7 @@ export async function GET() {
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 150,
+            color: '#0B1220',
           }}
         >
           ⛳

@@ -18,17 +18,20 @@ export const metadata: Metadata = {
   // Icons are handled by icon.tsx file in app directory for proper aspect ratio
   icons: {
     icon: [
-      { url: "/favicon.ico?v=20260114e" },
-      { url: "/icon.png?v=20260114e" },
+      { url: "/browserIcon.png?v=20260115a" },
+      { url: "/icon.png?v=20260115a", sizes: "192x192", type: "image/png" },
+    ],
+    shortcut: [
+      { url: "/icon.png?v=20260115a" },
     ],
     apple: [
-      { url: "/browserIcon.png?v=20260114e", sizes: "192x192", type: "image/png" },
+      { url: "/icon.png?v=20260115a" },
     ],
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1F7A4A",
+  themeColor: "#FAF7F0",
 };
 
 export default function RootLayout({

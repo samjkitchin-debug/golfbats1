@@ -27,6 +27,155 @@ function toTripId(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Helper to convert meetTime string to HH:MM format for time input
+function convertToTimeInputFormat(timeStr: string | undefined): string {
+  if (!timeStr) return "";
+  
+  // If already in HH:MM format, return as-is
+  if (/^\d{2}:\d{2}$/.test(timeStr)) return timeStr;
+  
+  // Try to parse formats like "7:30am", "7:30 AM", "07:30", etc.
+  const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(am|pm|AM|PM)?/i);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2];
+    const period = match[3]?.toLowerCase();
+    
+    if (period === "pm" && hours !== 12) {
+      hours += 12;
+    } else if (period === "am" && hours === 12) {
+      hours = 0;
+    }
+    
+    return `${hours.toString().padStart(2, "0")}:${minutes}`;
+  }
+  
+  // If no match, return empty (user will need to re-enter)
+  return "";
+}
+
+// Meet details editor component (host only)
+function MeetDetailsEditor({
+  trip,
+  currentUserId,
+  supabase,
+  activeGroupId,
+  onUpdate,
+}: {
+  trip: Trip;
+  currentUserId: string | null;
+  supabase: ReturnType<typeof createBrowserClient>;
+  activeGroupId: string | null;
+  onUpdate: (updatedTrip: Trip) => void;
+}) {
+  const rawMeetTime = (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime)?.trim() || "";
+  const [meetTime, setMeetTime] = useState(convertToTimeInputFormat(rawMeetTime));
+  const [meetingPoint, setMeetingPoint] = useState(
+    (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint)?.trim() || ""
+  );
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    if (saving || !currentUserId || !activeGroupId) return;
+
+    setSaving(true);
+    setSaved(false);
+
+    try {
+      // Update trip in database by legacy_id (Trip.id is numeric legacy_id)
+      const { error } = await supabase
+        .from("trips")
+        .update({
+          meet_time: meetTime.trim() || null,
+          meeting_point: meetingPoint.trim() || null,
+        })
+        .eq("legacy_id", trip.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Reload trips to get fresh data
+      const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
+      const updatedTrip = freshTrips.find(t => t.id === trip.id);
+      
+      if (updatedTrip) {
+        onUpdate(updatedTrip);
+      } else {
+        // Fallback: update local state if reload didn't find the trip
+        const fallbackTrip: Trip = {
+          ...trip,
+          logistics: {
+            ...trip.logistics,
+            meetTime: meetTime.trim() || undefined,
+            meetingPoint: meetingPoint.trim() || undefined,
+          },
+          decisionLogistics: {
+            ...trip.decisionLogistics,
+            meetTime: meetTime.trim() || undefined,
+            meetingPoint: meetingPoint.trim() || undefined,
+          },
+        };
+        onUpdate(fallbackTrip);
+      }
+
+      setSaved(true);
+      
+      // Clear saved state after 2 seconds
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      console.error("Failed to save meet details:", error);
+      alert(`Failed to save meet details: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <div className="text-xs font-semibold mb-1">Meet time</div>
+        <input
+          type="time"
+          value={meetTime}
+          onChange={(e) => {
+            setMeetTime(e.target.value);
+            setSaved(false);
+          }}
+          placeholder="e.g. 7:30am"
+          className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30"
+        />
+      </div>
+      <div>
+        <div className="text-xs font-semibold mb-1">Meeting point</div>
+        <input
+          type="text"
+          value={meetingPoint}
+          onChange={(e) => {
+            setMeetingPoint(e.target.value);
+            setSaved(false);
+          }}
+          placeholder="e.g. Tanah Merah Ferry Terminal"
+          className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="rounded-xl btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? "Saving..." : saved ? "Saved" : "Save"}
+        </button>
+        {saved && (
+          <span className="text-xs text-muted">Saved</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TripDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -39,6 +188,7 @@ export default function TripDetailPage() {
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
+  const [profileHandicap, setProfileHandicap] = useState<number | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -121,10 +271,52 @@ export default function TripDetailPage() {
     loadData();
   }, [activeGroupId]);
 
+  // Load profile handicap (single source of truth)
+  useEffect(() => {
+    if (!currentUserId) {
+      setProfileHandicap(null);
+      return;
+    }
+
+    async function loadProfileHandicap() {
+      try {
+        const { data: memberData } = await supabase
+          .from("members")
+          .select("declared_handicap")
+          .eq("id", currentUserId)
+          .maybeSingle();
+
+        if (memberData && typeof memberData.declared_handicap === "number") {
+          setProfileHandicap(memberData.declared_handicap);
+        } else {
+          setProfileHandicap(null);
+        }
+      } catch (error) {
+        console.error("Failed to load profile handicap:", error);
+        setProfileHandicap(null);
+      }
+    }
+
+    loadProfileHandicap();
+  }, [currentUserId, supabase]);
+
   const trip = useMemo(() => {
     if (!tripId) return undefined;
     return trips.find((t) => t.id === tripId);
   }, [trips, tripId]);
+
+  // Scroll to meet-details anchor if hash is present
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash === '#meet-details') {
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        const element = document.getElementById('meet-details');
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [trip]);
 
   // Scheduled: open trip, but signups only open within 30 days of trip date
   const tripDateUtc = trip ? new Date(trip.date + "T00:00:00Z").getTime() : NaN;
@@ -235,13 +427,14 @@ export default function TripDetailPage() {
   useEffect(() => {
     if (!myEntry) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setHcp("");
+      setHcp(profileHandicap !== null ? String(profileHandicap) : "");
       return;
     }
-    const v = myEntry.handicapForTrip;
+    // Prefer profile handicap (single source of truth), fall back to trip-specific snapshot
+    const v = profileHandicap !== null ? profileHandicap : (myEntry.handicapForTrip ?? null);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setHcp(v === null || v === undefined ? "" : String(v));
-  }, [myEntry]);
+  }, [myEntry, profileHandicap]);
 
   // Fetch profile photos for confirmed attendees (up to 4)
   useEffect(() => {
@@ -515,27 +708,50 @@ export default function TripDetailPage() {
   }
 
   async function saveHandicap() {
-    if (!myEntry) return;
+    if (!myEntry || !currentUserId) return;
 
     const trimmed = hcp.trim();
     const parsed = trimmed === "" ? null : Number(trimmed);
 
     if (trimmed !== "" && !Number.isFinite(parsed)) return;
-
-    if (!activeGroupId) {
-      alert("Active group is required to update handicap.");
+    if (trimmed !== "" && (parsed! < 0 || parsed! > 36)) {
+      alert("Handicap must be a number between 0 and 36.");
       return;
     }
 
     try {
-      const updated = await setMyHandicapForTrip(trips, tripIdSafe, trimmed === "" ? null : parsed, activeGroupId);
-      setTrips(updated);
-      // Reload trips to get fresh data
-      try {
-        const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
-        setTrips(freshTrips);
-      } catch (reloadError) {
-        perfLog("saveHandicap: reload error", { tripId: tripIdSafe, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
+      // Update profile handicap (single source of truth)
+      const { error: profileError } = await supabase
+        .from("members")
+        .update({
+          declared_handicap: parsed,
+          last_seen: new Date().toISOString(),
+        })
+        .eq("id", currentUserId);
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      // Update local profile handicap state
+      setProfileHandicap(parsed);
+
+      // Also update trip-specific snapshot if activeGroupId is available
+      if (activeGroupId) {
+        try {
+          const updated = await setMyHandicapForTrip(trips, tripIdSafe, parsed, activeGroupId);
+          setTrips(updated);
+          // Reload trips to get fresh data
+          try {
+            const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
+            setTrips(freshTrips);
+          } catch (reloadError) {
+            perfLog("saveHandicap: reload error", { tripId: tripIdSafe, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
+          }
+        } catch (tripError) {
+          // Non-fatal: profile was updated, trip snapshot update failed
+          console.warn("Failed to update trip snapshot:", tripError);
+        }
       }
     } catch (error) {
       perfLog("saveHandicap: error", { tripId: tripIdSafe, error: error instanceof Error ? error.message : String(error) });
@@ -661,14 +877,21 @@ export default function TripDetailPage() {
           )}
         </div>
 
-        {/* 3) Decision logistics block - shown if present */}
-        {(meetingPoint || meetTime) && (
+        {/* 3) Decision logistics block - shown if present (read-only for attendees) */}
+        {(meetingPoint || meetTime) && !(trip.createdByMemberId === currentUserId) && (
           <div className="mt-3 space-y-1 text-sm text-foreground">
             {meetingPoint && <div><span className="text-muted">Meet:</span> {meetingPoint}</div>}
           </div>
         )}
 
-        {/* 4) Trip state block (muted) */}
+        {/* 4) Host indication (calm, secondary) */}
+        {trip.createdByMemberName && (
+          <div className="mt-2 text-sm text-secondary">
+            {trip.createdByMemberId === currentUserId ? "Hosted by you" : `Hosted by ${trip.createdByMemberName}`}
+          </div>
+        )}
+
+        {/* 5) Trip state block (muted) */}
         {tripStateText && (
           <div className="mt-2 text-sm text-muted">
             {tripStateText}
@@ -678,6 +901,26 @@ export default function TripDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Meet details editor (host only) */}
+      {trip.createdByMemberId === currentUserId && (
+        <section id="meet-details" className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="mb-3">
+            <div className="text-sm font-medium text-foreground">Meet details</div>
+            <p className="mt-1 text-xs text-muted">Set the time and place so everyone's ready.</p>
+          </div>
+          <MeetDetailsEditor
+            trip={trip}
+            currentUserId={currentUserId}
+            supabase={supabase}
+            activeGroupId={activeGroupId}
+            onUpdate={(updatedTrip) => {
+              // Update local trip state
+              setTrips(prev => prev.map(t => t.id === trip.id ? updatedTrip : t));
+            }}
+          />
+        </section>
+      )}
 
       <section className="rounded-xl border bg-surface p-5 shadow-sm">
         <div className="mb-3 text-sm font-medium text-muted">RSVP</div>
@@ -733,20 +976,25 @@ export default function TripDetailPage() {
             <input
               value={hcp}
               onChange={(e) => setHcp(e.target.value)}
-              placeholder="e.g. 12.4"
+              placeholder={profileHandicap !== null ? String(profileHandicap) : "e.g. 12.4"}
               className="w-full rounded-md border px-3 py-2 text-sm"
               inputMode="decimal"
             />
             <button
               onClick={saveHandicap}
-              className="rounded-md bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-md btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               Save
             </button>
           </div>
         )}
 
-        <div className="mt-2 text-xs text-muted">Stored on your attendee record for this trip.</div>
+        {myEntry && (
+          <div className="mt-2 space-y-0.5">
+            <div className="text-xs text-muted">This comes from your profile.</div>
+            <div className="text-xs text-secondary">Saving updates your profile handicap.</div>
+          </div>
+        )}
       </section>
 
       {/* 3) Logistics block (single coherent group) */}

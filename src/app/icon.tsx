@@ -18,7 +18,7 @@ export default async function Icon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#1F7A4A',
+          background: '#FAF7F0',
         }}
       >
         <div
@@ -29,6 +29,7 @@ export default async function Icon() {
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 300,
+            color: '#0B1220',
           }}
         >
           ⛳

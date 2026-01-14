@@ -3,66 +3,52 @@ import MemberLayout from "../(member)/layout";
 function AboutContent() {
   return (
     <div className="px-4 pb-24 pt-4">
-      <h1 className="text-2xl font-bold text-foreground">About DayForeIt</h1>
+      <h1 className="text-2xl font-bold text-primary">About Day Fore It</h1>
 
-      <div className="mt-4 space-y-4 text-sm leading-relaxed text-foreground">
+      <div className="mt-4 space-y-4 text-sm leading-relaxed secondary-text">
         <p>
-          DayForeIt is a private noticeboard and coordination tool for our golf group.
+          Day Fore It is a simple way to organise a round of golf with people you know — and enjoy the day without admin getting in the way.
         </p>
 
         <p>
-          It exists to make organising golf easier — who's playing, where we're playing, when we're
-          playing, and the practical details around it.
+          It's built for real golfers playing real rounds: mates organising a Saturday game, a group heading overseas, or a club running an official day. Day Fore It helps you coordinate the details, keep track of who's playing, and record scores when you want to — without turning golf into spreadsheets or leaderboards.
         </p>
 
-        <p>
-          DayForeIt is not a scoring system and doesn't try to replace official handicap systems or
-          competition software. It's simply here to help us organise trips and keep everything in
-          one place.
-        </p>
-
-        <section>
-          <h2 className="text-base font-semibold text-foreground">What you can do on DayForeIt</h2>
-          <div className="mt-2 space-y-3">
-            <div>
-              <h3 className="text-xs font-semibold text-foreground">As a member, you can:</h3>
-              <ul className="mt-1 list-disc pl-5 space-y-1">
-                <li>See upcoming and past trips</li>
-                <li>Indicate whether you're playing</li>
-                <li>View trip logistics and notes</li>
-                <li>Keep a simple personal profile</li>
-                <li>View course and tee information</li>
-                <li>See published summary results when relevant</li>
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-semibold text-foreground">Admins use DayForeIt to:</h3>
-              <ul className="mt-1 list-disc pl-5 space-y-1">
-                <li>Set up and manage trips</li>
-                <li>Manage courses and tees</li>
-                <li>Close or reopen trips</li>
-                <li>Publish results</li>
-                <li>Export coordination data when needed</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-base font-semibold text-foreground">How it's designed</h2>
-          <p className="mt-2">
-            DayForeIt is intentionally:
-          </p>
-          <ul className="mt-1 list-disc pl-5 space-y-1">
-            <li>Private — only for members of the group</li>
-            <li>Mobile-first — designed to be quick and easy on your phone</li>
-            <li>Simple — focused on coordination, not clutter</li>
+        <div>
+          <div className="font-medium text-primary mb-1">What Day Fore It is</div>
+          <ul className="ml-4 list-disc space-y-1">
+            <li>A group-first golf coordination app</li>
+            <li>Designed for rounds, not bureaucracy</li>
+            <li>Calm, social, and personal — not competitive by default</li>
+            <li>Built to support the day of golf, not distract from it</li>
           </ul>
-          <p className="mt-3">
-            It’s a practical tool for real-world golf, nothing more complicated than that.
+        </div>
+
+        <div>
+          <div className="font-medium text-primary mb-1">What it's not</div>
+          <ul className="ml-4 list-disc space-y-1">
+            <li>It's not a betting app</li>
+            <li>It's not a stat-obsessed performance tracker</li>
+            <li>It's not trying to replace how you enjoy golf</li>
+          </ul>
+        </div>
+
+        <div>
+          <div className="font-medium text-primary mb-1">How it's designed</div>
+          <p>
+            Day Fore It is intentionally quiet and respectful:
           </p>
-        </section>
+          <ul className="ml-4 mt-1 list-disc space-y-1">
+            <li>You see what matters next, not everything at once</li>
+            <li>Language is human and non-judgmental</li>
+            <li>Scores, handicaps, and leaderboards are optional and contextual</li>
+            <li>The app adapts as the day progresses — before, during, and after a round</li>
+          </ul>
+        </div>
+
+        <p>
+          Whether you're hosting, joining, or just keeping an eye on what's coming up, Day Fore It is there to support the day — not steal attention from it.
+        </p>
       </div>
     </div>
   );

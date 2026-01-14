@@ -899,7 +899,7 @@ export default function MePage() {
 
         {/* Passport details section */}
         <div className="rounded-2xl border border-border bg-surface/50 p-4">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-start justify-between">
             <div>
               <div className="text-sm font-semibold text-foreground">Passport details</div>
               <p className="mt-1 text-xs text-muted">
@@ -934,52 +934,42 @@ export default function MePage() {
           </div>
 
           {!editingPassport ? (
-            <div className="space-y-2">
+            <div className="mt-3 space-y-2 text-sm">
               {profile ? (
                 <>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="font-medium text-muted">Status:</span>
-                    <span className="text-brand-green">On file</span>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold">Status</span>
+                    <span className="text-right text-brand-green">On file</span>
                   </div>
                   {profile.passport_full_name && (
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-medium text-muted">Name:</span>
-                      <span className="text-foreground">{profile.passport_full_name}</span>
-                    </div>
+                    <Row label="Name" value={profile.passport_full_name} />
                   )}
                   {profile.passport_nationality && (
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-medium text-muted">Nationality:</span>
-                      <span className="text-foreground">{profile.passport_nationality}</span>
-                    </div>
+                    <Row label="Nationality" value={profile.passport_nationality} />
                   )}
                   {profile.passport_date_of_birth && (
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-medium text-muted">Date of Birth:</span>
-                      <span className="text-foreground">
-                        {new Date(profile.passport_date_of_birth + "T00:00:00").toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </span>
-                    </div>
+                    <Row
+                      label="Date of Birth"
+                      value={new Date(profile.passport_date_of_birth + "T00:00:00").toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    />
                   )}
                   {profile.passport_expiry_date && (
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-medium text-muted">Expiry:</span>
-                      <span className="text-foreground">
-                        {new Date(profile.passport_expiry_date + "T00:00:00").toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </span>
-                    </div>
+                    <Row
+                      label="Expiry"
+                      value={new Date(profile.passport_expiry_date + "T00:00:00").toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    />
                   )}
                 </>
               ) : (
-                <div className="text-xs text-muted">No passport details on file</div>
+                <div className="text-sm text-muted">No passport details on file</div>
               )}
             </div>
           ) : (
@@ -1116,110 +1106,23 @@ export default function MePage() {
           </div>
         </div>
 
-        {/* About Day Fore It */}
+        {/* About & Privacy links */}
         <div className="rounded-xl border border-border bg-surface/50 p-4">
-          <div className="mb-2">
-            <div className="text-sm font-medium text-foreground">About Day Fore It</div>
-          </div>
-          <div className="space-y-3 text-xs leading-relaxed secondary-text">
-            <p>
-              Day Fore It is a simple way to organise a round of golf with people you know — and enjoy the day without admin getting in the way.
-            </p>
-            <p>
-              It’s built for real golfers playing real rounds: mates organising a Saturday game, a group heading overseas, or a club running an official day. Day Fore It helps you coordinate the details, keep track of who’s playing, and record scores when you want to — without turning golf into spreadsheets or leaderboards.
-            </p>
-            <div>
-              <div className="font-medium text-primary mb-1">What Day Fore It is</div>
-              <ul className="ml-4 list-disc space-y-1">
-                <li>A group-first golf coordination app</li>
-                <li>Designed for rounds, not bureaucracy</li>
-                <li>Calm, social, and personal — not competitive by default</li>
-                <li>Built to support the day of golf, not distract from it</li>
-              </ul>
-            </div>
-            <div>
-              <div className="font-medium text-primary mb-1">What it’s not</div>
-              <ul className="ml-4 list-disc space-y-1">
-                <li>It’s not a betting app</li>
-                <li>It’s not a stat-obsessed performance tracker</li>
-                <li>It’s not trying to replace how you enjoy golf</li>
-              </ul>
-            </div>
-            <div>
-              <div className="font-medium text-primary mb-1">How it’s designed</div>
-              <p>
-                Day Fore It is intentionally quiet and respectful:
-              </p>
-              <ul className="ml-4 mt-1 list-disc space-y-1">
-                <li>You see what matters next, not everything at once</li>
-                <li>Language is human and non-judgmental</li>
-                <li>Scores, handicaps, and leaderboards are optional and contextual</li>
-                <li>The app adapts as the day progresses — before, during, and after a round</li>
-              </ul>
-            </div>
-            <p>
-              Whether you’re hosting, joining, or just keeping an eye on what’s coming up, Day Fore It is there to support the day — not steal attention from it.
-            </p>
-          </div>
-        </div>
-
-        {/* Privacy */}
-        <div className="rounded-xl border border-border bg-surface/50 p-4">
-          <div className="mb-2">
-            <div className="text-sm font-medium text-foreground">Privacy</div>
-          </div>
-          <div className="space-y-3 text-xs leading-relaxed secondary-text">
-            <p>
-              Your trust matters. Day Fore It is designed to collect only what’s needed to make the app work — and nothing more.
-            </p>
-            <div>
-              <div className="font-medium text-primary mb-1">What we collect</div>
-              <p>We store basic information so the app can function properly, such as:</p>
-              <ul className="ml-4 mt-1 list-disc space-y-1">
-                <li>Your name and email</li>
-                <li>Group memberships</li>
-                <li>Rounds you host or join</li>
-                <li>Scores and handicap information (if you choose to record them)</li>
-              </ul>
-              <p className="mt-1">That’s it.</p>
-            </div>
-            <div>
-              <div className="font-medium text-primary mb-1">What we don’t do</div>
-              <ul className="ml-4 list-disc space-y-1">
-                <li>We don’t sell your data</li>
-                <li>We don’t run ads</li>
-                <li>We don’t track you across the internet</li>
-                <li>We don’t collect unnecessary personal information</li>
-              </ul>
-              <p className="mt-1">
-                Your data is used only to support the features you use inside Day Fore It.
-              </p>
-            </div>
-            <div>
-              <div className="font-medium text-primary mb-1">Who can see your information</div>
-              <ul className="ml-4 list-disc space-y-1">
-                <li>Your details are visible only to people in the same group or round, where relevant</li>
-                <li>Scores and handicaps are visible within the context of a round or group — not publicly</li>
-                <li>There is no public profile or searchable directory</li>
-              </ul>
-            </div>
-            <div>
-              <div className="font-medium text-primary mb-1">Data security</div>
-              <p>
-                Day Fore It uses modern, secure infrastructure to store and protect your data. Access is restricted by group membership and role, and sensitive operations are protected server-side.
-              </p>
-            </div>
-            <div>
-              <div className="font-medium text-primary mb-1">Your control</div>
-              <ul className="ml-4 list-disc space-y-1">
-                <li>You can leave groups and rounds at any time</li>
-                <li>You control whether you record scores</li>
-                <li>You control how much information you share within a group</li>
-              </ul>
-            </div>
-            <p>
-              If you ever have questions about how your data is used, or want something clarified or removed, you can contact us directly.
-            </p>
+          <div className="space-y-2">
+            <Link
+              href="/about"
+              className="flex items-center justify-between py-2 text-sm text-primary hover:opacity-80"
+            >
+              <span>About Day Fore It</span>
+              <span className="text-secondary opacity-60">›</span>
+            </Link>
+            <Link
+              href="/privacy"
+              className="flex items-center justify-between py-2 text-sm text-primary hover:opacity-80"
+            >
+              <span>Privacy</span>
+              <span className="text-secondary opacity-60">›</span>
+            </Link>
           </div>
         </div>
 

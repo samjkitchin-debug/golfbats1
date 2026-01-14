@@ -307,6 +307,19 @@ not strictly by earliest start time.
 
 Home shows one surface. Home never becomes a list.
 
+### GameDay Morning Surface (orientation before execution)
+
+Home on GameDay morning should prioritise:
+1. I'm playing today
+2. Where/when to meet
+3. Lightweight day context
+4. Enter GameDay when eligible
+
+Remove/demote planning/admin noise (player counts, host metadata, open/join chips)
+on GameDay morning.
+
+---
+
 ## Trips — Survey Mode (Instrument Ledger)
 
 Trips is a **survey surface**, not a dashboard.
@@ -474,6 +487,22 @@ Rules:
 
 Consistency of physical language is required across contexts,
 even when size or prominence varies.
+
+---
+
+## Mode Transition CTAs (earned emphasis)
+
+Primary actions are not all equal.
+
+Rules:
+- Host/admin primary actions (e.g. "Host a round") use Ink (commitment)
+  as the default primary button treatment.
+- "Enter GameDay" is a threshold crossing into execution mode and MUST be
+  visually distinct from routine primary actions.
+- Amber is reserved for earned / anticipatory / mode transition moments only
+  (NOT default primaries).
+- When "Enter GameDay" is visible, it must be the only primary-emphasis CTA
+  on the surface (other actions demote to ghost/secondary or hide).
 
 ---
 

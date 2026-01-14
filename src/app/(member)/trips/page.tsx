@@ -714,8 +714,8 @@ export default function TripsListPage() {
             </span>
           </div>
           
-          {/* Right column (adaptive width, right aligned): Status badge + Group event badge (stacked) + Chevron */}
-          <div className="flex flex-col items-end gap-0.5 shrink-0">
+          {/* Right column (adaptive width, right aligned): Status badge + Chevron on top, Group event badge at bottom */}
+          <div className="flex flex-col items-end justify-between shrink-0 h-full">
             {/* Top row: Status badge + Chevron */}
             <div className="flex items-center justify-end gap-1 sm:gap-1.5">
               {/* Status badge pill - compact, hide on very small screens if needed */}
@@ -729,7 +729,7 @@ export default function TripsListPage() {
             </div>
             {/* Bottom row: Group event badge (only for group events) */}
             {eventKind === 'group_event' && (
-              <span className="event-official-pill">
+              <span className="event-official-pill mt-auto">
                 <span className="event-official-dot" aria-hidden="true" />
                 Group event
               </span>
