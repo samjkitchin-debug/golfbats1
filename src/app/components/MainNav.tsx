@@ -30,7 +30,7 @@ export default function MainNav() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Open navigation menu"
-        className="inline-flex items-center justify-center text-foreground hover:text-brand-green"
+        className="inline-flex items-center justify-center text-foreground hover:text-primary"
       >
         <span className="sr-only">Menu</span>
         <div className="space-y-[4.8px]">
@@ -52,7 +52,7 @@ export default function MainNav() {
                   onClick={() => setOpen(false)}
                   className={`flex items-center px-3 py-2 ${
                     active
-                      ? "bg-brand-green/10 font-semibold text-brand-green"
+                      ? "bg-ink-soft font-semibold text-primary"
                       : "text-foreground hover:bg-background"
                   }`}
                 >

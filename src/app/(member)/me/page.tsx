@@ -576,7 +576,7 @@ export default function MePage() {
           <span
             className={`inline-flex items-center rounded-full px-3 py-1 font-medium ${
               isApproved
-                ? "bg-brand-green/10 text-brand-green border border-brand-green/30"
+                ? "chip-success"
                 : "bg-surface/50 text-muted border border-border"
             }`}
           >
@@ -585,7 +585,7 @@ export default function MePage() {
           <span
             className={`inline-flex items-center rounded-full px-3 py-1 font-medium ${
               passportComplete
-                ? "bg-brand-green/10 text-brand-green border border-brand-green/30"
+                ? "chip-success"
                 : "bg-surface/50 text-muted border border-border"
             }`}
           >
@@ -1073,7 +1073,7 @@ export default function MePage() {
               <button
                 onClick={handleSavePassport}
                 disabled={savingPassport || !passportFullName.trim() || !passportNumber.trim() || !passportNationality.trim() || !passportDateOfBirth.trim() || !passportExpiryDate.trim()}
-                className="w-full rounded-xl bg-brand-green px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-xl btn-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {savingPassport ? "Saving..." : "Save passport details"}
               </button>
@@ -1081,7 +1081,7 @@ export default function MePage() {
           )}
 
           {passportSaveSuccess && (
-            <div className="mt-3 rounded-lg border border-brand-green bg-brand-green/10 px-3 py-2 text-xs text-foreground">
+            <div className="mt-3 rounded-lg chip-success px-3 py-2 text-xs text-foreground">
               Passport details saved successfully
             </div>
           )}
@@ -1113,6 +1113,113 @@ export default function MePage() {
                 Metres / yards will be added when GPS lands.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* About Day Fore It */}
+        <div className="rounded-xl border border-border bg-surface/50 p-4">
+          <div className="mb-2">
+            <div className="text-sm font-medium text-foreground">About Day Fore It</div>
+          </div>
+          <div className="space-y-3 text-xs leading-relaxed secondary-text">
+            <p>
+              Day Fore It is a simple way to organise a round of golf with people you know — and enjoy the day without admin getting in the way.
+            </p>
+            <p>
+              It’s built for real golfers playing real rounds: mates organising a Saturday game, a group heading overseas, or a club running an official day. Day Fore It helps you coordinate the details, keep track of who’s playing, and record scores when you want to — without turning golf into spreadsheets or leaderboards.
+            </p>
+            <div>
+              <div className="font-medium text-primary mb-1">What Day Fore It is</div>
+              <ul className="ml-4 list-disc space-y-1">
+                <li>A group-first golf coordination app</li>
+                <li>Designed for rounds, not bureaucracy</li>
+                <li>Calm, social, and personal — not competitive by default</li>
+                <li>Built to support the day of golf, not distract from it</li>
+              </ul>
+            </div>
+            <div>
+              <div className="font-medium text-primary mb-1">What it’s not</div>
+              <ul className="ml-4 list-disc space-y-1">
+                <li>It’s not a betting app</li>
+                <li>It’s not a stat-obsessed performance tracker</li>
+                <li>It’s not trying to replace how you enjoy golf</li>
+              </ul>
+            </div>
+            <div>
+              <div className="font-medium text-primary mb-1">How it’s designed</div>
+              <p>
+                Day Fore It is intentionally quiet and respectful:
+              </p>
+              <ul className="ml-4 mt-1 list-disc space-y-1">
+                <li>You see what matters next, not everything at once</li>
+                <li>Language is human and non-judgmental</li>
+                <li>Scores, handicaps, and leaderboards are optional and contextual</li>
+                <li>The app adapts as the day progresses — before, during, and after a round</li>
+              </ul>
+            </div>
+            <p>
+              Whether you’re hosting, joining, or just keeping an eye on what’s coming up, Day Fore It is there to support the day — not steal attention from it.
+            </p>
+          </div>
+        </div>
+
+        {/* Privacy */}
+        <div className="rounded-xl border border-border bg-surface/50 p-4">
+          <div className="mb-2">
+            <div className="text-sm font-medium text-foreground">Privacy</div>
+          </div>
+          <div className="space-y-3 text-xs leading-relaxed secondary-text">
+            <p>
+              Your trust matters. Day Fore It is designed to collect only what’s needed to make the app work — and nothing more.
+            </p>
+            <div>
+              <div className="font-medium text-primary mb-1">What we collect</div>
+              <p>We store basic information so the app can function properly, such as:</p>
+              <ul className="ml-4 mt-1 list-disc space-y-1">
+                <li>Your name and email</li>
+                <li>Group memberships</li>
+                <li>Rounds you host or join</li>
+                <li>Scores and handicap information (if you choose to record them)</li>
+              </ul>
+              <p className="mt-1">That’s it.</p>
+            </div>
+            <div>
+              <div className="font-medium text-primary mb-1">What we don’t do</div>
+              <ul className="ml-4 list-disc space-y-1">
+                <li>We don’t sell your data</li>
+                <li>We don’t run ads</li>
+                <li>We don’t track you across the internet</li>
+                <li>We don’t collect unnecessary personal information</li>
+              </ul>
+              <p className="mt-1">
+                Your data is used only to support the features you use inside Day Fore It.
+              </p>
+            </div>
+            <div>
+              <div className="font-medium text-primary mb-1">Who can see your information</div>
+              <ul className="ml-4 list-disc space-y-1">
+                <li>Your details are visible only to people in the same group or round, where relevant</li>
+                <li>Scores and handicaps are visible within the context of a round or group — not publicly</li>
+                <li>There is no public profile or searchable directory</li>
+              </ul>
+            </div>
+            <div>
+              <div className="font-medium text-primary mb-1">Data security</div>
+              <p>
+                Day Fore It uses modern, secure infrastructure to store and protect your data. Access is restricted by group membership and role, and sensitive operations are protected server-side.
+              </p>
+            </div>
+            <div>
+              <div className="font-medium text-primary mb-1">Your control</div>
+              <ul className="ml-4 list-disc space-y-1">
+                <li>You can leave groups and rounds at any time</li>
+                <li>You control whether you record scores</li>
+                <li>You control how much information you share within a group</li>
+              </ul>
+            </div>
+            <p>
+              If you ever have questions about how your data is used, or want something clarified or removed, you can contact us directly.
+            </p>
           </div>
         </div>
 
@@ -1159,7 +1266,7 @@ export default function MePage() {
                   setDeleteError(null);
                 }}
                 disabled={deletingAccount}
-                className="rounded-lg border border-brand-orange bg-surface px-4 py-2 text-sm text-brand-orange hover:bg-brand-orange/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Delete my account
               </button>
@@ -1180,7 +1287,7 @@ export default function MePage() {
               Are you sure you want to leave "{leaveGroupModal.groupName}"? You will no longer have access to this group's trips and members.
             </p>
             {leaveGroupError && (
-              <div className="mb-4 rounded-lg border border-brand-orange bg-brand-orange/10 px-3 py-2 text-sm text-foreground">
+              <div className="mb-4 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
                 {leaveGroupError}
               </div>
             )}
@@ -1191,14 +1298,14 @@ export default function MePage() {
                   setLeaveGroupError(null);
                 }}
                 disabled={leavingGroup}
-                className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleLeaveGroup(leaveGroupModal.groupId, leaveGroupModal.groupName, leaveGroupModal.isSoleAdmin)}
                 disabled={leavingGroup || leaveGroupModal.isSoleAdmin}
-                className="flex-1 rounded-lg bg-brand-orange px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {leavingGroup ? "Leaving..." : "Leave group"}
               </button>
@@ -1235,7 +1342,7 @@ export default function MePage() {
                   setDeleteError(null);
                 }}
                 disabled={deletingAccount}
-                className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
@@ -1286,7 +1393,7 @@ export default function MePage() {
                   }
                 }}
                 disabled={deleteConfirmText !== "DELETE" || deletingAccount}
-                className="flex-1 rounded-lg bg-brand-orange px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deletingAccount ? "Deleting..." : "Delete account"}
               </button>
@@ -1780,13 +1887,13 @@ function ImageCropModal({
           <div className="flex gap-2">
             <button
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5"
+              className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
             >
               Cancel
             </button>
             <button
               onClick={onSave}
-              className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               Save
             </button>

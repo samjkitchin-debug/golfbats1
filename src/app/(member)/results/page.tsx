@@ -315,7 +315,7 @@ export default function ResultsPage() {
         <h1 className="text-xl font-semibold text-foreground">Results</h1>
       </div>
 
-      {/* Your Results tile (primary) */}
+      {/* Your Results section */}
       <section className="rounded-xl border border-border bg-surface p-4 sm:p-5">
         <h2 className="text-sm font-medium text-muted-foreground mb-2">Your results</h2>
         {userLatestResult ? (
@@ -339,23 +339,17 @@ export default function ResultsPage() {
           </div>
         ) : (
           <div>
-            <p className="text-sm text-muted-foreground mb-3">
-              Results will appear here after your first round.
+            <p className="text-sm text-muted-foreground">
+              Your rounds will appear here after you finish your first GameDay.
             </p>
-            <Link
-              href="/trips"
-              className="inline-block rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background transition-colors"
-            >
-              View upcoming trips
-            </Link>
           </div>
         )}
       </section>
 
-      {/* Latest Trip Results tile (secondary) */}
-      {latestPastTrip && (
-        <section className="rounded-lg border border-border bg-surface/50 p-4">
-          <h2 className="text-sm font-medium text-muted-foreground mb-2">Latest trip</h2>
+      {/* Most recent round */}
+      <section className="rounded-lg border border-border bg-surface/50 p-4">
+        <h2 className="text-sm font-medium text-muted-foreground mb-2">Most recent round</h2>
+        {latestPastTrip ? (
           <div>
             <div className="font-medium text-foreground">
               {latestPastTrip.name || getTripCourseText(latestPastTrip, courses).title}
@@ -414,7 +408,7 @@ export default function ResultsPage() {
               </div>
             ) : (
               <div className="text-xs text-muted-foreground mt-2">
-                Top scores: coming soon
+                No detailed scores saved for this round yet.
               </div>
             )}
             
@@ -427,13 +421,17 @@ export default function ResultsPage() {
               </Link>
             </div>
           </div>
-        </section>
-      )}
+        ) : (
+          <div className="text-sm text-muted-foreground">
+            No completed rounds yet.
+          </div>
+        )}
+      </section>
 
-      {/* Leaderboard tile (placeholder) */}
-      <section className="rounded-xl border border-border bg-surface p-4 sm:p-5">
+      {/* Season standings (coming soon) */}
+      <section className="rounded-xl bg-surface p-4 sm:p-5">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-sm font-medium text-muted-foreground">Leaderboard</h2>
+          <h2 className="text-sm font-medium text-muted-foreground">Season standings</h2>
           {approvedGroups.length > 1 && (
             <select className="text-xs rounded-md border border-border bg-surface px-2 py-1 text-foreground">
               {approvedGroups.map((group) => (
@@ -444,20 +442,20 @@ export default function ResultsPage() {
             </select>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mb-4">
-          Coming soon — season standings across all groups
+        <p className="text-xs text-muted-foreground mb-3">
+          Coming soon — season totals across your groups.
         </p>
-        {/* Placeholder table */}
-        <div className="space-y-2 text-xs text-muted">
-          <div className="flex items-center justify-between py-1 border-b border-border/50">
+        {/* Placeholder rows */}
+        <div className="space-y-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between py-1">
             <span>1. —</span>
             <span>— pts</span>
           </div>
-          <div className="flex items-center justify-between py-1 border-b border-border/50">
+          <div className="flex items-center justify-between py-1">
             <span>2. —</span>
             <span>— pts</span>
           </div>
-          <div className="flex items-center justify-between py-1 border-b border-border/50">
+          <div className="flex items-center justify-between py-1">
             <span>3. —</span>
             <span>— pts</span>
           </div>
@@ -465,9 +463,9 @@ export default function ResultsPage() {
       </section>
 
       {/* Past results list (accordion) */}
-      {pastTrips.length > 0 && (
+      {pastTrips.length > 0 ? (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-foreground">Past trips</h2>
+          <h2 className="text-sm font-semibold text-foreground">Past rounds</h2>
           <div className="space-y-1.5">
             {pastTrips.map((trip) => (
               <PastTripRow
@@ -480,6 +478,11 @@ export default function ResultsPage() {
               />
             ))}
           </div>
+        </section>
+      ) : (
+        <section>
+          <h2 className="text-sm font-semibold text-foreground mb-1">Past rounds</h2>
+          <p className="text-xs text-muted-foreground">No past rounds yet.</p>
         </section>
       )}
     </div>

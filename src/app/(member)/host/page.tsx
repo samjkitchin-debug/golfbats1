@@ -630,7 +630,7 @@ export default function HostPage() {
                       scrollSnapAlign: "center",
                     }}
                     className={`flex flex-col justify-center px-4 transition-colors ${
-                      index === selectedDateIndex ? "bg-brand-green/5 font-medium" : ""
+                      index === selectedDateIndex ? "bg-action-blue-soft font-medium" : ""
                     }`}
                   >
                     <div className="text-base font-medium text-foreground">
@@ -673,7 +673,7 @@ export default function HostPage() {
                       scrollSnapAlign: "center",
                     }}
                     className={`flex items-center justify-center px-4 transition-colors ${
-                      index === selectedTimeIndex ? "bg-brand-green/5 font-medium" : ""
+                      index === selectedTimeIndex ? "bg-action-blue-soft font-medium" : ""
                     }`}
                   >
                     <div className="text-base font-medium text-foreground">
@@ -726,7 +726,7 @@ export default function HostPage() {
               }
             }}
             disabled={!tripDate || !selectedCourseId || submitting}
-            className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
+            className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
           >
             {submitting ? "Creating…" : "Host round"}
           </button>
@@ -888,7 +888,7 @@ export default function HostPage() {
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? "Creating…" : "Host round"}
           </button>

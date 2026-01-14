@@ -883,10 +883,10 @@ export default function GameDayPage() {
 
                 const statusColor =
                   flight.executionStatus === "in_progress"
-                    ? "bg-emerald-100 text-emerald-800"
+                    ? "chip-success"
                     : flight.executionStatus === "finished"
                     ? "bg-slate-100 text-slate-700"
-                    : "bg-amber-100 text-amber-800";
+                    : "bg-amber-soft text-amber-800";
 
                 const memberNames = flight.slots.map((s) => s.memberName).join(", ");
 
@@ -1136,7 +1136,7 @@ export default function GameDayPage() {
                           type="button"
                           onClick={handleFlightStart}
                           disabled={isStartingThisFlight}
-                          className="ml-3 rounded-lg bg-brand-green px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="ml-3 rounded-lg btn-anticipation px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isStartingThisFlight ? "Starting…" : "Start scoring"}
                         </button>
@@ -1144,7 +1144,7 @@ export default function GameDayPage() {
                         <button
                           type="button"
                           onClick={handleFlightResume}
-                          className="ml-3 rounded-lg border border-brand-green px-3 py-1.5 text-xs font-semibold text-brand-green hover:bg-brand-green/10"
+                          className="ml-3 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-background"
                         >
                           Resume
                         </button>
@@ -1267,7 +1267,7 @@ export default function GameDayPage() {
                       onClick={() => setHolesToPlay(9)}
                       className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
                         holesToPlay === 9
-                          ? "bg-brand-green text-white border-brand-green"
+                          ? "btn-anticipation text-white border-brand-amber"
                           : "border-border bg-surface text-foreground hover:bg-muted/50"
                       }`}
                     >
@@ -1278,7 +1278,7 @@ export default function GameDayPage() {
                       onClick={() => setHolesToPlay(18)}
                       className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
                         holesToPlay === 18
-                          ? "bg-brand-green text-white border-brand-green"
+                          ? "btn-anticipation text-white border-brand-amber"
                           : "border-border bg-surface text-foreground hover:bg-muted/50"
                       }`}
                     >
@@ -1292,7 +1292,7 @@ export default function GameDayPage() {
             <button
               onClick={handleStartRound}
               disabled={startingRound}
-              className="w-full rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {startingRound ? "Starting…" : "Start round"}
             </button>
@@ -1505,7 +1505,7 @@ export default function GameDayPage() {
                   type="button"
                   onClick={handleConfirmHole}
                   disabled={isSavingHole || !canConfirm}
-                  className="w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full rounded-lg btn-anticipation px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSavingHole 
                     ? "Saving…" 
@@ -1607,7 +1607,7 @@ export default function GameDayPage() {
             <button
               onClick={handlePublishRound}
               disabled={publishingRound}
-              className="w-full rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {publishingRound ? "Publishing…" : "Publish results"}
             </button>

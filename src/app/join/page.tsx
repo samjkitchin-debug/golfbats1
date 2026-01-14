@@ -170,13 +170,13 @@ export default function JoinPage() {
           </p>
           <Link
             href="/me/edit?required=true"
-            className="mt-4 block w-full rounded-lg bg-brand-orange px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
+            className="mt-4 block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
           >
             Complete profile
           </Link>
           <Link
             href="/"
-            className="mt-3 block w-full rounded-lg border border-brand-green bg-surface px-4 py-3 text-sm font-semibold text-brand-green hover:bg-brand-green/5"
+            className="mt-3 block w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground hover:bg-background"
           >
             Back
           </Link>
@@ -212,7 +212,7 @@ export default function JoinPage() {
       />
 
       <button
-        className="mt-4 w-full rounded-lg bg-brand-green px-4 py-2 text-white disabled:opacity-50"
+        className="mt-4 w-full rounded-lg btn-primary px-4 py-2 text-white disabled:opacity-50"
         onClick={submit}
         disabled={status === "submitting"}
       >

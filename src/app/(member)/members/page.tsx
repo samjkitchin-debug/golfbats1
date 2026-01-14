@@ -46,7 +46,7 @@ export default function MembersPage() {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLetterRange, setSelectedLetterRange] = useState<string | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<"all" | "regulars" | "new">("all");
   const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string }>>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null); // Can be "all" or a group ID
   const [loadingGroups, setLoadingGroups] = useState(true);
@@ -168,21 +168,9 @@ export default function MembersPage() {
     loadMembers();
   }, [supabase, selectedGroupId, loadingGroups, approvedGroups]);
 
-  // Helper to check if a letter is in a range
-  function isLetterInRange(letter: string, range: string): boolean {
-    if (range === "all") return true;
-    const upper = letter.toUpperCase();
-    if (range === "a-e") return upper >= "A" && upper <= "E";
-    if (range === "f-j") return upper >= "F" && upper <= "J";
-    if (range === "k-o") return upper >= "K" && upper <= "O";
-    if (range === "p-t") return upper >= "P" && upper <= "T";
-    if (range === "u-z") return upper >= "U" && upper <= "Z";
-    return false;
-  }
-
-  // Filter members by search query and letter range
+  // Filter members by search query and state filter (All / Regulars / New)
   const filteredMembers = useMemo(() => {
-    let filtered = members;
+    let filtered = [...members];
 
     // Apply search query (includes nationality matching)
     if (searchQuery.trim()) {
@@ -202,29 +190,40 @@ export default function MembersPage() {
       });
     }
 
-    // Apply letter range filter if selected
-    if (selectedLetterRange && selectedLetterRange !== "all") {
-      filtered = filtered.filter((m) => {
-        const name = (m.display_name || m.full_name || "").trim();
-        if (!name) return false;
-        const firstLetter = name.charAt(0);
-        return isLetterInRange(firstLetter, selectedLetterRange);
-      });
+    // Apply semantic filter
+    if (selectedFilter === "regulars") {
+      filtered = filtered.filter((m) => m.declared_handicap !== null && m.declared_handicap !== undefined);
+    } else if (selectedFilter === "new") {
+      filtered = filtered.filter((m) => m.declared_handicap === null || m.declared_handicap === undefined);
     }
 
+    // Sort: regulars first, then new; within each, by name
+    filtered.sort((a, b) => {
+      const aHasHcp = a.declared_handicap !== null && a.declared_handicap !== undefined;
+      const bHasHcp = b.declared_handicap !== null && b.declared_handicap !== undefined;
+
+      if (selectedFilter === "all" && aHasHcp !== bHasHcp) {
+        return aHasHcp ? -1 : 1;
+      }
+
+      const nameA = (a.display_name || a.full_name || "").toLowerCase();
+      const nameB = (b.display_name || b.full_name || "").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
     return filtered;
-  }, [members, searchQuery, selectedLetterRange]);
+  }, [members, searchQuery, selectedFilter]);
 
   // Cap default rendering to 50 members (unless search/filter is active)
   const displayMembers = useMemo(() => {
-    const hasActiveFilter = searchQuery.trim() || selectedLetterRange;
+    const hasActiveFilter = searchQuery.trim() || selectedFilter !== "all";
     // If any filter is active, show all filtered results
     // Otherwise, cap at 50 for performance
     if (hasActiveFilter) {
       return filteredMembers;
     }
     return filteredMembers.slice(0, 50);
-  }, [filteredMembers, searchQuery, selectedLetterRange]);
+  }, [filteredMembers, searchQuery, selectedFilter]);
 
   const selectedGroup = approvedGroups.find((g) => g.id === selectedGroupId);
 
@@ -240,7 +239,7 @@ export default function MembersPage() {
               const value = e.target.value;
               setSelectedGroupId(value === "all" ? "all" : value);
               setSearchQuery(""); // Clear search when switching groups
-              setSelectedLetterRange(null); // Clear letter filter
+              setSelectedFilter("all"); // Clear filter
             }}
             className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground outline-none focus:border-foreground"
           >
@@ -260,47 +259,27 @@ export default function MembersPage() {
       <div className="mb-4 space-y-3">
         <input
           type="text"
-          placeholder="Search by name, email, or nationality..."
+          placeholder="Search members..."
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            setSelectedLetterRange(null); // Clear letter filter when searching
+            setSelectedFilter("all"); // Reset filter when searching
           }}
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
         />
 
-        {/* Letter Range Navigation - Clustered chips */}
+        {/* State filters: All / Regulars / New */}
         {!searchQuery.trim() && (
           <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => {
-                setSelectedLetterRange(selectedLetterRange === "all" ? null : "all");
-              }}
-              className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors ${
-                selectedLetterRange === "all"
-                  ? "bg-brand-green text-white border-foreground"
-                  : "bg-surface text-foreground border-border hover:bg-background"
-              }`}
-            >
-              All
-            </button>
             {[
-              { range: "a-e", label: "A–E" },
-              { range: "f-j", label: "F–J" },
-              { range: "k-o", label: "K–O" },
-              { range: "p-t", label: "P–T" },
-              { range: "u-z", label: "U–Z" },
-            ].map(({ range, label }) => (
+              { key: "all", label: "All" },
+              { key: "regulars", label: "Regulars" },
+              { key: "new", label: "New" },
+            ].map(({ key, label }) => (
               <button
-                key={range}
-                onClick={() => {
-                  setSelectedLetterRange(selectedLetterRange === range ? null : range);
-                }}
-                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors ${
-                  selectedLetterRange === range
-                    ? "bg-brand-green text-white border-foreground"
-                    : "bg-surface text-foreground border-border hover:bg-background"
-                }`}
+                key={key}
+                onClick={() => setSelectedFilter(key as "all" | "regulars" | "new")}
+                className={`member-filter ${selectedFilter === key ? "member-filter-active" : ""}`}
               >
                 {label}
               </button>
@@ -310,7 +289,7 @@ export default function MembersPage() {
       </div>
 
       {/* Helper text for default rendering */}
-      {!loading && !searchQuery.trim() && !selectedLetterRange && members.length > 50 && (
+      {!loading && !searchQuery.trim() && selectedFilter === "all" && members.length > 50 && (
         <div className="mb-3 text-xs text-muted">
           Showing 50 of {members.length} members — search to find someone
         </div>
@@ -328,7 +307,7 @@ export default function MembersPage() {
       ) : displayMembers.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface p-6 text-center">
           <p className="text-sm text-muted">
-            {searchQuery || selectedLetterRange
+            {searchQuery || selectedFilter !== "all"
               ? "No members found matching your filters."
               : "No members found."}
           </p>
@@ -351,7 +330,7 @@ export default function MembersPage() {
                 }}
                 className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 cursor-pointer hover:bg-surface/80 transition-colors"
               >
-                {/* Left: Photo + Name + Flag */}
+                {/* Left: Photo + Name + Status + Flag */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                     {photoUrl ? (
                     <img
@@ -376,27 +355,28 @@ export default function MembersPage() {
                         </span>
                       )}
                     </div>
+                    {(member.declared_handicap === null || member.declared_handicap === undefined) && (
+                      <div className="mt-0.5 text-xs secondary-text">
+                        New member
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Right: Handicap in a clean circle */}
+                {/* Right: Handicap chip */}
                 <div className="flex-shrink-0">
                   {handicap !== null && handicap !== undefined ? (
-                    <div className="h-12 w-12 rounded-full bg-background border-2 border-border flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="text-[10px] font-medium text-muted uppercase tracking-wide leading-tight">
-                          HCP
-                        </div>
-                        <div className="text-sm font-bold text-foreground leading-tight">
-                          {handicap}
-                        </div>
-                      </div>
+                    <div className="member-chip flex flex-col items-center justify-center">
+                      <span className="text-[10px] font-medium text-secondary uppercase tracking-wide leading-tight">
+                        HCP
+                      </span>
+                      <span className="text-sm font-semibold text-primary leading-tight">
+                        {handicap}
+                      </span>
                     </div>
                   ) : (
-                    <div className="h-12 w-12 rounded-full bg-background border-2 border-dashed border-border flex items-center justify-center">
-                      <div className="text-[10px] font-medium text-muted uppercase tracking-wide">
-                        TBC
-                      </div>
+                    <div className="member-chip member-chip-muted">
+                      —
                     </div>
                   )}
                 </div>

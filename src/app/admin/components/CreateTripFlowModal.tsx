@@ -471,7 +471,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     tripIntent === "local_group_day"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -488,7 +488,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     tripIntent === "away_day"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -505,7 +505,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     tripIntent === "overnight_overseas"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -635,7 +635,7 @@ export default function CreateTripFlowModal({
                 <button
                   onClick={handleStep2Next}
                   disabled={!tripDate || !tripName.trim() || !selectedCourseId || (tripIntent === "overnight_overseas" && !tripDateEnd)}
-                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>
@@ -688,7 +688,7 @@ export default function CreateTripFlowModal({
                 </button>
                 <button
                   onClick={handleStep3Next}
-                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 >
                   Next
                 </button>
@@ -745,7 +745,7 @@ export default function CreateTripFlowModal({
                     if ((aiProposal!.confidence ?? 0) < 0.8) return null;
                     const proposal = aiProposal!; // Type narrowing
                     return (
-                      <div className="mt-3 p-3 rounded-lg bg-brand-green/10 border border-brand-green/20">
+                      <div className="mt-3 p-3 rounded-lg chip-success">
                         <p className="text-xs font-medium text-foreground mb-2">Suggested setup:</p>
                         <button
                           type="button"
@@ -832,7 +832,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.bookingResponsibility === undefined && answers.coordinationOwner === "self"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -849,7 +849,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.bookingResponsibility === "organiser" && answers.coordinationOwner === "self"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -866,7 +866,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.bookingResponsibility === "agent" && answers.coordinationOwner === "self"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -883,7 +883,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.bookingResponsibility === "agent" && answers.coordinationOwner === "external"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -912,7 +912,7 @@ export default function CreateTripFlowModal({
                     }
                   }}
                   disabled={answers.coordinationOwner === undefined}
-                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>
@@ -981,7 +981,7 @@ export default function CreateTripFlowModal({
                 </button>
                 <button
                   onClick={handleStep3Next}
-                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 >
                   Next
                 </button>
@@ -1005,7 +1005,7 @@ export default function CreateTripFlowModal({
                   }}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.travelMode === "own"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -1016,7 +1016,7 @@ export default function CreateTripFlowModal({
                   onClick={() => setAnswers((prev) => ({ ...prev, travelMode: "together" }))}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.travelMode === "together"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -1027,7 +1027,7 @@ export default function CreateTripFlowModal({
                   onClick={() => setAnswers((prev) => ({ ...prev, travelMode: "mixed", overnight: undefined, carpool: undefined }))}
                   className={`w-full rounded-lg border px-4 py-4 text-left transition-colors ${
                     answers.travelMode === "mixed"
-                      ? "border-brand-green bg-brand-green text-white"
+                      ? "border-action-blue bg-action-blue text-white"
                       : "border-border bg-surface text-foreground hover:bg-background"
                   }`}
                 >
@@ -1043,7 +1043,7 @@ export default function CreateTripFlowModal({
                     onClick={() => setAnswers((prev) => ({ ...prev, overnight: false }))}
                     className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
                       answers.overnight === false
-                        ? "border-brand-green bg-brand-green text-white"
+                        ? "border-action-blue bg-action-blue text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
@@ -1054,7 +1054,7 @@ export default function CreateTripFlowModal({
                     onClick={() => setAnswers((prev) => ({ ...prev, overnight: true }))}
                     className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
                       answers.overnight === true
-                        ? "border-brand-green bg-brand-green text-white"
+                        ? "border-action-blue bg-action-blue text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
@@ -1093,7 +1093,7 @@ export default function CreateTripFlowModal({
                 </button>
                 <button
                   onClick={handleStep4Next}
-                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 >
                   Next
                 </button>
@@ -1114,7 +1114,7 @@ export default function CreateTripFlowModal({
                     onClick={() => setCutoffRule("nightBefore")}
                     className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
                       cutoffRule === "nightBefore"
-                        ? "border-brand-green bg-brand-green text-white"
+                        ? "border-action-blue bg-action-blue text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
@@ -1125,7 +1125,7 @@ export default function CreateTripFlowModal({
                     onClick={() => setCutoffRule("daysBefore")}
                     className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
                       cutoffRule === "daysBefore"
-                        ? "border-brand-green bg-brand-green text-white"
+                        ? "border-action-blue bg-action-blue text-white"
                         : "border-border bg-surface text-foreground hover:bg-background"
                     }`}
                   >
@@ -1172,7 +1172,7 @@ export default function CreateTripFlowModal({
                 <button
                   onClick={handleStep4Next}
                   disabled={!capacity}
-                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>
@@ -1239,7 +1239,7 @@ export default function CreateTripFlowModal({
                 <button
                   onClick={handleStep5Publish}
                   disabled={loading}
-                  className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? "Publishing…" : "Publish to group"}
                 </button>

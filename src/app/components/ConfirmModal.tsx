@@ -39,8 +39,8 @@ export function ConfirmModal({
             onClick={onConfirm}
             className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white ${
               confirmVariant === "danger"
-                ? "bg-brand-orange hover:opacity-90"
-                : "bg-brand-green hover:opacity-90"
+                ? "bg-red-600 hover:opacity-90"
+                : "btn-primary hover:opacity-90"
             }`}
           >
             {confirmLabel}

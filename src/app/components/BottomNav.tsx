@@ -36,14 +36,14 @@ export default function BottomNav() {
                 <Link
                   href={item.href}
                   className={`block px-2 py-3 text-center text-sm relative ${
-                    active ? "font-semibold text-brand-green nav-active-warm" : "text-muted hover:text-foreground"
+                    active ? "font-semibold text-primary nav-active-warm" : "text-muted hover:text-foreground"
                   }`}
                 >
                   {item.label}
                 </Link>
                 <div
                   className={`mx-auto h-0.5 w-10 ${
-                    active ? "bg-brand-green" : "bg-transparent"
+                    active ? "bg-brand-amber opacity-50" : "bg-transparent"
                   }`}
                 />
               </li>

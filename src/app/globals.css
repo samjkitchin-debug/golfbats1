@@ -1,101 +1,87 @@
 @import "tailwindcss";
 
-/* DayForeIt brand colors — light mode (default) */
+/* Inter font loading (local files) */
+@font-face {
+  font-family: 'Inter';
+  src:
+    url('/fonts/inter/InterVariable.woff2') format('woff2-variations'),
+    url('/fonts/inter/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* DayForeIt — Light mode only (persisted)
+   Palette: Warm off-white base + Amber (anticipation) + Ink (commitment)
+*/
 :root {
-  --background: #F8FAF9;
-  --foreground: #1F2933;
-  --surface: #FFFFFF;
-  --border: #E4E8E6;
-  --muted: #6B7280;
+  /* Core surfaces */
+  --background: #FAF7F0;     /* warm off-white “paper” */
+  --foreground: #0B1220;     /* deep ink (not pure black) */
+  --surface: #FFFEF9;        /* warm card surface */
+  --border: #E7E2D9;         /* warm border */
+  --muted: #6B7280;          /* neutral muted text */
+
+  /* Semantic text (instrument support) */
+  --text-secondary: rgba(11, 18, 32, 0.62);     /* ink softened: metadata, subtitles */
+  --text-confirmation: rgba(11, 18, 32, 0.84);  /* ink, slightly stronger: confirmation lines */
+
+  /* Brand accents */
+  --brand-amber: #F59E0B;    /* anticipation / earned moments */
+  --brand-ink: #0B1220;      /* commitment / selected / focus */
+  --brand-green: #2FA36A;    /* contextual only (golf semantics), NOT primary */
+
+  /* Soft tints */
+  --amber-soft: rgba(216, 154, 43, 0.10);
+  --amber-softer: rgba(216, 154, 43, 0.06);
+  --ink-soft: rgba(11, 18, 32, 0.06);
+
+  /* Special */
+  --event-official-border: rgba(216, 154, 43, 0.55); /* subtle gilt */
+  --color-danger: #DC2626;
+  --color-danger-light: #FEE2E2;
 }
 
 /* Tailwind v4 theme tokens */
 @theme inline {
-  /* Core colors — light mode */
+  /* Core */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-border: var(--border);
   --color-muted: var(--muted);
-  
-  /* Light mode warmth tokens (light mode only) */
-  --color-surface-app-light: var(--surface-app-light);
-  --color-surface-card-warm: var(--surface-card-warm);
-  --color-text-date-warm: var(--text-date-warm);
-  
-  /* Dark mode surface tokens (dark mode only) */
-  --color-surface-app-dark: var(--background);
-  --color-surface-card-dark: var(--surface);
 
-  /* Brand colors */
-  --color-brand-green: #2FA36A;      /* Primary — use for main actions, accents */
-  --color-brand-orange: #F97316;     /* CTA/emphasis — buttons, highlights only */
-  --color-brand-blue: #2BA4D9;       /* Accent — rare use, subtle highlights */
-  
-  /* Soft tints */
-  --color-brand-green-light: #EAF8F1;
-  --color-brand-green-sunlit: #7ED9A6;
-  --color-brand-orange-light: #FFF1E6;
-  --color-brand-blue-light: #E8F5FB;
-  
-  /* Official event border (gilt-style for group events) */
-  --event-official-border: #C9A961;   /* Warm gold/champagne tone */
-  --event-official-border-opacity: 0.65; /* 65% opacity for gilt effect */
-  --event-official-label: var(--color-muted); /* Label text color */
+  /* Semantic text */
+  --color-text-secondary: var(--text-secondary);
+  --color-text-confirmation: var(--text-confirmation);
 
-  /* Sunrise energy lift (dark mode warmth) */
-  --sunrise-warm-overlay: rgba(249, 115, 22, 0.06); /* 6% sunrise warmth for header gradient */
-  --sunrise-warm-surface: rgba(249, 115, 22, 0.04); /* 4% sunrise warmth for card surface */
-  --sunrise-warm-text: #F9F7F4; /* Warm off-white for text accents */
+  /* Brand */
+  --color-brand-amber: var(--brand-amber);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-green: var(--brand-green); /* contextual only */
 
-  /* Light mode warmth (morning before golf) */
-  --surface-app-light: #FAF8F4; /* Warm off-white background (ivory/warm paper) */
-  --surface-card-warm: #FFFEF9; /* Slightly warmer card background for Next Trip */
-  --text-date-warm: #5F6369; /* Warm grey/off-slate for date text */
-  --sunrise-warm-overlay-light: rgba(249, 115, 22, 0.03); /* 3% sunrise warmth for header gradient (light mode) */
+  /* Tints */
+  --color-brand-amber-soft: var(--amber-soft);
+  --color-brand-amber-softer: var(--amber-softer);
+  --color-brand-ink-soft: var(--ink-soft);
 
-  /* Danger colors (errors, destructive actions) */
-  --color-danger: #DC2626;
-  --color-danger-light: #FEE2E2;
+  /* Event */
+  --event-official-border: var(--event-official-border);
+  --event-official-label: var(--color-muted);
 
-  /* Legacy compatibility */
-  --color-brand-red: var(--color-brand-green);
-  --color-brand-black: var(--color-foreground);
-
-  /* Button semantic tokens */
-  --color-btn-primary-bg: var(--color-brand-green);
+  /* Semantic buttons */
+  --color-btn-primary-bg: var(--color-brand-ink);  /* default filled CTA = ink */
   --color-btn-primary-text: #FFFFFF;
+  --color-btn-anticipation-bg: var(--color-brand-amber);  /* earned moments = amber */
+  --color-btn-anticipation-text: #FFFFFF;
   --color-btn-secondary-bg: var(--color-surface);
   --color-btn-secondary-text: var(--color-foreground);
   --color-btn-border: var(--color-border);
 
-  /* Fonts — universal */
-  --font-sans: var(--font-aptos), "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
-    BlinkMacSystemFont, sans-serif;
+  /* Fonts */
+  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0B1220; /* Deep navy - cool base */
-    --foreground: #F3F4F6;
-    --surface: #111827; /* Dark surface - cool */
-    --border: #374151;
-    --muted: #9CA3AF;
-    /* Danger colors adjusted for dark mode */
-    --color-danger-light: #7F1D1D;
-    /* Sunrise energy lift adjusted for dark mode (slightly more visible) */
-    --sunrise-warm-overlay: rgba(249, 115, 22, 0.08); /* 8% sunrise warmth for header gradient */
-    --sunrise-warm-surface: rgba(249, 115, 22, 0.05); /* 5% sunrise warmth for card surface */
-    /* Dark mode surface tokens - explicitly cool navy */
-    --color-surface-app-dark: #0B1220; /* Deep navy background */
-    --color-surface-card-dark: #111827; /* Dark card surface */
-    /* Override light mode warm tokens to prevent leakage */
-    --color-surface-app-light: #0B1220; /* Override to navy in dark mode */
-    --color-surface-card-warm: #111827; /* Override to dark surface in dark mode */
-  }
 }
 
 body {
@@ -115,12 +101,12 @@ button {
 
 button:not(:disabled):hover {
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 6px rgba(17, 24, 39, 0.12);
 }
 
 button:not(:disabled):active {
   transform: translateY(0) scale(0.98);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.10);
   transition: transform 0.05s ease-in-out, box-shadow 0.05s ease-in-out;
 }
 
@@ -139,94 +125,40 @@ button:disabled {
   display: none;
 }
 
-/* Header warmth gradient - light mode */
+/* Header warmth gradient */
 .header-warmth-gradient {
-  background: linear-gradient(to bottom, transparent 0%, var(--sunrise-warm-overlay-light) 100%);
+  background: linear-gradient(to bottom, transparent 0%, var(--amber-softer) 100%);
 }
 
-/* Header warmth gradient - dark mode */
-@media (prefers-color-scheme: dark) {
-  .header-warmth-gradient {
-    background: linear-gradient(to bottom, transparent 0%, var(--sunrise-warm-overlay) 100%);
-  }
-}
-
-/* Next Trip card warm background (light mode only) */
+/* Next Trip / primary narrative surface warmth */
 .next-trip-card-warm {
-  background-color: var(--color-surface-card-warm);
+  background-color: var(--surface);
 }
 
-@media (prefers-color-scheme: dark) {
-  .next-trip-card-warm {
-    background-color: var(--color-surface);
-  }
-  
-  .dark-mode-warm-overlay {
-    display: block;
-  }
-}
-
-@media (prefers-color-scheme: light) {
-  .dark-mode-warm-overlay {
-    display: none;
-  }
-}
-
-/* Date text warmth (light mode) */
+/* Secondary text warmth (instrument secondary) */
 .date-text-warm {
-  color: var(--color-text-date-warm);
+  color: var(--text-secondary);
 }
 
-@media (prefers-color-scheme: dark) {
-  .date-text-warm {
-    color: var(--sunrise-warm-text);
-  }
+/* Confirmation text (instrument confirmation) */
+.confirmation-text {
+  color: var(--text-confirmation);
 }
 
-/* Date dot accent */
+/* Date dot accent (amber) */
 .date-dot-accent {
-  background-color: rgba(249, 115, 22, 0.3);
+  background-color: rgba(216, 154, 43, 0.32);
 }
 
-@media (prefers-color-scheme: dark) {
-  .date-dot-accent {
-    background-color: var(--sunrise-warm-surface);
-    opacity: 0.8;
-  }
-}
-
-/* App background - theme-aware */
+/* App background */
 .app-background-theme {
-  background-color: var(--color-surface-app-light);
+  background-color: var(--background);
 }
 
-@media (prefers-color-scheme: dark) {
-  .app-background-theme {
-    background-color: var(--color-surface-app-dark);
-  }
-}
-
-/* Primary narrative panel - soft panel styling */
+/* Primary narrative panel */
 .primary-narrative-panel {
-  /* Base: clean white in light mode, subtle surface tint in dark mode */
-  background-color: var(--color-surface);
-}
-
-@media (prefers-color-scheme: dark) {
-  .primary-narrative-panel-hosted {
-    background-color: rgba(255, 255, 255, 0.02); /* bg-surface/20 equivalent */
-  }
-  
-  .primary-narrative-panel-group {
-    background-color: rgba(255, 255, 255, 0.02); /* Same panel surface for group events */
-  }
-}
-
-/* Light mode depth - very soft shadow */
-@media (prefers-color-scheme: light) {
-  .primary-narrative-panel {
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  }
+  background-color: var(--surface);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
 }
 
 /* Utility footer */
@@ -234,7 +166,7 @@ button:disabled {
   text-align: center;
 }
 
-/* Bottom nav active state warmth */
+/* Bottom nav active warmth (amber) */
 .nav-active-warm::before {
   content: '';
   position: absolute;
@@ -242,12 +174,112 @@ button:disabled {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(to right, transparent, rgba(249, 115, 22, 0.25), transparent);
+  background: linear-gradient(to right, transparent, rgba(216, 154, 43, 0.28), transparent);
   pointer-events: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  .nav-active-warm::before {
-    background: linear-gradient(to right, transparent, rgba(249, 115, 22, 0.3), transparent);
-  }
+/* Semantic utility classes (instrument-first) */
+.btn-primary {
+  background: var(--color-btn-primary-bg);
+  color: var(--color-btn-primary-text);
 }
+
+.btn-anticipation {
+  background: var(--color-btn-anticipation-bg);
+  color: var(--color-btn-anticipation-text);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+
+.chip-success {
+  background: rgba(47, 163, 106, 0.12);
+  color: var(--brand-green);
+  border: 1px solid rgba(47, 163, 106, 0.35);
+}
+
+.text-primary {
+  color: var(--foreground);
+}
+
+.secondary-text {
+  color: var(--text-secondary);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-confirmation {
+  color: var(--text-confirmation);
+}
+
+.event-official-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 9999px;
+  background: var(--amber-softer);
+  border: 1px solid var(--event-official-border);
+  color: rgba(11, 18, 32, 0.78);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.event-official-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(245, 158, 11, 0.75);
+}
+
+.member-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: rgba(11, 18, 32, 0.03);
+  color: rgba(11, 18, 32, 0.78);
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.member-chip-muted {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.member-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.member-filter-active {
+  background: rgba(11, 18, 32, 0.06);
+  color: var(--foreground);
+  border-color: rgba(11, 18, 32, 0.18);
+}
+

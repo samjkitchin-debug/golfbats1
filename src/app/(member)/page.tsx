@@ -52,6 +52,7 @@ export default function HomePage() {
   const [activeCoordination, setActiveCoordination] = useState<ActiveCoordination | null>(null);
   const [lastCoordinationFetch, setLastCoordinationFetch] = useState<number>(0);
   const [startingGameDay, setStartingGameDay] = useState(false);
+  const [joiningTrip, setJoiningTrip] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -378,12 +379,12 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             {step1Completed ? (
-              <div className="h-6 w-6 rounded-full bg-brand-green flex items-center justify-center text-xs font-semibold text-white">
+              <div className="h-6 w-6 rounded-full btn-primary flex items-center justify-center text-xs font-semibold text-white">
                 ✓
               </div>
             ) : (
               <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                step1Active ? "bg-brand-green text-white" : "bg-border text-muted"
+                step1Active ? "btn-primary text-white" : "bg-border text-muted"
               }`}>
                 1
               </div>
@@ -395,12 +396,12 @@ export default function HomePage() {
           <div className="h-px flex-1 bg-border" />
           <div className="flex items-center gap-2">
             {step2Completed ? (
-              <div className="h-6 w-6 rounded-full bg-brand-green flex items-center justify-center text-xs font-semibold text-white">
+              <div className="h-6 w-6 rounded-full btn-primary flex items-center justify-center text-xs font-semibold text-white">
                 ✓
               </div>
             ) : (
               <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                step2Active ? "bg-brand-green text-white" : "bg-border text-muted"
+                step2Active ? "btn-primary text-white" : "bg-border text-muted"
               }`}>
                 2
               </div>
@@ -421,7 +422,7 @@ export default function HomePage() {
             </p>
             <Link
               href="/me/edit?required=true"
-              className="mt-4 block w-full rounded-lg bg-brand-orange px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
+              className="mt-4 block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
             >
               Complete profile
             </Link>
@@ -461,13 +462,13 @@ export default function HomePage() {
             <div className="mt-6 space-y-3">
               <Link
                 href="/groups/create"
-                className="block w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
+                className="block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
               >
                 Create a group
               </Link>
               <Link
                 href="/join"
-                className="block w-full rounded-lg border border-brand-green bg-surface px-4 py-3 text-sm font-semibold text-brand-green hover:bg-brand-green/5 text-center"
+                className="block w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground hover:bg-background text-center"
               >
                 Join a group
               </Link>
@@ -512,6 +513,65 @@ export default function HomePage() {
     const relationship = nextGameTrip ? getUserRelationship(nextGameTrip) : null;
     const daysUntil = nextGameTrip ? getDaysUntilTrip(nextGameTrip.date) : null;
     const timeHorizon = daysUntil !== null ? (daysUntil <= 7 ? 'near' : daysUntil <= 14 ? 'mid' : 'long') : null;
+
+    // Helper to get relative descriptor for headline
+    const getRelativeDescriptor = (days: number | null): string | null => {
+      if (days === null) return null;
+      if (days <= 0) return "today";
+      if (days === 1) return "tomorrow";
+      if (days === 2) return "in 2 days";
+      if (days === 3) return "in 3 days";
+      if (days >= 4 && days <= 6) return "this week";
+      if (days >= 7 && days <= 13) return "next week";
+      if (days >= 14) return `in ${days} days`;
+      return null;
+    };
+
+    // Handler for joining a trip
+    const handleJoin = async (e: React.MouseEvent) => {
+      e.stopPropagation(); // Prevent triggering the parent tap handler
+      if (!nextGameTrip || joiningTrip) return;
+      
+      setJoiningTrip(true);
+      try {
+        const res = await fetch(`/api/trips/${nextGameTrip.id}/join`, {
+          method: "POST",
+          credentials: "include",
+        });
+        
+        if (!res.ok) {
+          throw new Error("Failed to join trip");
+        }
+        
+        // Reload trips to reflect the join
+        const tripsPromises = approvedGroups.map(async (group) => {
+          const groupTrips = await loadTrips(group.id, false);
+          return groupTrips.map((trip) => ({ ...trip, groupName: group.name, groupId: group.id }));
+        });
+        const allTripsArrays = await Promise.all(tripsPromises);
+        const allTripsWithGroupsData = allTripsArrays.flat();
+        setAllTripsWithGroups(allTripsWithGroupsData);
+        
+        // Also update trips for active group to keep state in sync
+        if (activeGroupId) {
+          const activeGroupIndex = approvedGroups.findIndex((g) => g.id === activeGroupId);
+          if (activeGroupIndex >= 0) {
+            const activeGroupTrips = allTripsArrays[activeGroupIndex].map(({ groupName, groupId, ...trip }) => trip);
+            setTrips(activeGroupTrips);
+          } else {
+            const allTripsData = allTripsWithGroupsData.map(({ groupName, groupId, ...trip }) => trip);
+            setTrips(allTripsData);
+          }
+        } else {
+          const allTripsData = allTripsWithGroupsData.map(({ groupName, groupId, ...trip }) => trip);
+          setTrips(allTripsData);
+        }
+      } catch (error) {
+        console.error("Failed to join trip:", error);
+      } finally {
+        setJoiningTrip(false);
+      }
+    };
 
     // Handler for tapping the Next Game surface
     const handleNextGameTap = async () => {
@@ -569,85 +629,77 @@ export default function HomePage() {
       }
     };
 
-    // Build display lines based on relationship and time horizon
-    const getNextGameLines = () => {
-      if (!nextGameTrip || !relationship || !nextGameTrip.date) return null;
+    // Build identity and place lines
+    const identity =
+      nextGameTrip?.name ||
+      (nextGameTrip?.createdByMemberName ? `${nextGameTrip.createdByMemberName}'s round` : null) ||
+      courseText?.title ||
+      (nextGameTrip ? (getGolfNoun(nextGameTrip) === "trip" ? "Trip" : "Round") : null);
 
-      const lines: string[] = [];
-      
-      // Line 1: Time anchor (dominant) - always present
-      const timePhrase = getRelativeTimePhrase(nextGameTrip.date);
-      if (!timePhrase) return null; // Guard against empty date phrase
-      lines.push(timePhrase);
-
-      // Line 2: Identity (trip name or host)
-      const identity = nextGameTrip.name || 
-        (nextGameTrip.createdByMemberName ? `${nextGameTrip.createdByMemberName}'s round` : null) ||
-        courseText?.title ||
-        (getGolfNoun(nextGameTrip) === "trip" ? "Trip" : "Round");
-      if (identity) {
-        lines.push(identity);
-      }
-
-      // Line 3: Place (course name if different from identity)
-      if (courseText && courseText.title !== "Course TBD" && courseText.title !== identity) {
-        const placeLine = courseText.detail 
+    const placeLine =
+      courseText &&
+      courseText.title !== "Course TBD" &&
+      courseText.title !== identity
+        ? courseText.detail
           ? `${courseText.title} · ${courseText.detail}`
-          : courseText.title;
-        lines.push(placeLine);
-      }
+          : courseText.title
+        : null;
 
-      // Line 4: Optional based on relationship and time horizon
-      if (relationship === 'attending') {
-        // Anticipation mode: logistics if available (meetup time/location)
-        // Note: Meetup data may not be in current trip structure, so skipping for now
-        // This can be extended when meetup data is available
-      } else if (relationship === 'eligible') {
-        // Invitation mode: social presence for near-term, identity for long-term
-        if (timeHorizon === 'near' && Array.isArray(nextGameTrip.attendees)) {
-          const confirmedCount = nextGameTrip.attendees.filter((a) => a.status === "confirmed").length;
-          if (confirmedCount > 0) {
-            lines.push(`${confirmedCount} ${confirmedCount === 1 ? 'player' : 'players'} attending`);
-          }
-        }
-      }
+    const relativeDescriptor = getRelativeDescriptor(daysUntil);
+    const headline =
+      relationship === "attending"
+        ? relativeDescriptor
+          ? `You're playing ${relativeDescriptor}`
+          : "You're playing soon"
+        : relativeDescriptor
+        ? `Up next ${relativeDescriptor}`
+        : "Up next";
 
-      return lines;
-    };
-
-    const nextGameLines = getNextGameLines();
+    const absoluteDateLabel =
+      nextGameTrip && nextGameTrip.date
+        ? new Date(nextGameTrip.date + "T00:00:00").toLocaleDateString("en-GB", {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+          })
+        : null;
 
     content = (
       <div className="space-y-12">
         {/* Primary surface: Next Game Instrument */}
-        {nextGame && nextGameTrip && nextGameLines ? (
+        {nextGame && nextGameTrip && headline ? (
           <div 
             onClick={handleNextGameTap}
-            className="py-8 cursor-pointer active:opacity-70 transition-opacity"
+            className="py-8 px-5 cursor-pointer active:opacity-70 transition-opacity"
           >
-            {/* Line 1: Time anchor (dominant) */}
-            <div className="text-4xl font-light text-foreground mb-3">
-              {nextGameLines[0]}
+            {/* Line 1: Personal temporal confirmation (primary) */}
+            <div className="text-4xl font-light text-primary mb-2">
+              {headline}
             </div>
-            
-            {/* Line 2: Identity */}
-            {nextGameLines[1] && (
-              <div className="text-lg text-foreground mb-2">
-                {nextGameLines[1]}
-              </div>
-            )}
-            
-            {/* Line 3: Place */}
-            {nextGameLines[2] && (
-              <div className="text-sm text-muted mb-2">
-                {nextGameLines[2]}
-              </div>
-            )}
 
-            {/* Line 4: Optional context line */}
-            {nextGameLines[3] && (
-              <div className="text-xs text-muted">
-                {nextGameLines[3]}
+            {/* Line 2: Secondary temporal precision (no repeated relative term) */}
+            {absoluteDateLabel && (
+              <div className="text-sm secondary-text mb-2">
+                {absoluteDateLabel}
+              </div>
+            )}
+            
+            {/* Line 3: Identity with subtle chevron affordance */}
+            {identity && (
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-lg secondary-text">
+                  {identity}
+                </div>
+                <span className="text-sm secondary-text opacity-60">
+                  ›
+                </span>
+              </div>
+            )}
+            
+            {/* Line 4: Place */}
+            {placeLine && (
+              <div className="text-sm secondary-text mb-2">
+                {placeLine}
               </div>
             )}
           </div>
@@ -658,20 +710,20 @@ export default function HomePage() {
         )}
 
         {/* Handicap Snapshot */}
-        <div className="py-6">
+        <div className="py-6 px-5 mt-4">
           {declaredHandicap !== null ? (
             <div>
-              <div className="text-5xl font-light text-foreground mb-1">
+              <div className="text-5xl font-light text-primary mb-1">
                 {typeof declaredHandicap === 'number' ? declaredHandicap.toFixed(1) : declaredHandicap}
               </div>
-              <div className="text-sm text-muted">
+              <div className="text-sm secondary-text">
                 Handicap index
               </div>
             </div>
           ) : (
             <div>
-              <div className="text-sm text-muted mb-2">Handicap index</div>
-              <Link href="/me" className="text-base text-foreground hover:text-brand-green">
+              <div className="text-sm secondary-text mb-2">Handicap index</div>
+              <Link href="/me" className="text-base text-primary hover:opacity-70">
                 Add your handicap
               </Link>
             </div>
@@ -682,7 +734,7 @@ export default function HomePage() {
         <div className="pt-8">
           <Link
             href="/host"
-            className="block w-full py-4 text-base font-medium text-center text-white bg-brand-green hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
+            className="block w-full py-4 text-base font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
           >
             Host a round
           </Link>

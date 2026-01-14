@@ -622,7 +622,7 @@ export default function MeEditPage() {
           <button
             type="submit"
             disabled={saving || uploadingProfilePhoto || uploadingPassportPhoto}
-            className="w-full rounded-xl bg-brand-orange px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+            className="w-full rounded-xl btn-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save and continue"}
           </button>

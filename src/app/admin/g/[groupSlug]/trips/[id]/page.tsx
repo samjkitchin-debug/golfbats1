@@ -2489,7 +2489,7 @@ export default function AdminTripPage() {
               </div>
               <button
                 onClick={() => onGenerateFlights(false)}
-                className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               >
                 Generate flights
               </button>
@@ -2582,7 +2582,7 @@ export default function AdminTripPage() {
                     // TODO: Open Edit Setup modal for basics
                     alert("Edit basics - coming soon");
                   }}
-                  className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 >
                   Edit Basics
                 </button>
@@ -2627,7 +2627,7 @@ export default function AdminTripPage() {
                 </div>
               )}
               {detailedReadiness.rosterPack.missingReasonsBreakdown.length === 0 && detailedReadiness.rosterPack.totalYesCount > 0 && (
-                <div className="mt-3 p-3 bg-brand-green/10 border border-brand-green/30 rounded-lg text-sm text-brand-green">
+                <div className="mt-3 p-3 chip-success rounded-lg text-sm">
                   ✓ All confirmed attendees are agent-ready
                 </div>
               )}
@@ -2719,7 +2719,7 @@ export default function AdminTripPage() {
                     notes: tripToUse.logistics?.notes || undefined,
                   });
                 }}
-                className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               >
                 Save Itinerary
               </button>
@@ -2760,7 +2760,7 @@ export default function AdminTripPage() {
               {!primaryActionData && currentPhaseId === "signupsClosed" && logisticsEnabled && hasLogisticsData && (
                 <button
                   onClick={moveToGameDay}
-                  className="hidden md:inline-flex rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 min-h-[44px] items-center"
+                  className="hidden md:inline-flex rounded-lg btn-anticipation px-4 py-2 text-sm font-medium text-white hover:opacity-90 min-h-[44px] items-center"
                 >
                   Start round →
                 </button>
@@ -2777,7 +2777,7 @@ export default function AdminTripPage() {
                 <button
                   onClick={onPublishResults}
                   disabled={!phase3Form.leaderboard.trim()}
-                  className="hidden md:inline-flex rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] items-center"
+                  className="hidden md:inline-flex rounded-lg btn-anticipation px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] items-center"
                 >
                   Publish & archive →
                 </button>
@@ -2961,7 +2961,7 @@ export default function AdminTripPage() {
                             <div
                               className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium border-2 flex-shrink-0 ${
                                 isComplete
-                                  ? "bg-brand-green/10 border-brand-green text-brand-green"
+                                  ? "chip-success"
                                   : isCurrent
                                   ? "bg-surface/50 border-brand-green text-brand-green"
                                   : "bg-background border-border text-muted"
@@ -3000,7 +3000,7 @@ export default function AdminTripPage() {
                           <div
                             className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium border-2 flex-shrink-0 ${
                               isComplete
-                                ? "bg-brand-green-light border-brand-green text-brand-green"
+                                ? "chip-success"
                                 : isCurrent
                                 ? "bg-brand-blue-light border-brand-blue text-brand-blue"
                                 : "bg-background border-border text-muted"
@@ -3030,7 +3030,7 @@ export default function AdminTripPage() {
                         {index < PHASES.length - 1 && (
                           <div
                             className={`w-4 h-0.5 flex-shrink-0 mt-3 ${
-                              isComplete ? "bg-brand-green" : "bg-border"
+                              isComplete ? "bg-action-blue" : "bg-border"
                             }`}
                           />
                         )}
@@ -3327,7 +3327,7 @@ export default function AdminTripPage() {
                   </button>
                   <button
                     onClick={moveToOpenForSignups}
-                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                   >
                     Open signups →
                   </button>
@@ -3443,7 +3443,7 @@ export default function AdminTripPage() {
                   {!decisionLogisticsPosted && (
                     <button
                       onClick={onSaveDecisionLogistics}
-                      className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                      className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                     >
                       Save logistics
                     </button>
@@ -3484,7 +3484,7 @@ export default function AdminTripPage() {
                       </button>
                       <button
                         onClick={onSaveDecisionLogistics}
-                        className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                        className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                       >
                         Save changes
                       </button>
@@ -3619,7 +3619,7 @@ export default function AdminTripPage() {
                 {!phase2Posted && (
                   <button
                     onClick={onPostLogistics}
-                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                   >
                     Save logistics
                   </button>
@@ -3644,7 +3644,7 @@ export default function AdminTripPage() {
                 {/* Export for organiser / booking contact - show if export is enabled */}
                 {exportEnabled && (
                   <button
-                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                     onClick={onExportTravelAgentCsv}
                   >
                     Export for organiser / booking contact (CSV)
@@ -3653,7 +3653,7 @@ export default function AdminTripPage() {
                 {/* Passport export - show if exportAgentPack is enabled (e.g., cross_border_agent) */}
                 {exportAgentPackEnabled && (
                   <button
-                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                     onClick={async () => {
                       if (!groupId || !tripToUse) return;
                       try {
@@ -3742,7 +3742,7 @@ export default function AdminTripPage() {
                     Edit
                   </button>
                   <button
-                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                     onClick={moveToGameDay}
                   >
                     Start round →
@@ -3759,7 +3759,7 @@ export default function AdminTripPage() {
                   </button>
                   <button
                     onClick={onSavePhase2Changes}
-                    className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                   >
                     Save changes
                   </button>

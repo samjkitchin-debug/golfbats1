@@ -301,7 +301,7 @@ export default function DevNotesPage() {
               onClick={() => setType("bug")}
               className={`rounded-md px-3 py-2 text-sm font-medium ${
                 type === "bug"
-                  ? "bg-brand-orange text-white"
+                  ? "btn-primary text-white"
                   : "border border-border bg-surface text-foreground hover:bg-background"
               }`}
             >
@@ -311,7 +311,7 @@ export default function DevNotesPage() {
               onClick={() => setType("note")}
               className={`rounded-md px-3 py-2 text-sm font-medium ${
                 type === "note"
-                  ? "bg-brand-green text-white"
+                  ? "btn-primary text-white"
                   : "border border-border bg-surface text-foreground hover:bg-background"
               }`}
             >
@@ -337,14 +337,14 @@ export default function DevNotesPage() {
           <div className="flex gap-2">
             <button
               onClick={editingId ? () => handleUpdate(editingId) : handleAdd}
-              className="rounded-md bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="rounded-md btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-95"
             >
               {editingId ? "Update" : "Add"}
             </button>
             {editingId && (
               <button
                 onClick={cancelEdit}
-                className="rounded-md border border-brand-green bg-surface px-4 py-2 text-sm text-brand-green hover:bg-brand-green/5"
+                className="rounded-md border border-border bg-surface px-4 py-2 text-sm text-foreground hover:bg-background"
               >
                 Cancel
               </button>

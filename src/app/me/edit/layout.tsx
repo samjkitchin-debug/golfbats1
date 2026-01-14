@@ -44,7 +44,7 @@ export default async function MeEditLayout({
         </div>
 
         {/* brand accent */}
-        <div className="h-0.5 w-full bg-brand-green" />
+        <div className="h-0.5 w-full bg-action-blue" />
       </header>
 
       {/* Content */}

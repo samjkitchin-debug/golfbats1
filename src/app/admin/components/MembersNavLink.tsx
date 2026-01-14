@@ -41,7 +41,7 @@ export default function MembersNavLink({ groupId }: { groupId: string }) {
     >
       Members
       {pendingCount !== null && pendingCount > 0 && (
-        <span className="ml-2 rounded-full bg-brand-orange px-2 py-0.5 text-xs font-medium text-white">
+        <span className="ml-2 rounded-full bg-action-blue px-2 py-0.5 text-xs font-medium text-white">
           {pendingCount}
         </span>
       )}

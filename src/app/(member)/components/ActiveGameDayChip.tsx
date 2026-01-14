@@ -206,7 +206,7 @@ export default function ActiveGameDayChip() {
         <button
           onClick={handleClick}
           disabled={startingGameDay}
-          className="w-full px-4 py-2 bg-brand-green text-white text-sm font-medium rounded-t-lg shadow-lg hover:opacity-90 transition-opacity text-left disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full px-4 py-2 btn-anticipation text-white text-sm font-medium rounded-t-lg shadow-lg hover:opacity-90 transition-opacity text-left disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {startingGameDay ? 'Starting…' : chipText}
         </button>

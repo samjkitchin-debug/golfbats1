@@ -143,6 +143,26 @@ The tone is calm, social, and observational.
 
 ---
 
+## Typography
+
+Typography is **neutral by design**.
+
+Day Fore It uses **Inter** to prioritise:
+- clarity
+- hierarchy
+- measurement
+over visual expression.
+
+Typography must support instrument-style UI:
+- numbers and dates read as measurements
+- hierarchy is driven by size and spacing, not decoration
+- font choice should never draw attention to itself
+
+Any future typography changes that introduce personality,
+ornamentation, or expressive styling are considered regressions.
+
+---
+
 ### 9. Flow Over Confirmation
 
 The app should feel like it knows what comes next.

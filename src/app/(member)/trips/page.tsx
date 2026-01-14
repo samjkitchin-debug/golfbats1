@@ -611,7 +611,7 @@ export default function TripsListPage() {
     let statusStyles: string = "";
     if (rsvpStatus === "joined") {
       statusBadge = "Joined";
-      statusStyles = "bg-brand-green/5 text-brand-green/70";
+      statusStyles = "chip-success";
     } else if (rsvpStatus === "waitlist") {
       statusBadge = "Waitlist";
       statusStyles = "bg-muted/5 text-muted";
@@ -693,11 +693,24 @@ export default function TripsListPage() {
             <span className="text-xs font-medium text-foreground tabular-nums whitespace-nowrap">{tripDateParts.date}</span>
           </div>
           
-          {/* Trip name column (2 lines: trip name + group • course) - prioritize full text on mobile */}
+          {/* Trip name column (2 lines: trip name + identity • course) - prioritize full text on mobile */}
           <div className="min-w-0 flex flex-col gap-0.5 sm:gap-0.5">
             <span className="text-sm sm:text-sm font-medium text-foreground break-words sm:truncate">{tripName}</span>
             <span className="text-[11px] sm:text-xs text-muted-foreground break-words sm:truncate leading-tight">
-              {groupName ? `${groupName} • ${courseName}` : courseName}
+              {(() => {
+                // Group events: show group name
+                if (eventKind === 'group_event' && groupName) {
+                  return `${groupName} • ${courseName}`;
+                }
+                // Hosted rounds: show host name
+                if (eventKind === 'hosted_round' && trip.createdByMemberName) {
+                  // Extract first name if full name provided
+                  const hostName = trip.createdByMemberName.split(' ')[0];
+                  return `Hosted by ${hostName} • ${courseName}`;
+                }
+                // Fallback: just course name
+                return courseName;
+              })()}
             </span>
           </div>
           
@@ -716,7 +729,8 @@ export default function TripsListPage() {
             </div>
             {/* Bottom row: Group event badge (only for group events) */}
             {eventKind === 'group_event' && (
-              <span className="text-[9px] font-medium tracking-wide uppercase text-muted/50">
+              <span className="event-official-pill">
+                <span className="event-official-dot" aria-hidden="true" />
                 Group event
               </span>
             )}
@@ -729,7 +743,7 @@ export default function TripsListPage() {
 
             {/* Completion prompt for Batam trips */}
             {trip.scenarioKey === "cross_border_agent" && rsvpStatus === "joined" && completionStatus && !completionStatus.isReady && (
-              <div className="rounded-lg border border-brand-orange/30 bg-brand-orange/5 p-3 mb-3">
+              <div className="rounded-lg border border-border bg-background p-3 mb-3">
                 <div className="text-sm font-medium text-foreground mb-1">Complete your details for the agent</div>
                 <div className="text-xs text-muted mb-3">
                   Please complete: {completionStatus.missingFields.map(f => f.replace(/_/g, ' ')).join(", ")}
@@ -738,7 +752,7 @@ export default function TripsListPage() {
                   onClick={() => {
                     router.push(`/me?highlight=${completionStatus.missingFields.join(',')}`);
                   }}
-                  className="rounded-md bg-brand-green px-3 py-1.5 text-xs font-medium text-white hover:opacity-95"
+                  className="rounded-md btn-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-95"
                 >
                   Complete now
                 </button>
@@ -762,66 +776,58 @@ export default function TripsListPage() {
             {/* Key logistics - compact key·value rows */}
             <div className="space-y-1.5 mb-3">
               {/* Meet time */}
-              <div className="text-sm">
-                <span className="text-muted">Meet time</span>
-                <span className="text-foreground ml-1">·</span>
-                <span className={`ml-1 ${trip.logistics?.meetTime ? "text-foreground" : "text-muted"}`}>
-                  {trip.logistics?.meetTime || "TBC"}
+              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                <span className="text-secondary">Meet time</span>
+                <span className={`${trip.logistics?.meetTime ? "text-primary" : "text-secondary"}`}>
+                  {trip.logistics?.meetTime || "—"}
                 </span>
               </div>
               {/* Meeting point */}
-              <div className="text-sm">
-                <span className="text-muted">Meeting point</span>
-                <span className="text-foreground ml-1">·</span>
-                <span className={`ml-1 ${trip.logistics?.meetingPoint ? "text-foreground" : "text-muted"}`}>
-                  {trip.logistics?.meetingPoint || "TBC"}
+              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                <span className="text-secondary">Meeting point</span>
+                <span className={`${trip.logistics?.meetingPoint ? "text-primary" : "text-secondary"}`}>
+                  {trip.logistics?.meetingPoint || "—"}
                 </span>
               </div>
               {/* Ferry */}
-              <div className="text-sm">
-                <span className="text-muted">Ferry</span>
-                <span className="text-foreground ml-1">·</span>
-                <span className={`ml-1 ${trip.ferry ? "text-foreground" : "text-muted"}`}>
-                  {trip.ferry ? (trip.ferry.toLowerCase() === "yes" ? "Yes" : trip.ferry.toLowerCase() === "no" ? "No" : trip.ferry) : "TBC"}
+              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                <span className="text-secondary">Ferry</span>
+                <span className={`${trip.ferry ? "text-primary" : "text-secondary"}`}>
+                  {trip.ferry ? (trip.ferry.toLowerCase() === "yes" ? "Yes" : trip.ferry.toLowerCase() === "no" ? "No" : trip.ferry) : "—"}
                 </span>
               </div>
               {/* Course */}
-              <div className="text-sm">
-                <span className="text-muted">Course</span>
-                <span className="text-foreground ml-1">·</span>
-                <span className={`ml-1 ${courseName !== "Course TBC" ? "text-foreground" : "text-muted"}`}>
+              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                <span className="text-secondary">Course</span>
+                <span className={`${courseName !== "Course TBC" ? "text-primary" : "text-secondary"}`}>
                   {courseName}
                 </span>
               </div>
               {/* Format */}
               {trip.format && (
-                <div className="text-sm">
-                  <span className="text-muted">Format</span>
-                  <span className="text-foreground ml-1">·</span>
-                  <span className="ml-1 text-foreground">{trip.format}</span>
+                <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                  <span className="text-secondary">Format</span>
+                  <span className="text-primary">{trip.format}</span>
                 </div>
               )}
               {/* Spots */}
               {maxAttendees > 0 && (
-                <div className="text-sm">
-                  <span className="text-muted">Spots</span>
-                  <span className="text-foreground ml-1">·</span>
-                  <span className="ml-1 text-foreground">{confirmedCount} / {maxAttendees}</span>
+                <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                  <span className="text-secondary">Spots</span>
+                  <span className="text-primary">{confirmedCount} / {maxAttendees}</span>
                 </div>
               )}
               {/* Waitlist */}
               {waitlistCount > 0 && (
-                <div className="text-sm">
-                  <span className="text-muted">Waitlist</span>
-                  <span className="text-foreground ml-1">·</span>
-                  <span className="ml-1 text-foreground">{waitlistCount}</span>
+                <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                  <span className="text-secondary">Waitlist</span>
+                  <span className="text-primary">{waitlistCount}</span>
                 </div>
               )}
               {/* Sign-ups */}
-              <div className="text-sm">
-                <span className="text-muted">Sign-ups</span>
-                <span className="text-foreground ml-1">·</span>
-                <span className="ml-1 text-foreground">
+              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                <span className="text-secondary">Sign-ups</span>
+                <span className="text-primary">
                   {signupTiming.status === "open" ? "Open" : signupTiming.status === "locked" ? "Closed" : "Not open"}
                 </span>
               </div>
@@ -880,7 +886,7 @@ export default function TripsListPage() {
         <div className="text-xl font-semibold text-foreground">Trips</div>
         <Link
           href="/host"
-          className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-[0.98] transition-transform"
+          className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-[0.98] transition-transform"
         >
           Host a round
         </Link>
@@ -925,16 +931,6 @@ export default function TripsListPage() {
         )}
       </section>
 
-      {/* View Results Link (replaces Recently played section) */}
-      <div className="pt-2">
-        <Link
-          href="/results"
-          className="text-xs text-muted hover:text-foreground inline-flex items-center gap-1"
-        >
-          View results →
-        </Link>
-      </div>
-
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
@@ -977,7 +973,7 @@ export default function TripsListPage() {
                   router.push(`/me?highlight=${completionPrompt.missingFields.join(',')}`);
                   setCompletionPrompt(null);
                 }}
-                className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-95"
               >
                 Complete now
               </button>

@@ -696,7 +696,7 @@ export default function TripDetailPage() {
         {trip.scenarioKey === "cross_border_agent" && 
          myEntry?.status === "confirmed" && 
          exportReadinessNotice?.show && (
-          <div className="mt-4 rounded-lg border border-brand-orange/30 bg-brand-orange/5 p-3">
+          <div className="mt-4 rounded-lg border border-border bg-background p-3">
             <div className="text-sm font-medium text-foreground mb-1">
               This trip requires passport details for the organiser / booking contact.
             </div>
