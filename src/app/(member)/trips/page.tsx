@@ -678,16 +678,6 @@ export default function TripsListPage() {
           borderStyle: 'solid',
         }}
       >
-        {/* Group event label */}
-        {eventKind === 'group_event' && (
-          <div className="absolute top-2 right-2 z-10">
-            <span 
-              className="text-[9px] font-normal tracking-wide uppercase text-muted/40"
-            >
-              Group event
-            </span>
-          </div>
-        )}
         {/* Card Header - Collapsed row - fixed 3-column grid for strict alignment */}
         <button
           onClick={onToggle}
@@ -711,16 +701,25 @@ export default function TripsListPage() {
             </span>
           </div>
           
-          {/* Right column (adaptive width, right aligned): Status badge + Chevron */}
-          <div className="flex items-center justify-end gap-1 sm:gap-1.5 shrink-0">
-            {/* Status badge pill - compact, hide on very small screens if needed */}
-            <span className={`text-[10px] px-1 sm:px-1.5 py-0.5 rounded-full ${statusStyles} shrink-0 whitespace-nowrap`}>
-              {statusBadge}
-            </span>
-            {/* Chevron icon - small and muted */}
-            <span className={`text-muted/50 text-[10px] shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-              ▼
-            </span>
+          {/* Right column (adaptive width, right aligned): Status badge + Group event badge (stacked) + Chevron */}
+          <div className="flex flex-col items-end gap-0.5 shrink-0">
+            {/* Top row: Status badge + Chevron */}
+            <div className="flex items-center justify-end gap-1 sm:gap-1.5">
+              {/* Status badge pill - compact, hide on very small screens if needed */}
+              <span className={`text-[10px] px-1 sm:px-1.5 py-0.5 rounded-full ${statusStyles} shrink-0 whitespace-nowrap`}>
+                {statusBadge}
+              </span>
+              {/* Chevron icon - small and muted */}
+              <span className={`text-muted/50 text-[10px] shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                ▼
+              </span>
+            </div>
+            {/* Bottom row: Group event badge (only for group events) */}
+            {eventKind === 'group_event' && (
+              <span className="text-[9px] font-medium tracking-wide uppercase text-muted/50">
+                Group event
+              </span>
+            )}
           </div>
         </button>
 
@@ -883,7 +882,7 @@ export default function TripsListPage() {
           href="/host"
           className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-[0.98] transition-transform"
         >
-          ⛳ Host a round
+          Host a round
         </Link>
       </div>
 
