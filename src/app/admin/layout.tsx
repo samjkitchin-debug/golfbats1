@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
-import { isEmailAdmin } from "../lib/auth";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
@@ -14,27 +13,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/login?next=/admin");
   }
 
-  // Admin if either:
-  // - email is in ADMIN_EMAILS (bootstrap), or
-  // - members row has is_admin = true
-  const emailAdmin = isEmailAdmin(user.email);
+  // Note: Group admin authorization is checked in individual pages
+  // This layout only ensures the user is authenticated
+  // Platform admins and group admins are both allowed
 
-  const { data: member } = await supabase
-    .from("members")
-    .select("is_admin")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const isAdmin = emailAdmin || !!member?.is_admin;
-
-  if (!isAdmin) {
-    // Signed in, but not authorised for admin
-    redirect("/login?error=not_admin");
-  }
-
-  // Top-level admin layout: Only handles auth checks
-  // Each route handles its own UI structure:
-  // - /admin/page.tsx renders its own minimal header
-  // - /admin/g/[groupSlug]/layout.tsx renders its own group admin shell
-  return <>{children}</>;
+  // Top-level admin layout: Minimal wrapper matching member surfaces
+  // Admin uses same visual language as member surfaces (paper background, ink text)
+  return (
+    <div className="min-h-dvh app-background-theme">
+      {children}
+    </div>
+  );
 }

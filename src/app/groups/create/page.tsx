@@ -7,7 +7,7 @@ import { createSupabaseBrowserClient } from "../../lib/supabaseBrowser";
 export default function CreateGroupPage() {
   const router = useRouter();
   const [groupName, setGroupName] = useState("");
-  const [groupSlug, setGroupSlug] = useState("");
+  const [createdGroupSlug, setCreatedGroupSlug] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [message, setMessage] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -28,26 +28,40 @@ export default function CreateGroupPage() {
     checkAuth();
   }, [supabase, router]);
 
-  // Auto-suggest slug from group name
-  useEffect(() => {
-    if (groupName && !groupSlug) {
-      // Generate slug from name: lowercase, replace spaces with hyphens, remove special chars
-      const suggested = groupName
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9-]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-      setGroupSlug(suggested);
+  async function copyCode(slug: string) {
+    try {
+      await navigator.clipboard.writeText(slug);
+      setMessage("Group code copied!");
+      setTimeout(() => setMessage(""), 2000);
+    } catch (err) {
+      setMessage("Failed to copy. Please copy manually.");
     }
-  }, [groupName, groupSlug]);
+  }
 
-  // Normalize slug input (only allow [a-z0-9-])
-  function handleSlugChange(value: string) {
-    const normalized = value
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9-]/g, "");
-    setGroupSlug(normalized);
+  async function shareInvite(slug: string) {
+    const inviteLink = `${window.location.origin}/join?code=${slug}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Join ${groupName} on DayForeIt`,
+          text: `Join my group "${groupName}" on DayForeIt`,
+          url: inviteLink,
+        });
+      } else {
+        await navigator.clipboard.writeText(inviteLink);
+        setMessage("Invite link copied!");
+        setTimeout(() => setMessage(""), 2000);
+      }
+    } catch (err) {
+      // User cancelled share or error - try copy as fallback
+      try {
+        await navigator.clipboard.writeText(inviteLink);
+        setMessage("Invite link copied!");
+        setTimeout(() => setMessage(""), 2000);
+      } catch (copyErr) {
+        setMessage("Failed to share. Please copy manually.");
+      }
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -62,24 +76,10 @@ export default function CreateGroupPage() {
     }
 
     const trimmedName = groupName.trim();
-    const trimmedSlug = groupSlug.trim().toLowerCase();
 
     if (!trimmedName) {
       setStatus("error");
       setMessage("Group name is required.");
-      return;
-    }
-
-    if (!trimmedSlug) {
-      setStatus("error");
-      setMessage("Group code (slug) is required.");
-      return;
-    }
-
-    // Validate slug format (alphanumeric and hyphens only)
-    if (!/^[a-z0-9-]+$/.test(trimmedSlug)) {
-      setStatus("error");
-      setMessage("Group code can only contain lowercase letters, numbers, and hyphens.");
       return;
     }
 
@@ -89,7 +89,6 @@ export default function CreateGroupPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: trimmedName,
-          slug: trimmedSlug,
         }),
       });
 
@@ -99,14 +98,10 @@ export default function CreateGroupPage() {
         throw new Error(json?.error || "Failed to create group.");
       }
 
+      // Store the created slug
+      setCreatedGroupSlug(json.group?.slug || null);
       setStatus("done");
-      setMessage("Group created successfully! Redirecting...");
-
-      // Redirect to home after a short delay
-      setTimeout(() => {
-        router.push("/");
-        router.refresh();
-      }, 1500);
+      setMessage("Group created successfully!");
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Failed to create group.");
@@ -145,57 +140,84 @@ export default function CreateGroupPage() {
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium">Group name</label>
-          <input
-            className="mt-2 w-full rounded-lg border px-3 py-2 text-sm"
-            type="text"
-            value={groupName}
-            onChange={(e) => setGroupName(e.target.value)}
-            placeholder="e.g. DayForeIt Singapore"
-            disabled={status === "submitting"}
-            autoFocus
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium">Group code</label>
-          <input
-            className="mt-2 w-full rounded-lg border px-3 py-2 text-sm"
-            type="text"
-            value={groupSlug}
-            onChange={(e) => handleSlugChange(e.target.value)}
-            placeholder="e.g. golfbats-sg"
-            disabled={status === "submitting"}
-          />
-          <p className="mt-1 text-xs text-muted">
-            Lowercase letters, numbers, and hyphens only. This code is used by others to join your group.
-          </p>
-        </div>
-
-        {message && (
-          <div
-            className={`rounded-lg border p-3 text-sm ${
-              status === "error"
-                ? "border-danger bg-danger-light text-danger"
-                : status === "done"
-                ? "border-brand-green bg-brand-green-light text-brand-green"
-                : "border-border bg-surface"
-            }`}
-          >
-            {message}
+      {status === "done" && createdGroupSlug ? (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-surface p-4">
+            <div className="text-sm font-medium text-foreground mb-1">Group code</div>
+            <div className="font-mono text-lg font-semibold text-foreground mb-4">
+              {createdGroupSlug}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => copyCode(createdGroupSlug)}
+                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background transition-colors"
+              >
+                Copy code
+              </button>
+              <button
+                onClick={() => shareInvite(createdGroupSlug)}
+                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity"
+              >
+                Share invite
+              </button>
+            </div>
           </div>
-        )}
 
-        <button
-          type="submit"
-          disabled={status === "submitting"}
-          className="w-full rounded-lg bg-brand-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {status === "submitting" ? "Creating..." : "Create group"}
-        </button>
-      </form>
+          {message && (
+            <div className="rounded-lg border border-border bg-surface p-3 text-sm text-foreground">
+              {message}
+            </div>
+          )}
+
+          <button
+            onClick={() => {
+              router.push("/");
+              router.refresh();
+            }}
+            className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            Continue
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium">Group name</label>
+            <input
+              className="mt-2 w-full rounded-lg border px-3 py-2 text-sm"
+              type="text"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              placeholder="e.g. DayForeIt Singapore"
+              disabled={status === "submitting"}
+              autoFocus
+            />
+            <p className="mt-1 text-xs text-muted">
+              A group code will be generated automatically.
+            </p>
+          </div>
+
+          {message && (
+            <div
+              className={`rounded-lg border p-3 text-sm ${
+                status === "error"
+                  ? "border-danger bg-danger-light text-danger"
+                  : "border-border bg-surface text-foreground"
+              }`}
+            >
+              {message}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={status === "submitting"}
+            className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {status === "submitting" ? "Creating..." : "Create group"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

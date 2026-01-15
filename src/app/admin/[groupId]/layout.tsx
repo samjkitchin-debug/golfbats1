@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import SignOutButton from "../../components/SignOutButton";
 import { createSupabaseServerClient } from "../../lib/supabaseServer";
 import { isEmailAdmin } from "../../lib/auth";
-import MembersNavLink from "../components/MembersNavLink";
 import GroupSwitcher from "../components/GroupSwitcher";
 
 type GroupOption = {
@@ -115,59 +114,36 @@ export default async function GroupAdminLayout({
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-20 border-b bg-surface border-border">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-sm font-semibold text-foreground">
-              DayForeIt
-            </Link>
-            <span className="text-xs text-muted">/ admin</span>
-            <GroupSwitcher currentGroup={currentGroup} availableGroups={availableGroups} />
+      <div className="mx-auto w-full max-w-[480px]">
+        <header className="sticky top-0 z-20 border-b bg-surface border-border">
+          <div className="flex items-center justify-between px-5 py-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Link href="/" className="text-xs text-secondary hover:text-foreground whitespace-nowrap">
+                Back to app
+              </Link>
+              <span className="text-xs text-secondary">·</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-semibold text-foreground whitespace-nowrap">Admin</span>
+                <GroupSwitcher currentGroup={currentGroup} availableGroups={availableGroups} />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {currentGroup.slug && (
+                <Link
+                  href={`/admin/tools/g/${currentGroup.slug}/settings`}
+                  className="text-xs text-secondary hover:text-foreground whitespace-nowrap"
+                >
+                  Group settings
+                </Link>
+              )}
+              <SignOutButton />
+            </div>
           </div>
+        </header>
 
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-            >
-              Back to app
-            </Link>
-            <SignOutButton />
-          </div>
-        </div>
-
-        <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-4 pb-3">
-          <Link
-            href={`/admin/${groupId}`}
-            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-          >
-            Dashboard
-          </Link>
-          <Link
-            href={`/admin/${groupId}/trips`}
-            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-          >
-            Trips
-          </Link>
-          <Link
-            href={`/admin/${groupId}/courses`}
-            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-          >
-            Courses
-          </Link>
-          <MembersNavLink groupId={groupId} />
-          <Link
-            href={`/admin/${groupId}/dev-notes`}
-            className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-          >
-            Dev Notes
-          </Link>
-        </div>
-
-        <div className="h-0.5 w-full bg-brand-green" />
-      </header>
-
-      <main className="mx-auto w-full max-w-5xl px-4 py-6">{children}</main>
+        <main className="px-5 py-6">{children}</main>
+      </div>
     </div>
   );
 }

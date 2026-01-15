@@ -55,11 +55,19 @@ export async function POST(req: Request) {
       .from("trips")
       .select("id,group_id")
       .eq("id", tripId)
-      .single();
+      .maybeSingle();
 
-    if (tripError || !tripData) {
+    if (tripError) {
+      console.error("[gameday/start] Trip lookup error:", tripError);
       return NextResponse.json(
-        { ok: false, error: "not_found" },
+        { ok: false, error: "not_found", reason: "trip_lookup_failed" },
+        { status: 404 }
+      );
+    }
+
+    if (!tripData) {
+      return NextResponse.json(
+        { ok: false, error: "not_found", reason: "trip_not_found" },
         { status: 404 }
       );
     }

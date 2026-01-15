@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 
-export default function JoinPage() {
+function JoinPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   
   // All state hooks at the top
   const [slug, setSlug] = useState("");
@@ -23,6 +24,14 @@ export default function JoinPage() {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
   }, []);
+
+  // Check for code query param on mount
+  useEffect(() => {
+    const code = searchParams?.get("code");
+    if (code && !slug) {
+      setSlug(code.toLowerCase());
+    }
+  }, [searchParams, slug]);
 
   // All useEffect hooks before any early returns
   useEffect(() => {
@@ -229,5 +238,17 @@ export default function JoinPage() {
         </p>
       )}
     </div>
+  );
+}
+
+export default function JoinPage() {
+  return (
+    <Suspense fallback={
+      <div className="mx-auto w-full max-w-md px-4 py-8">
+        <p className="text-sm text-muted">Loading…</p>
+      </div>
+    }>
+      <JoinPageContent />
+    </Suspense>
   );
 }

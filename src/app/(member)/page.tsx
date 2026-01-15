@@ -48,6 +48,15 @@ export default function HomePage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [weather, setWeather] = useState<{
+    basis: "course" | "city" | "none";
+    label: string | null;
+    tempC: number | null;
+    summary: string | null;
+    highC: number | null;
+    lowC: number | null;
+    precipChance: number | null;
+  } | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [hasMemberships, setHasMemberships] = useState<boolean | null>(null);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
@@ -601,6 +610,96 @@ export default function HomePage() {
     }
   }, [activeGameDay, pathname, router]);
 
+  // Fetch weather when playing today
+  useEffect(() => {
+    if (allTripsWithGroups.length === 0 || courses.length === 0 || !currentUserId) {
+      setWeather(null);
+      return;
+    }
+
+    const upcoming = allTripsWithGroups
+      .filter((t) => isTripUpcoming(t, new Date()))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    
+    if (upcoming.length === 0) {
+      setWeather(null);
+      return;
+    }
+
+    const nextGameTrip = upcoming[0];
+    
+    // Check if playing today
+    const now = new Date();
+    const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const trip = new Date(nextGameTrip.date + "T00:00:00");
+    const tripDay = new Date(trip.getFullYear(), trip.getMonth(), trip.getDate());
+    const diffMs = tripDay.getTime() - todayDate.getTime();
+    const daysUntil = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (daysUntil !== 0) {
+      setWeather(null);
+      return;
+    }
+
+    // Check if attending
+    const confirmed = nextGameTrip.attendees.filter((a) => a.status === "confirmed");
+    const byId = nextGameTrip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
+    const isAttending = (byId && byId.status === "confirmed") || 
+      (currentUserName && confirmed.find((a) => a.name === currentUserName)?.status === "confirmed");
+
+    if (!isAttending) {
+      setWeather(null);
+      return;
+    }
+
+    // Get course for weather lookup
+    const course = nextGameTrip.courseId
+      ? courses.find((c) => c.id === nextGameTrip.courseId)
+      : null;
+    
+    // Extract course location data (city from location field)
+    const courseCity = course?.location?.trim() || null;
+
+    // Priority: lat/lng (not available in current schema, so skip)
+    // Fallback: city from course.location
+    if (!courseCity) {
+      setWeather({
+        basis: "none",
+        label: null,
+        tempC: null,
+        summary: null,
+        highC: null,
+        lowC: null,
+        precipChance: null,
+      });
+      return;
+    }
+
+    async function fetchWeather() {
+      if (!courseCity) return;
+      try {
+        const res = await fetch(`/api/weather?city=${encodeURIComponent(courseCity)}`);
+        if (!res.ok) {
+          throw new Error("Weather fetch failed");
+        }
+        const data = await res.json();
+        setWeather(data);
+      } catch (error) {
+        setWeather({
+          basis: "none",
+          label: null,
+          tempC: null,
+          summary: null,
+          highC: null,
+          lowC: null,
+          precipChance: null,
+        });
+      }
+    }
+
+    fetchWeather();
+  }, [allTripsWithGroups, courses, currentUserId, currentUserName]);
+
   if (loadingBootstrap) {
     content = (
       <div className="py-12 text-center">
@@ -618,9 +717,9 @@ export default function HomePage() {
       <div className="space-y-6">
         {/* Header section - no border card */}
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Welcome to DayForeIt</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Quick setup</h1>
           <p className="mt-2 text-sm text-muted">
-            Two quick steps and you're in.
+            Two small things, then you're in.
           </p>
         </div>
 
@@ -1075,8 +1174,8 @@ export default function HomePage() {
         {/* Primary surface: Next Game Instrument (only show if no Afterglow) */}
         {!afterglowRound && nextGame && nextGameTrip && headline ? (
           <div 
-            onClick={!isPlayingToday ? handleNextGameTap : undefined}
-            className={`py-8 px-5 ${!isPlayingToday ? 'cursor-pointer active:opacity-70 transition-opacity' : ''}`}
+            onClick={handleNextGameTap}
+            className="py-8 px-5 cursor-pointer active:opacity-70 transition-opacity"
           >
             {/* Line 1: Personal temporal confirmation (primary) */}
             <div className="text-4xl font-light text-primary mb-2">
@@ -1126,6 +1225,32 @@ export default function HomePage() {
                     Meet details being confirmed
                   </div>
                 )}
+                
+                {/* Weather line */}
+                {weather && (() => {
+                  const course = nextGameTrip.courseId
+                    ? courses.find((c) => c.id === nextGameTrip.courseId)
+                    : null;
+                  const courseCity = course?.location?.trim() || null;
+                  
+                  return (
+                    <div className="text-xs text-muted mt-2">
+                      {weather.basis === "course" && weather.tempC !== null && weather.summary ? (
+                        <>
+                          Weather at the course: {weather.tempC}° · {weather.summary}
+                          {weather.precipChance !== null && weather.precipChance > 0 && ` (${weather.precipChance}% chance)`}
+                        </>
+                      ) : weather.basis === "city" && weather.tempC !== null && weather.summary ? (
+                        <>
+                          Weather near {weather.label || courseCity}: {weather.tempC}° · {weather.summary}
+                          {weather.precipChance !== null && weather.precipChance > 0 && ` (${weather.precipChance}% chance)`}
+                        </>
+                      ) : (
+                        "Weather: unavailable"
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -1149,25 +1274,30 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Group event teaser */}
-        {nextGroupEvent && groupEventRelative && (
-          <div className="px-5 -mt-6">
-            {groupEventDaysUntil !== null && groupEventDaysUntil <= 7 ? (
-              <div className="group-teaser">
-                <span className="group-teaser-dot" aria-hidden="true" />
-                <Link href="/trips" className="group-teaser-link">
-                  Coming up: {groupEventName} · {groupEventRelative}
-                </Link>
+        {/* Next group trip (only when playing today) */}
+        {isPlayingToday && nextGroupEvent && (() => {
+          const groupName = (nextGroupEvent as Trip & { groupName?: string }).groupName || "Group";
+          const groupEventDate = nextGroupEvent.date
+            ? new Date(nextGroupEvent.date + "T00:00:00").toLocaleDateString("en-GB", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+              })
+            : null;
+          const groupEventCourseText = getTripCourseText(nextGroupEvent, courses);
+          const groupEventCourseName = groupEventCourseText?.title || "Course TBD";
+          
+          return (
+            <div className="px-5 -mt-4">
+              <div className="text-xs text-muted mb-1">
+                The next group trip is next week
               </div>
-            ) : (
-              <div className="group-teaser">
-                <Link href="/trips" className="group-teaser-link">
-                  Coming up: {groupEventName} · {groupEventRelative}
-                </Link>
+              <div className="text-xs secondary-text">
+                {groupName} · {groupEventDate} · {groupEventCourseName}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          );
+        })()}
 
         {/* Handicap Snapshot */}
         <div className="py-6 px-5 mt-4">
@@ -1249,14 +1379,41 @@ export default function HomePage() {
               </Link>
             </>
           ) : (
-            <Link
-              href="/host"
-              className="block w-full py-4 text-base font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
-            >
-              Host a round
-            </Link>
+            <>
+              <Link
+                href="/host"
+                className="block w-full py-4 text-base font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
+              >
+                Host a round
+              </Link>
+              {/* Admin-only: Create group trip (demoted when Host a round is primary) */}
+              {isGroupAdmin && approvedGroups.length > 0 && (
+                <Link
+                  href={approvedGroups.find((g) => g.id === activeGroupId) 
+                    ? `/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)!.slug}`
+                    : `/admin/g/${approvedGroups[0].slug}`}
+                  className="block w-full py-3 text-sm font-medium text-center btn-ghost hover:opacity-80 rounded-lg active:scale-[0.98] transition-transform"
+                >
+                  Create group trip
+                </Link>
+              )}
+            </>
           )}
         </div>
+        
+        {/* Admin-only: Create group trip (primary when no amber CTA and idle) */}
+        {!activeGameDay && !canEnterGameDay && isGroupAdmin && approvedGroups.length > 0 && (
+          <div className="px-5 pt-4">
+            <Link
+              href={approvedGroups.find((g) => g.id === activeGroupId) 
+                ? `/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)!.slug}`
+                : `/admin/g/${approvedGroups[0].slug}`}
+              className="block w-full py-3 text-sm font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
+            >
+              Create group trip
+            </Link>
+          </div>
+        )}
       </div>
     );
   }

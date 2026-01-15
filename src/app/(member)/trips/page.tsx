@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, memo, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
@@ -57,7 +57,8 @@ export default function TripsListPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string; role?: string }>>([]);
+  const [isGroupAdmin, setIsGroupAdmin] = useState(false);
   const [allTripsWithGroups, setAllTripsWithGroups] = useState<Array<Trip & { groupName: string; groupId: string }>>([]);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -114,6 +115,10 @@ export default function TripsListPage() {
         setCurrentUserName(bootstrap.member?.display_name || bootstrap.member?.full_name || null);
         setActiveGroupId(bootstrap.activeGroupId);
         setApprovedGroups(bootstrap.approvedGroups || []);
+        
+        // Check if user is admin in any group
+        const hasAdminRole = (bootstrap.approvedGroups || []).some((g: { role?: string }) => g.role === 'admin');
+        setIsGroupAdmin(hasAdminRole);
         
         const duration = perfMeasure("bootstrap", start);
         perfLog("bootstrap: success", {
@@ -413,6 +418,7 @@ export default function TripsListPage() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const [expandedTripId, setExpandedTripId] = useState<number | null>(null);
+  const didInitExpandRef = useRef(false);
 
   // Upcoming trips: Use getEffectiveTripPhase() to determine if trip is upcoming
   // This ensures trip_date < today => never upcoming, even if status is wrong
@@ -423,45 +429,82 @@ export default function TripsListPage() {
       .sort((a, b) => a.date.localeCompare(b.date)); // Earliest first
   }, [allTripsWithGroups]);
 
+  // Partition upcoming trips into group trips and hosted rounds
+  const groupTrips = useMemo(() => {
+    return upcomingTrips.filter((t) => t.tripOrigin !== 'member');
+  }, [upcomingTrips]);
+
+  const hostedRounds = useMemo(() => {
+    return upcomingTrips.filter((t) => t.tripOrigin === 'member');
+  }, [upcomingTrips]);
+
   // Apply search filter if query exists
-  const upcomingFiltered = useMemo(() => {
+  const groupTripsFiltered = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    if (query) {
-      const filterTrip = (t: Trip & { groupName?: string; groupId?: string }) => {
-        const tripName = (t.name || "").toLowerCase();
-        const courseName = courses.find(c => c.id === t.courseId)?.name?.toLowerCase() || "";
-        const format = (t.format || "").toLowerCase();
-        const date = t.date.toLowerCase();
-        const ferry = (t.ferry || "").toLowerCase();
-        const groupName = (t.groupName || "").toLowerCase();
-        
-        return tripName.includes(query) ||
-               courseName.includes(query) ||
-               format.includes(query) ||
-               date.includes(query) ||
-               ferry.includes(query) ||
-               groupName.includes(query);
-      };
+    if (!query) return groupTrips;
+    
+    const filterTrip = (t: Trip & { groupName?: string; groupId?: string }) => {
+      const tripName = (t.name || "").toLowerCase();
+      const courseName = courses.find(c => c.id === t.courseId)?.name?.toLowerCase() || "";
+      const format = (t.format || "").toLowerCase();
+      const date = t.date.toLowerCase();
+      const ferry = (t.ferry || "").toLowerCase();
+      const groupName = (t.groupName || "").toLowerCase();
       
-      return upcomingTrips.filter(filterTrip);
-    }
+      return tripName.includes(query) ||
+             courseName.includes(query) ||
+             format.includes(query) ||
+             date.includes(query) ||
+             ferry.includes(query) ||
+             groupName.includes(query);
+    };
+    
+    return groupTrips.filter(filterTrip);
+  }, [groupTrips, searchQuery, courses]);
 
-    return upcomingTrips;
-  }, [upcomingTrips, searchQuery, courses]);
+  const hostedRoundsFiltered = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return hostedRounds;
+    
+    const filterTrip = (t: Trip & { groupName?: string; groupId?: string }) => {
+      const tripName = (t.name || "").toLowerCase();
+      const courseName = courses.find(c => c.id === t.courseId)?.name?.toLowerCase() || "";
+      const format = (t.format || "").toLowerCase();
+      const date = t.date.toLowerCase();
+      const ferry = (t.ferry || "").toLowerCase();
+      const groupName = (t.groupName || "").toLowerCase();
+      
+      return tripName.includes(query) ||
+             courseName.includes(query) ||
+             format.includes(query) ||
+             date.includes(query) ||
+             ferry.includes(query) ||
+             groupName.includes(query);
+    };
+    
+    return hostedRounds.filter(filterTrip);
+  }, [hostedRounds, searchQuery, courses]);
 
-  // Set default expanded trip using centralized helper
+  // Set default expanded trip: first group trip if exists, else first hosted round (only on first render)
   useEffect(() => {
-    if (expandedTripId === null && upcomingFiltered.length > 0) {
-      const defaultTripId = pickDefaultExpandedTrip(upcomingFiltered, currentUserId);
-      if (defaultTripId !== null) {
-        setExpandedTripId(defaultTripId);
+    if (!didInitExpandRef.current && expandedTripId === null) {
+      if (groupTripsFiltered.length > 0) {
+        setExpandedTripId(groupTripsFiltered[0].id);
+        didInitExpandRef.current = true;
+      } else if (hostedRoundsFiltered.length > 0) {
+        setExpandedTripId(hostedRoundsFiltered[0].id);
+        didInitExpandRef.current = true;
       }
     }
-  }, [upcomingFiltered, expandedTripId, currentUserId]);
+  }, [groupTripsFiltered, hostedRoundsFiltered, expandedTripId]);
 
   // Fetch coordination status data for all trips (batch query)
+  const allUpcomingFiltered = useMemo(() => {
+    return [...groupTripsFiltered, ...hostedRoundsFiltered];
+  }, [groupTripsFiltered, hostedRoundsFiltered]);
+
   useEffect(() => {
-    if (upcomingFiltered.length === 0) {
+    if (allUpcomingFiltered.length === 0) {
       setCoordinationStatusData(null);
       return;
     }
@@ -469,7 +512,7 @@ export default function TripsListPage() {
     async function fetchCoordinationStatus() {
       try {
         // Collect trip IDs (numeric IDs from Trip type)
-        const tripIds = upcomingFiltered.map(t => t.id);
+        const tripIds = allUpcomingFiltered.map(t => t.id);
         
         try {
           const statusData = await apiJson(coordinationTripsStatusApi(), {
@@ -489,7 +532,7 @@ export default function TripsListPage() {
     }
 
     fetchCoordinationStatus();
-  }, [upcomingFiltered]);
+  }, [allUpcomingFiltered]);
 
   // Helper to get user RSVP status for a trip
   function getUserRsvpStatus(trip: Trip & { groupName?: string; groupId?: string }): "joined" | "waitlist" | "not_joined" {
@@ -585,10 +628,28 @@ export default function TripsListPage() {
     });
   }
 
-  // Trip list rows must use fixed grid columns; misaligned columns are not allowed.
-  // UI copy / design rule: "Trip list rows must use fixed grid columns; misaligned columns are not allowed."
-  // Helper component for aligned trip row (single card with internal expansion)
-  function TripRow({ trip, isExpanded, onToggle }: { trip: Trip & { groupName?: string; groupId?: string; maxAttendees?: number }; isExpanded: boolean; onToggle: () => void }) {
+  // Stable handlers for row interactions
+  const handleRowToggle = useCallback((tripId: number) => {
+    setExpandedTripId((current) => {
+      // If clicking the same row that's expanded, collapse it
+      if (current === tripId) {
+        return null;
+      }
+      // Otherwise expand the clicked row
+      return tripId;
+    });
+    // Mark that user has interacted, so we don't auto-expand again
+    didInitExpandRef.current = true;
+  }, []);
+
+  // Trip list rows: continuous canvas, instrument-style layout
+  const TripRow = memo(function TripRow({ trip, isExpanded, onToggle, onJoin, onLeave }: { 
+    trip: Trip & { groupName?: string; groupId?: string; maxAttendees?: number }; 
+    isExpanded: boolean; 
+    onToggle: () => void;
+    onJoin: () => void;
+    onLeave: () => void;
+  }) {
     const courseText = getTripCourseText(trip, courses);
     const tripName = trip.name || courseText.title || (getGolfNoun(trip) === "trip" ? "Trip" : "Round");
     const tripDateParts = formatTripRowDate(trip.date);
@@ -668,35 +729,24 @@ export default function TripsListPage() {
     const eventKind = trip.tripOrigin === 'member' ? 'hosted_round' : 'group_event';
     
     return (
-      <div 
-        className={`rounded-lg bg-surface relative ${eventKind === 'group_event' ? 'shadow-sm' : ''}`}
-        style={{
-          borderWidth: '1px',
-          borderColor: eventKind === 'group_event' 
-            ? 'rgba(201, 169, 97, 0.65)' /* --event-official-border at 65% opacity */
-            : 'var(--color-border)',
-          borderStyle: 'solid',
-        }}
-      >
-        {/* Card Header - Collapsed row - fixed 3-column grid for strict alignment */}
-        <button
+      <div className="border-b border-border last:border-b-0">
+        {/* Collapsed row - continuous canvas, no card borders */}
+        <div
           onClick={onToggle}
-          className={`w-full grid grid-cols-[auto_1fr_auto] gap-2 sm:gap-3 items-start rounded-lg hover:bg-surface/80 transition-colors text-left ${
-            eventKind === 'group_event' 
-              ? 'py-2.5 px-2.5 sm:py-3 sm:px-4' 
-              : 'py-2 px-2.5 sm:py-2.5 sm:px-4'
+          className={`w-full grid grid-cols-[auto_1fr_auto] gap-2 sm:gap-3 items-center py-4 px-5 hover:bg-background/50 active:bg-background/60 transition-colors cursor-pointer ${
+            eventKind === 'group_event' ? 'bg-background/30' : ''
           }`}
         >
           {/* Date column (adaptive width, 2 lines: weekday + date, tabular numerals) */}
           <div className="flex flex-col leading-tight shrink-0 w-fit min-w-[48px] sm:min-w-[56px]">
-            <span className="text-[10px] text-muted-foreground whitespace-nowrap">{tripDateParts.weekday}</span>
-            <span className="text-xs font-medium text-foreground tabular-nums whitespace-nowrap">{tripDateParts.date}</span>
+            <span className="text-[10px] text-secondary whitespace-nowrap">{tripDateParts.weekday}</span>
+            <span className="text-xs font-medium text-primary tabular-nums whitespace-nowrap">{tripDateParts.date}</span>
           </div>
           
-          {/* Trip name column (2 lines: trip name + identity • course) - prioritize full text on mobile */}
+          {/* Trip name column (2 lines: trip name + identity • course) */}
           <div className="min-w-0 flex flex-col gap-0.5 sm:gap-0.5">
-            <span className="text-sm sm:text-sm font-medium text-foreground break-words sm:truncate">{tripName}</span>
-            <span className="text-[11px] sm:text-xs text-muted-foreground break-words sm:truncate leading-tight">
+            <span className="text-sm font-medium text-primary break-words sm:truncate">{tripName}</span>
+            <span className="text-[11px] sm:text-xs text-secondary break-words sm:truncate leading-tight">
               {(() => {
                 // Group events: show group name
                 if (eventKind === 'group_event' && groupName) {
@@ -704,42 +754,38 @@ export default function TripsListPage() {
                 }
                 // Hosted rounds: show host name
                 if (eventKind === 'hosted_round' && trip.createdByMemberName) {
-                  // Extract first name if full name provided
                   const hostName = trip.createdByMemberName.split(' ')[0];
                   return `Hosted by ${hostName} • ${courseName}`;
                 }
-                // Fallback: just course name
                 return courseName;
               })()}
             </span>
           </div>
           
-          {/* Right column (adaptive width, right aligned): Status badge + Chevron on top, Group event badge at bottom */}
-          <div className="flex flex-col items-end justify-between shrink-0 h-full">
-            {/* Top row: Status badge + Chevron */}
-            <div className="flex items-center justify-end gap-1 sm:gap-1.5">
-              {/* Status badge pill - compact, hide on very small screens if needed */}
-              <span className={`text-[10px] px-1 sm:px-1.5 py-0.5 rounded-full ${statusStyles} shrink-0 whitespace-nowrap`}>
-                {statusBadge}
-              </span>
-              {/* Chevron icon - small and muted */}
-              <span className={`text-muted/50 text-[10px] shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-                ▼
-              </span>
-            </div>
-            {/* Bottom row: Group event badge (only for group events) */}
-            {eventKind === 'group_event' && (
-              <span className="event-official-pill mt-auto">
-                <span className="event-official-dot" aria-hidden="true" />
-                Group event
-              </span>
+          {/* Right column: Status badge + Join button (if not joined) */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Status badge - always show */}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusStyles} shrink-0 whitespace-nowrap`}>
+              {statusBadge}
+            </span>
+            {/* Join button - only show if not joined and signups open */}
+            {rsvpStatus !== "joined" && signupTiming.status === "open" && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onJoin();
+                }}
+                className="rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-background active:scale-[0.98] transition-all shrink-0"
+              >
+                Join
+              </button>
             )}
           </div>
-        </button>
+        </div>
 
-          {/* Expanded content - inside the same card, below a divider */}
+        {/* Expanded content - continuous canvas, no nested boxes */}
         {isExpanded && (
-          <div className="border-t border-border px-3 sm:px-4 py-3">
+          <div className="px-5 pt-3 pb-4">
 
             {/* Completion prompt for Batam trips */}
             {trip.scenarioKey === "cross_border_agent" && rsvpStatus === "joined" && completionStatus && !completionStatus.isReady && (
@@ -789,13 +835,15 @@ export default function TripsListPage() {
                   {trip.logistics?.meetingPoint || "—"}
                 </span>
               </div>
-              {/* Ferry */}
-              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                <span className="text-secondary">Ferry</span>
-                <span className={`${trip.ferry ? "text-primary" : "text-secondary"}`}>
-                  {trip.ferry ? (trip.ferry.toLowerCase() === "yes" ? "Yes" : trip.ferry.toLowerCase() === "no" ? "No" : trip.ferry) : "—"}
-                </span>
-              </div>
+              {/* Ferry - only show if relevant */}
+              {trip.ferry && trip.ferry !== "-" && trip.ferry !== "—" && (
+                <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                  <span className="text-secondary">Ferry</span>
+                  <span className="text-primary">
+                    {trip.ferry.toLowerCase() === "yes" ? "Yes" : trip.ferry.toLowerCase() === "no" ? "No" : trip.ferry}
+                  </span>
+                </div>
+              )}
               {/* Course */}
               <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
                 <span className="text-secondary">Course</span>
@@ -814,7 +862,7 @@ export default function TripsListPage() {
               {maxAttendees > 0 && (
                 <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
                   <span className="text-secondary">Spots</span>
-                  <span className="text-primary">{confirmedCount} / {maxAttendees}</span>
+                  <span className="text-primary">{confirmedCount} of {maxAttendees} filled</span>
                 </div>
               )}
               {/* Waitlist */}
@@ -833,63 +881,54 @@ export default function TripsListPage() {
               </div>
             </div>
 
-            {/* Actions */}
+            {/* Actions - Details and Leave (if joined) only visible in expanded state */}
             <div className="flex items-center gap-2 pt-1">
-              {rsvpStatus === "joined" ? (
-                <>
-                  <Link
-                    href={`/trips/${trip.id}`}
-                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/50 active:scale-[0.98] transition-all"
-                  >
-                    Details
-                  </Link>
-                  <button
-                    onClick={() => handleLeaveTrip(trip.id)}
-                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-muted/50 active:scale-[0.98] transition-all"
-                  >
-                    Leave
-                  </button>
-                </>
-              ) : signupTiming.status === "open" ? (
-                <>
-                  <button
-                    onClick={() => handleJoinTrip(trip.id, trip)}
-                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/50 active:scale-[0.98] transition-all"
-                  >
-                    Join
-                  </button>
-                  <Link
-                    href={`/trips/${trip.id}`}
-                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-muted/50 active:scale-[0.98] transition-all"
-                  >
-                    Details
-                  </Link>
-                </>
-              ) : (
-                <Link
-                  href={`/trips/${trip.id}`}
-                  className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/50 active:scale-[0.98] transition-all"
+              {rsvpStatus === "joined" && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onLeave();
+                  }}
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-secondary hover:bg-background active:scale-[0.98] transition-all"
                 >
-                  Details
-                </Link>
+                  Leave
+                </button>
               )}
+              <Link
+                href={`/trips/${trip.id}`}
+                className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background active:scale-[0.98] transition-all"
+              >
+                Details
+              </Link>
             </div>
           </div>
         )}
       </div>
     );
-  }
+  });
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="px-5 space-y-6">
+      <div className="flex items-center justify-between gap-2">
         <div className="text-xl font-semibold text-foreground">Trips</div>
-        <Link
-          href="/host"
-          className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-[0.98] transition-transform"
-        >
-          Host a round
-        </Link>
+        <div className="flex items-center gap-2">
+          {isGroupAdmin && approvedGroups.length > 0 && (
+            <Link
+              href={approvedGroups.find((g) => g.id === activeGroupId) 
+                ? `/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)!.slug}`
+                : `/admin/g/${approvedGroups[0].slug}`}
+              className="rounded-lg btn-ghost px-3 py-2 text-sm font-medium text-foreground hover:opacity-80 active:scale-[0.98] transition-transform"
+            >
+              Create group trip
+            </Link>
+          )}
+          <Link
+            href="/host"
+            className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-[0.98] transition-transform"
+          >
+            Host a round
+          </Link>
+        </div>
       </div>
 
       {/* Search Input */}
@@ -898,7 +937,7 @@ export default function TripsListPage() {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search trips by name, course, date, format..."
+          placeholder="Search by course, date, format..."
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-border"
         />
         {searchQuery && (
@@ -911,25 +950,57 @@ export default function TripsListPage() {
         )}
       </div>
 
-      {/* Upcoming Trips Section (primary, expandable rows) */}
-      <section className="space-y-2">
-        {upcomingFiltered.length === 0 ? (
-          <div className="text-sm text-muted py-2">No upcoming trips</div>
-        ) : (
-          <div className="space-y-1.5">
-            {upcomingFiltered.map((trip) => (
-              <TripRow
-                key={trip.id}
-                trip={trip}
-                isExpanded={expandedTripId === trip.id}
-                onToggle={() => {
-                  setExpandedTripId(expandedTripId === trip.id ? null : trip.id);
-                }}
-              />
-            ))}
+      {/* Continuous canvas list container */}
+      <div className="bg-surface rounded-lg">
+        {/* Upcoming group trips section */}
+        {groupTripsFiltered.length > 0 && (
+          <section>
+            <div className="px-5 pt-6 pb-3">
+              <h2 className="text-sm font-semibold text-primary uppercase tracking-wider">Upcoming group trips</h2>
+            </div>
+            <div>
+              {groupTripsFiltered.map((trip) => (
+                <TripRow
+                  key={trip.id}
+                  trip={trip}
+                  isExpanded={expandedTripId === trip.id}
+                  onToggle={() => handleRowToggle(trip.id)}
+                  onJoin={() => void handleJoinTrip(trip.id, trip)}
+                  onLeave={() => void handleLeaveTrip(trip.id)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Other rounds section */}
+        {hostedRoundsFiltered.length > 0 && (
+          <section>
+            <div className={`px-5 pt-4 pb-3 ${groupTripsFiltered.length > 0 ? 'border-t border-border' : ''}`}>
+              <h2 className="text-xs font-medium text-secondary uppercase tracking-wide">Other rounds</h2>
+            </div>
+            <div>
+              {hostedRoundsFiltered.map((trip) => (
+                <TripRow
+                  key={trip.id}
+                  trip={trip}
+                  isExpanded={expandedTripId === trip.id}
+                  onToggle={() => handleRowToggle(trip.id)}
+                  onJoin={() => void handleJoinTrip(trip.id, trip)}
+                  onLeave={() => void handleLeaveTrip(trip.id)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Empty state */}
+        {groupTripsFiltered.length === 0 && hostedRoundsFiltered.length === 0 && (
+          <div className="px-5 py-8 text-center">
+            <div className="text-sm text-secondary">No upcoming trips</div>
           </div>
         )}
-      </section>
+      </div>
 
       <ConfirmModal
         isOpen={confirmModal.isOpen}

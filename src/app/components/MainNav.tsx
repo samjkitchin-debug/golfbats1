@@ -5,12 +5,8 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 const memberNavItems = [
-  { href: "/", label: "Home" },
-  { href: "/trips", label: "Trips" },
   { href: "/courses", label: "Courses" },
-  { href: "/results", label: "Results" },
-  { href: "/members", label: "Members" },
-  { href: "/me", label: "Me" },
+  { href: "/me", label: "Profile" },
   { href: "/about", label: "About" },
   { href: "/privacy", label: "Privacy" },
 ];

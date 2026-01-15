@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import MemberProfileCard from "../components/MemberProfileCard";
 
 type MemberRow = {
   id: string;
@@ -43,13 +44,18 @@ export default function MembersPage() {
     );
   }, []);
 
+  // Helper to check if a PostgREST error has meaningful properties
+  const isMeaningfulError = (err: any) =>
+    !!(err && (err.message || err.code || err.hint || err.details));
+
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState<"all" | "regulars" | "new">("all");
   const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string }>>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null); // Can be "all" or a group ID
   const [loadingGroups, setLoadingGroups] = useState(true);
+  const [selectedMember, setSelectedMember] = useState<MemberRow | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load user's approved groups first
   useEffect(() => {
@@ -61,10 +67,20 @@ export default function MembersPage() {
           const groups = bootstrap.approvedGroups || [];
           setApprovedGroups(groups);
           
-          // Set default selected group: use activeGroupId if available, otherwise first group
-          // Don't auto-select "all" - default to first group
+          // Set default selected group: use localStorage if available, then activeGroupId, then first group
           if (groups.length > 0) {
-            const defaultGroupId = bootstrap.activeGroupId || groups[0].id;
+            const savedGroupId = typeof window !== "undefined" 
+              ? localStorage.getItem("dayforeit:members:last_group")
+              : null;
+            
+            // Check if saved group ID is still valid
+            const isValidSavedGroup = savedGroupId && (
+              savedGroupId === "all" || groups.some((g: { id: string }) => g.id === savedGroupId)
+            );
+            
+            const defaultGroupId = isValidSavedGroup 
+              ? savedGroupId 
+              : (bootstrap.activeGroupId || groups[0].id);
             setSelectedGroupId(defaultGroupId);
           }
         }
@@ -78,18 +94,13 @@ export default function MembersPage() {
   }, []);
 
   // Load members for selected group (or all groups if "all" is selected)
-  useEffect(() => {
-    if (loadingGroups || !selectedGroupId) {
-      setLoading(true);
-      return;
-    }
+  const loadMembers = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      let userIds: string[] = [];
 
-    async function loadMembers() {
-      setLoading(true);
-      try {
-        let userIds: string[] = [];
-
-        if (selectedGroupId === "all") {
+      if (selectedGroupId === "all") {
           // Load members from all approved groups
           const groupIds = approvedGroups.map((g) => g.id);
           
@@ -105,15 +116,40 @@ export default function MembersPage() {
             .in("group_id", groupIds)
             .eq("status", "approved");
 
-          if (groupMembersError) {
+          // Only treat as error if it has meaningful properties
+          if (isMeaningfulError(groupMembersError)) {
             console.error("Failed to load group members:", groupMembersError);
+            setLoadError("Couldn't load members.");
+            setMembers([]);
+            setLoading(false);
+            return;
+          } else if (groupMembersError) {
+            // Ignore empty {} "errors" that occasionally appear under turbopack / serialization
+            console.warn("Ignoring empty group_members error object");
+          }
+
+          // If no data, treat as empty (not an error)
+          if (groupMembersData === null || groupMembersData === undefined) {
+            setMembers([]);
+            setLoading(false);
+            return;
+          }
+
+          // Empty array is valid - just means no members in these groups
+          if (groupMembersData.length === 0) {
             setMembers([]);
             setLoading(false);
             return;
           }
 
           // Get unique user IDs (a user might belong to multiple groups)
-          userIds = Array.from(new Set((groupMembersData || []).map((gm) => gm.user_id)));
+          const uniqueUserIds = new Set<string>();
+          groupMembersData.forEach((gm) => {
+            if (gm.user_id) {
+              uniqueUserIds.add(gm.user_id);
+            }
+          });
+          userIds = Array.from(uniqueUserIds);
         } else {
           // Load members from selected group only
           const { data: groupMembersData, error: groupMembersError } = await supabase
@@ -122,20 +158,33 @@ export default function MembersPage() {
             .eq("group_id", selectedGroupId)
             .eq("status", "approved");
 
-          if (groupMembersError) {
+          // Only treat as error if it has meaningful properties
+          if (isMeaningfulError(groupMembersError)) {
             console.error("Failed to load group members:", groupMembersError);
+            setLoadError("Couldn't load members.");
+            setMembers([]);
+            setLoading(false);
+            return;
+          } else if (groupMembersError) {
+            // Ignore empty {} "errors" that occasionally appear under turbopack / serialization
+            console.warn("Ignoring empty group_members error object");
+          }
+
+          // If no data, treat as empty (not an error)
+          if (groupMembersData === null || groupMembersData === undefined) {
             setMembers([]);
             setLoading(false);
             return;
           }
 
-          if (!groupMembersData || groupMembersData.length === 0) {
+          // Empty array is valid - just means no members in this group
+          if (groupMembersData.length === 0) {
             setMembers([]);
             setLoading(false);
             return;
           }
 
-          userIds = groupMembersData.map((gm) => gm.user_id);
+          userIds = groupMembersData.map((gm) => gm.user_id).filter(Boolean);
         }
 
         // Fetch member details for all user IDs
@@ -145,101 +194,83 @@ export default function MembersPage() {
           return;
         }
 
+        // Fetch member details
         const { data: membersData, error: membersError } = await supabase
           .from("members")
           .select("id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen")
           .in("id", userIds)
           .order("full_name", { ascending: true, nullsFirst: false });
 
-        if (membersError) {
+        if (isMeaningfulError(membersError)) {
           console.error("Failed to load members:", membersError);
+          setLoadError("Couldn't load members.");
           setMembers([]);
         } else {
+          if (membersError) console.warn("Ignoring empty members error object");
+          // Proceed with data even if there's an empty error object
           setMembers(membersData || []);
         }
-      } catch (error) {
-        console.error("Error loading members:", error);
-        setMembers([]);
-      } finally {
-        setLoading(false);
-      }
+    } catch (error) {
+      // Only set empty if the core query failed
+      console.error("Error loading members (core query failed):", error);
+      setLoadError("Couldn't load members.");
+      setMembers([]);
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
+    if (loadingGroups || !selectedGroupId) {
+      setLoading(true);
+      return;
+    }
     loadMembers();
   }, [supabase, selectedGroupId, loadingGroups, approvedGroups]);
 
-  // Filter members by search query and state filter (All / Regulars / New)
+  // Filter members by search query
   const filteredMembers = useMemo(() => {
-    let filtered = [...members];
-
-    // Apply search query (includes nationality matching)
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter((m) => {
-        const fullName = (m.full_name || "").toLowerCase();
-        const displayName = (m.display_name || "").toLowerCase();
-        const email = (m.email || "").toLowerCase();
-        const nationality = (m.nationality || "").toLowerCase();
-
-        return (
-          fullName.includes(query) ||
-          displayName.includes(query) ||
-          email.includes(query) ||
-          nationality.includes(query)
-        );
-      });
+    if (!searchQuery.trim()) {
+      return members;
     }
 
-    // Apply semantic filter
-    if (selectedFilter === "regulars") {
-      filtered = filtered.filter((m) => m.declared_handicap !== null && m.declared_handicap !== undefined);
-    } else if (selectedFilter === "new") {
-      filtered = filtered.filter((m) => m.declared_handicap === null || m.declared_handicap === undefined);
-    }
+    const query = searchQuery.toLowerCase().trim();
+    return members.filter((m) => {
+      const fullName = (m.full_name || "").toLowerCase();
+      const displayName = (m.display_name || "").toLowerCase();
+      const email = (m.email || "").toLowerCase();
+      const nationality = (m.nationality || "").toLowerCase();
 
-    // Sort: regulars first, then new; within each, by name
-    filtered.sort((a, b) => {
-      const aHasHcp = a.declared_handicap !== null && a.declared_handicap !== undefined;
-      const bHasHcp = b.declared_handicap !== null && b.declared_handicap !== undefined;
-
-      if (selectedFilter === "all" && aHasHcp !== bHasHcp) {
-        return aHasHcp ? -1 : 1;
-      }
-
-      const nameA = (a.display_name || a.full_name || "").toLowerCase();
-      const nameB = (b.display_name || b.full_name || "").toLowerCase();
-      return nameA.localeCompare(nameB);
+      return (
+        fullName.includes(query) ||
+        displayName.includes(query) ||
+        email.includes(query) ||
+        nationality.includes(query)
+      );
     });
-
-    return filtered;
-  }, [members, searchQuery, selectedFilter]);
-
-  // Cap default rendering to 50 members (unless search/filter is active)
-  const displayMembers = useMemo(() => {
-    const hasActiveFilter = searchQuery.trim() || selectedFilter !== "all";
-    // If any filter is active, show all filtered results
-    // Otherwise, cap at 50 for performance
-    if (hasActiveFilter) {
-      return filteredMembers;
-    }
-    return filteredMembers.slice(0, 50);
-  }, [filteredMembers, searchQuery, selectedFilter]);
-
-  const selectedGroup = approvedGroups.find((g) => g.id === selectedGroupId);
+  }, [members, searchQuery]);
 
   return (
     <div className="pb-24">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4">
         <h1 className="text-xl font-semibold text-foreground">Members</h1>
+        <p className="mt-1 text-xs text-muted">Everyone in this group</p>
+      </div>
+      
+      <div className="mb-4 flex items-center justify-between gap-3">
         {/* Group Selector - Dropdown */}
         {(approvedGroups.length > 0) && (
           <select
             value={selectedGroupId || ""}
             onChange={(e) => {
               const value = e.target.value;
-              setSelectedGroupId(value === "all" ? "all" : value);
+              const groupId = value === "all" ? "all" : value;
+              setSelectedGroupId(groupId);
               setSearchQuery(""); // Clear search when switching groups
-              setSelectedFilter("all"); // Clear filter
+              // Persist to localStorage
+              if (typeof window !== "undefined") {
+                localStorage.setItem("dayforeit:members:last_group", groupId);
+              }
             }}
             className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground outline-none focus:border-foreground"
           >
@@ -255,43 +286,27 @@ export default function MembersPage() {
         )}
       </div>
 
-      {/* Search and Filters */}
-      <div className="mb-4 space-y-3">
+      {/* Search */}
+      <div className="mb-4">
         <input
           type="text"
-          placeholder="Search members..."
+          placeholder="Search members…"
           value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            setSelectedFilter("all"); // Reset filter when searching
-          }}
+          onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
         />
-
-        {/* State filters: All / Regulars / New */}
-        {!searchQuery.trim() && (
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { key: "all", label: "All" },
-              { key: "regulars", label: "Regulars" },
-              { key: "new", label: "New" },
-            ].map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setSelectedFilter(key as "all" | "regulars" | "new")}
-                className={`member-filter ${selectedFilter === key ? "member-filter-active" : ""}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Helper text for default rendering */}
-      {!loading && !searchQuery.trim() && selectedFilter === "all" && members.length > 50 && (
-        <div className="mb-3 text-xs text-muted">
-          Showing 50 of {members.length} members — search to find someone
+      {/* Error message with retry */}
+      {loadError && !loading && (
+        <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-muted">{loadError}</p>
+          <button
+            onClick={() => loadMembers()}
+            className="text-xs text-secondary hover:text-foreground underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -304,17 +319,15 @@ export default function MembersPage() {
         </div>
       ) : loading ? (
         <div className="text-center py-8 text-sm text-muted">Loading members…</div>
-      ) : displayMembers.length === 0 ? (
+      ) : filteredMembers.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface p-6 text-center">
           <p className="text-sm text-muted">
-            {searchQuery || selectedFilter !== "all"
-              ? "No members found matching your filters."
-              : "No members found."}
+            {searchQuery.trim() ? "No matches." : "No members yet."}
           </p>
         </div>
       ) : (
         <div className="space-y-1.5">
-          {displayMembers.map((member) => {
+          {filteredMembers.map((member) => {
             const displayName = member.display_name || member.full_name || "—";
             const handicap = member.declared_handicap;
             const photoUrl = member.profile_photo_path
@@ -325,14 +338,12 @@ export default function MembersPage() {
             return (
               <div
                 key={member.id}
-                onClick={() => {
-                  // Stub for future member detail modal
-                }}
+                onClick={() => setSelectedMember(member)}
                 className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 cursor-pointer hover:bg-surface/80 transition-colors"
               >
-                {/* Left: Photo + Name + Status + Flag */}
+                {/* Left: Photo + Name + Flag */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                    {photoUrl ? (
+                  {photoUrl ? (
                     <img
                       src={photoUrl}
                       alt={displayName}
@@ -355,11 +366,6 @@ export default function MembersPage() {
                         </span>
                       )}
                     </div>
-                    {(member.declared_handicap === null || member.declared_handicap === undefined) && (
-                      <div className="mt-0.5 text-xs secondary-text">
-                        New member
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -385,6 +391,12 @@ export default function MembersPage() {
           })}
         </div>
       )}
+
+      {/* Member Profile Card Overlay */}
+      <MemberProfileCard
+        member={selectedMember}
+        onClose={() => setSelectedMember(null)}
+      />
     </div>
   );
 }

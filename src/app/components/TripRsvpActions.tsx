@@ -54,7 +54,7 @@ export function TripRsvpActions({
                   : "border-brand-green bg-surface text-brand-green hover:bg-brand-green/5"
               }`}
             >
-              I'm out
+              Can't make it
             </button>
           )}
         </div>

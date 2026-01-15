@@ -3,7 +3,6 @@ import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
 type Body = {
   name?: unknown;
-  slug?: unknown;
 };
 
 function asTrimmedString(v: unknown): string {
@@ -11,9 +10,98 @@ function asTrimmedString(v: unknown): string {
 }
 
 /**
+ * Slugify a string: lowercase, replace non-alphanumeric with hyphens, collapse hyphens, trim
+ */
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Check if a slug is reserved
+ */
+function isReservedSlug(slug: string): boolean {
+  const reserved = [
+    "admin",
+    "api",
+    "join",
+    "groups",
+    "gameday",
+    "results",
+    "me",
+    "home",
+    "trips",
+    "courses",
+    "tools",
+    "app",
+    "auth",
+    "callback",
+    "login",
+    "logout",
+    "privacy",
+    "about",
+    "terms",
+    "settings",
+    "profile",
+    "clubhouse",
+    "course",
+    "trip",
+    "round",
+    "rounds",
+    "g",
+  ];
+  return reserved.includes(slug);
+}
+
+/**
+ * Check if text contains blocked terms
+ * Uses token matching to reduce false positives
+ */
+function containsBlockedTerm(text: string): boolean {
+  const blocked = [
+    "fuck",
+    "shit",
+    "asshole",
+    "bitch",
+    "damn",
+    "crap",
+  ];
+  const lower = text.toLowerCase();
+  
+  // Split into tokens using non-alphanumeric separators
+  const tokens = lower.split(/[^a-z0-9]+/).filter(Boolean);
+  
+  // Check tokens against blocked list (exact match)
+  if (blocked.some((term) => tokens.includes(term))) {
+    return true;
+  }
+  
+  // Also check the slugified form tokens
+  const slugified = slugify(text);
+  const slugTokens = slugified.split("-").filter(Boolean);
+  
+  return blocked.some((term) => slugTokens.includes(term));
+}
+
+/**
+ * Generate a random 4-character suffix
+ */
+function generateSuffix(): string {
+  // Use crypto.randomUUID if available, else fallback
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID().slice(0, 4).replace(/-/g, "");
+  }
+  // Fallback: use Math.random
+  return Math.random().toString(36).slice(2, 6);
+}
+
+/**
  * POST /api/groups
  * Create a new group and add the creator as an admin member
- * Body: { name: string, slug: string }
+ * Body: { name: string }
+ * Slug is generated server-side from name
  */
 export async function POST(req: Request) {
   try {
@@ -28,7 +116,6 @@ export async function POST(req: Request) {
     const json = (await req.json()) as Body;
 
     const name = asTrimmedString(json.name);
-    const slug = asTrimmedString(json.slug).toLowerCase();
 
     // Validate inputs
     if (!name) {
@@ -38,17 +125,10 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!slug) {
+    // Check for blocked terms
+    if (containsBlockedTerm(name)) {
       return NextResponse.json(
-        { error: "Group code (slug) is required." },
-        { status: 400 }
-      );
-    }
-
-    // Validate slug format (alphanumeric and hyphens only)
-    if (!/^[a-z0-9-]+$/.test(slug)) {
-      return NextResponse.json(
-        { error: "Group code can only contain lowercase letters, numbers, and hyphens." },
+        { error: "That group name isn't allowed. Pick something you'd be happy sharing with the group." },
         { status: 400 }
       );
     }
@@ -61,40 +141,62 @@ export async function POST(req: Request) {
       );
     }
 
-    if (slug.length > 32) {
-      return NextResponse.json(
-        { error: "Group code must be 32 characters or fewer." },
-        { status: 400 }
-      );
+    // Generate slug base
+    let base = slugify(name);
+    
+    // If base is empty, reserved, or contains blocked terms, use "group"
+    if (!base || isReservedSlug(base) || containsBlockedTerm(base)) {
+      base = "group";
+    }
+
+    // Truncate to max 24 chars (before suffix)
+    if (base.length > 24) {
+      base = base.slice(0, 24);
     }
 
     const now = new Date().toISOString();
 
-    // Insert group
-    const { data: group, error: groupErr } = await supabase
-      .from("groups")
-      .insert({
-        slug,
-        name,
-        created_by: user.id,
-        is_active: true,
-      })
-      .select("id, slug, name")
-      .single();
+    // Attempt to insert with unique slug (up to 8 attempts)
+    let group = null;
+    let groupErr = null;
+    let attempts = 0;
+    const maxAttempts = 8;
+
+    while (attempts < maxAttempts && !group) {
+      const suffix = generateSuffix();
+      const candidate = `${base}-${suffix}`;
+
+      const { data, error } = await supabase
+        .from("groups")
+        .insert({
+          slug: candidate,
+          name,
+          created_by: user.id,
+          is_active: true,
+        })
+        .select("id, slug, name")
+        .single();
+
+      if (!error) {
+        group = data;
+        break;
+      }
+
+      // Check for unique constraint violation
+      const isUniqueViolation =
+        error.code === "23505" || error.message?.includes("unique");
+
+      if (!isUniqueViolation) {
+        // Non-unique error - fail immediately
+        groupErr = error;
+        break;
+      }
+
+      // Unique violation - retry with new suffix
+      attempts++;
+    }
 
     if (groupErr) {
-      // Check for unique constraint violation (slug already exists)
-      // Primary check: Postgres error code 23505 (unique_violation)
-      // Defensive fallback: message-based check for driver/message variations
-      const isUniqueViolation =
-        groupErr.code === "23505" || groupErr.message?.includes("unique");
-
-      if (isUniqueViolation) {
-        return NextResponse.json(
-          { error: "This group code is already taken. Please choose a different one." },
-          { status: 400 }
-        );
-      }
       return NextResponse.json(
         { error: groupErr.message || "Failed to create group." },
         { status: 400 }
@@ -103,7 +205,7 @@ export async function POST(req: Request) {
 
     if (!group) {
       return NextResponse.json(
-        { error: "Failed to create group." },
+        { error: "Failed to create group. Please try again." },
         { status: 500 }
       );
     }

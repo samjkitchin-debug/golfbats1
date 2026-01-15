@@ -234,7 +234,7 @@ export default function GroupAdminTripsPage() {
                       <td className="px-4 py-3 text-sm text-muted">{courseText.title}</td>
                       <td className="px-4 py-3">
                         <span className={`text-sm ${
-                          status.tone === 'warning' ? 'text-amber-600' :
+                          status.tone === 'warning' ? 'text-foreground opacity-75' :
                           status.tone === 'good' ? 'text-brand-green' :
                           'text-muted'
                         }`}>

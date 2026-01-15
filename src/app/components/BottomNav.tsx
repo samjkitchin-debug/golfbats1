@@ -11,8 +11,8 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: "/", label: "Home" },
   { href: "/trips", label: "Trips" },
+  { href: "/clubhouse", label: "Clubhouse" },
   { href: "/results", label: "Results" },
-  { href: "/members", label: "Members" },
   { href: "/me", label: "Me" },
 ];
 
@@ -36,14 +36,14 @@ export default function BottomNav() {
                 <Link
                   href={item.href}
                   className={`block px-2 py-3 text-center text-sm relative ${
-                    active ? "font-semibold text-primary nav-active-warm" : "text-muted hover:text-foreground"
+                    active ? "font-semibold text-primary" : "text-muted hover:text-foreground"
                   }`}
                 >
                   {item.label}
                 </Link>
                 <div
                   className={`mx-auto h-0.5 w-10 ${
-                    active ? "bg-brand-amber opacity-50" : "bg-transparent"
+                    active ? "bg-foreground opacity-20" : "bg-transparent"
                   }`}
                 />
               </li>

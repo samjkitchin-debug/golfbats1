@@ -96,6 +96,7 @@ export default function MePage() {
   const [groupMemberships, setGroupMemberships] = useState<Array<{
     groupId: string;
     groupName: string;
+    groupSlug: string;
     role: "admin" | "member";
     status: "approved" | "pending";
     isSoleAdmin: boolean;
@@ -117,6 +118,7 @@ export default function MePage() {
   });
   const [leavingGroup, setLeavingGroup] = useState(false);
   const [leaveGroupError, setLeaveGroupError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   // Passport data (for checking if passport exists - no inline editing)
   // Passport editing is handled on /me/passport page
@@ -230,7 +232,7 @@ export default function MePage() {
         const groupIds = groupMembersData.map((gm) => gm.group_id);
         const { data: groupsData, error: groupsError } = await supabase
           .from("groups")
-          .select("id, name, is_active")
+          .select("id, name, slug, is_active")
           .in("id", groupIds);
 
         if (cancelled) return;
@@ -269,6 +271,7 @@ export default function MePage() {
               return {
                 groupId: group.id,
                 groupName: group.name,
+                groupSlug: group.slug || "",
                 role,
                 status,
                 isSoleAdmin,
@@ -279,7 +282,7 @@ export default function MePage() {
           if (cancelled) return;
           
           const memberships = membershipsWithSoleAdmin.filter(
-            (m): m is { groupId: string; groupName: string; role: "admin" | "member"; status: "approved" | "pending"; isSoleAdmin: boolean } => m !== null
+            (m): m is { groupId: string; groupName: string; groupSlug: string; role: "admin" | "member"; status: "approved" | "pending"; isSoleAdmin: boolean } => m !== null
           );
           
           setGroupMemberships(memberships);
@@ -374,7 +377,7 @@ export default function MePage() {
           const reloadGroupIds = reloadGroupMembersData.map((gm) => gm.group_id);
           const { data: reloadGroupsData, error: reloadGroupsError } = await supabase
             .from("groups")
-            .select("id, name, is_active")
+            .select("id, name, slug, is_active")
             .in("id", reloadGroupIds);
 
           if (reloadGroupsError && (reloadGroupsError.message || reloadGroupsError.code || reloadGroupsError.details)) {
@@ -410,6 +413,7 @@ export default function MePage() {
                 return {
                   groupId: group.id,
                   groupName: group.name,
+                  groupSlug: group.slug || "",
                   role,
                   status,
                   isSoleAdmin,
@@ -418,7 +422,7 @@ export default function MePage() {
             );
             
             const reloadMemberships = reloadMembershipsWithSoleAdmin.filter(
-              (m): m is { groupId: string; groupName: string; role: "admin" | "member"; status: "approved" | "pending"; isSoleAdmin: boolean } => m !== null
+              (m): m is { groupId: string; groupName: string; groupSlug: string; role: "admin" | "member"; status: "approved" | "pending"; isSoleAdmin: boolean } => m !== null
             );
             
             setGroupMemberships(reloadMemberships);
@@ -529,98 +533,96 @@ export default function MePage() {
     !member?.nationality?.trim();
 
   return (
-    <div className="px-4 pb-24 pt-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Me</h1>
-          <p className="mt-1 text-sm">
-            {loading ? "Loading…" : titleName}
-          </p>
+    <div className="pb-24 pt-4">
+      {/* Unboxed content rail - matches Home page padding */}
+      <div className="px-5">
+        {/* Top header & identity */}
+        <div className="mb-6">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <h1 className="text-xl font-semibold text-foreground">Me</h1>
+              <div className="mt-2">
+                <div className="text-lg font-medium text-foreground">
+                  {loading ? "Loading…" : titleName}
+                </div>
+                {isAdmin && (
+                  <div className="mt-1 text-xs text-secondary">Admin</div>
+                )}
+                {!loading && member && (
+                  <div className="mt-2 text-xs text-secondary leading-relaxed">
+                    {isApproved ? "You're good to go" : "Profile incomplete"}
+                  </div>
+                )}
+              </div>
+            </div>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="ml-4 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background"
+              >
+                Admin
+              </Link>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="rounded-xl bg-brand-red px-4 py-2 text-sm font-semibold text-white"
-            >
-              Admin
-            </Link>
-          )}
-        </div>
+        {/* Pending approval status message */}
+        {!loading && !error && member && !isApproved && (
+          <div className="mb-4 rounded-lg border border-border bg-surface/50 px-4 py-3">
+            <p className="text-sm text-muted">
+              Membership pending approval. An organiser will review your details shortly.
+            </p>
+          </div>
+        )}
+
+        {error ? (
+          <div className="mb-4 rounded-lg border border-border bg-surface/50 px-4 py-3">
+            <p className="text-sm font-semibold text-foreground">Error</p>
+            <p className="mt-1 text-sm text-foreground">{error}</p>
+          </div>
+        ) : null}
+
+        {profileSaveSuccess ? (
+          <div className="mb-4 rounded-lg chip-success px-4 py-2">
+            <p className="text-sm text-foreground">Profile saved</p>
+          </div>
+        ) : null}
+
+        {/* Handicap instrument */}
+        {!loading && member && (
+          <div className="py-4">
+            {member.declared_handicap !== null && member.declared_handicap !== undefined ? (
+              <>
+                <div className="text-3xl font-light text-primary">
+                  {member.declared_handicap}
+                </div>
+                <div className="mt-1 text-xs text-secondary">Your handicap</div>
+              </>
+            ) : (
+              <div>
+                <div className="text-sm text-secondary">Add your handicap</div>
+                <button
+                  onClick={() => {
+                    setEditingProfile(true);
+                    // Scroll to profile section after a brief delay
+                    setTimeout(() => {
+                      document.getElementById("profile-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                    }, 100);
+                  }}
+                  className="mt-2 text-xs text-secondary underline hover:text-foreground"
+                >
+                  Edit profile
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Welcome orientation block - shown when profile is incomplete */}
-      {!loading && !error && member && profileIncomplete && (
-        <div className="mt-4 rounded-xl border border-border bg-surface/50 p-4">
-          <p className="text-sm font-semibold text-foreground">Welcome to DayForeIt</p>
-          <p className="mt-1 text-sm text-muted">
-            You're joining a private golf group. To get you set up, we just need a few basic details. You can update everything later.
-          </p>
-        </div>
-      )}
-
-      {/* Profile completion reminder */}
-      {!loading && !error && member && profileIncomplete && (
-        <div className="mt-4 rounded-2xl border border-border bg-surface/50 p-4">
-          <p className="text-sm font-semibold text-foreground">Complete your profile</p>
-          <p className="mt-1 text-sm text-muted">
-            This helps organisers place you in groups and manage travel when required. You can update everything later.
-          </p>
-        </div>
-      )}
-
-      {/* Status & trip eligibility pills */}
-      {!loading && !error && (
-        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 font-medium ${
-              isApproved
-                ? "chip-success"
-                : "bg-surface/50 text-muted border border-border"
-            }`}
-          >
-            Status: {isApproved ? "Active" : "Pending approval"}
-          </span>
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 font-medium ${
-              passportComplete
-                ? "chip-success"
-                : "bg-surface/50 text-muted border border-border"
-            }`}
-          >
-            Trips:{" "}
-            {passportComplete ? "Ready to join trips" : "Add passport details before joining trips"}
-          </span>
-        </div>
-      )}
-
-      {/* Pending approval status message */}
-      {!loading && !error && member && !isApproved && (
-        <div className="mt-4 rounded-xl border border-border bg-surface/50 px-4 py-3">
-          <p className="text-sm text-muted">
-            Membership pending approval. An organiser will review your details shortly.
-          </p>
-        </div>
-      )}
-
-      {error ? (
-        <div className="mt-4 rounded-2xl border border-border bg-surface/50 p-4">
-          <p className="text-sm font-semibold text-foreground">Error</p>
-          <p className="mt-1 text-sm text-foreground">{error}</p>
-        </div>
-      ) : null}
-
-      {profileSaveSuccess ? (
-        <div className="mt-4 rounded-2xl border border-brand-green bg-surface/50 p-4">
-          <p className="text-sm font-semibold text-foreground">Profile saved</p>
-          <p className="mt-1 text-sm text-foreground">Your profile has been updated successfully.</p>
-        </div>
-      ) : null}
-
-      <div className="mt-4 space-y-4">
+      {/* Boxed sections - keep their own padding */}
+      <div className="space-y-6">
         {/* Profile Block */}
-        <div id="profile-section">
+        <div id="profile-section" className="border-t border-border pt-4 px-5">
         <ProfileBlock
           member={member}
           editing={editingProfile}
@@ -693,7 +695,7 @@ export default function MePage() {
                 : Number(declaredHandicap.trim());
 
             if (handicapNum !== null && (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 36)) {
-              setError("Declared handicap must be a number between 0 and 36 (or blank).");
+              setError("Handicap must be a number between 0 and 36 (or blank).");
               setSavingProfile(false);
               return;
             }
@@ -798,7 +800,7 @@ export default function MePage() {
         {/* My groups section */}
         <div className="rounded-2xl border border-border bg-surface/50 p-4">
           <div className="mb-3">
-            <div className="text-sm font-semibold text-foreground">My groups</div>
+            <div className="text-sm font-medium text-foreground">My groups</div>
           </div>
           
           {loadingGroups ? (
@@ -837,7 +839,64 @@ export default function MePage() {
                         <span className={membership.status === "approved" ? "text-brand-green" : "text-muted"}>
                           {membership.status === "approved" ? "Approved" : "Pending"}
                         </span>
+                        {membership.status === "approved" && membership.groupSlug && (
+                          <>
+                            <span>·</span>
+                            <span className="font-mono">Code: {membership.groupSlug}</span>
+                          </>
+                        )}
                       </div>
+                      {membership.status === "approved" && membership.groupSlug && (
+                        <div className="mt-2 flex gap-2 items-center">
+                          <button
+                            onClick={async () => {
+                              const inviteLink = `${window.location.origin}/join?code=${membership.groupSlug}`;
+                              try {
+                                if (navigator.share) {
+                                  await navigator.share({
+                                    title: `Join ${membership.groupName} on DayForeIt`,
+                                    text: `Join my group "${membership.groupName}" on DayForeIt`,
+                                    url: inviteLink,
+                                  });
+                                } else {
+                                  await navigator.clipboard.writeText(inviteLink);
+                                  setCopyFeedback("Copied");
+                                  setTimeout(() => setCopyFeedback(null), 1500);
+                                }
+                              } catch (err) {
+                                // User cancelled share or error - try copy as fallback
+                                try {
+                                  await navigator.clipboard.writeText(inviteLink);
+                                  setCopyFeedback("Copied");
+                                  setTimeout(() => setCopyFeedback(null), 1500);
+                                } catch (copyErr) {
+                                  // Silent fail on clipboard error
+                                }
+                              }
+                            }}
+                            className="text-xs text-secondary hover:text-foreground underline"
+                          >
+                            Share invite
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(membership.groupSlug);
+                                setCopyFeedback("Copied");
+                                setTimeout(() => setCopyFeedback(null), 1500);
+                              } catch (err) {
+                                // Silent fail
+                              }
+                            }}
+                            className="text-xs text-secondary hover:text-foreground underline"
+                          >
+                            Copy code
+                          </button>
+                          {copyFeedback && (
+                            <span className="text-xs text-secondary">{copyFeedback}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     
                     {/* Kebab menu */}
@@ -898,18 +957,15 @@ export default function MePage() {
         </div>
 
         {/* Passport details section */}
-        <div className="rounded-2xl border border-border bg-surface/50 p-4">
-          <div className="flex items-start justify-between">
+        <div className="border-t border-border pt-4 px-5">
+          <div className="flex items-start justify-between mb-3">
             <div>
-              <div className="text-sm font-semibold text-foreground">Passport details</div>
-              <p className="mt-1 text-xs text-muted">
-                Required for overseas trips (e.g. ferries). Your passport number is encrypted and secure.
-              </p>
+              <div className="text-sm font-medium text-foreground">Passport</div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowDataSecurityModal(true)}
-                className="text-xs text-muted hover:text-foreground underline"
+                className="text-xs text-secondary hover:text-foreground underline"
               >
                 Data security
               </button>
@@ -926,7 +982,7 @@ export default function MePage() {
                     setPassportExpiryDate(profile?.passport_expiry_date ?? "");
                   }
                 }}
-                className="rounded-xl border border-border px-3 py-1 text-xs font-semibold hover:bg-background"
+                className="rounded-lg border border-border px-3 py-1 text-xs font-medium hover:bg-background"
               >
                 {editingPassport ? "Cancel" : profile ? "Edit" : "Add"}
               </button>
@@ -934,42 +990,27 @@ export default function MePage() {
           </div>
 
           {!editingPassport ? (
-            <div className="mt-3 space-y-2 text-sm">
+            <div className="text-sm">
               {profile ? (
-                <>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-semibold">Status</span>
-                    <span className="text-right text-brand-green">On file</span>
-                  </div>
-                  {profile.passport_full_name && (
-                    <Row label="Name" value={profile.passport_full_name} />
-                  )}
-                  {profile.passport_nationality && (
-                    <Row label="Nationality" value={profile.passport_nationality} />
-                  )}
-                  {profile.passport_date_of_birth && (
-                    <Row
-                      label="Date of Birth"
-                      value={new Date(profile.passport_date_of_birth + "T00:00:00").toLocaleDateString("en-GB", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    />
-                  )}
+                <div className="space-y-1">
+                  <div className="text-foreground">On file</div>
                   {profile.passport_expiry_date && (
-                    <Row
-                      label="Expiry"
-                      value={new Date(profile.passport_expiry_date + "T00:00:00").toLocaleDateString("en-GB", {
+                    <div className="text-xs text-secondary">
+                      Expires {new Date(profile.passport_expiry_date + "T00:00:00").toLocaleDateString("en-GB", {
                         day: "numeric",
                         month: "short",
                         year: "numeric",
                       })}
-                    />
+                    </div>
                   )}
-                </>
+                  {profile.passport_full_name && (
+                    <div className="text-xs text-secondary mt-1">
+                      {profile.passport_full_name}
+                    </div>
+                  )}
+                </div>
               ) : (
-                <div className="text-sm text-muted">No passport details on file</div>
+                <div className="text-sm text-secondary">Not on file</div>
               )}
             </div>
           ) : (
@@ -987,7 +1028,7 @@ export default function MePage() {
                   placeholder="e.g. John Smith"
                 />
                 {highlightedFields.includes("passport_full_name") && (
-                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
                 )}
               </div>
 
@@ -1005,7 +1046,7 @@ export default function MePage() {
                 />
                 <p className="mt-1 text-xs text-muted">Your passport number is encrypted and secure</p>
                 {highlightedFields.includes("passport_number") && (
-                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
                 )}
               </div>
 
@@ -1022,7 +1063,7 @@ export default function MePage() {
                   placeholder="e.g. Singaporean"
                 />
                 {highlightedFields.includes("passport_nationality") && (
-                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
                 )}
               </div>
 
@@ -1039,7 +1080,7 @@ export default function MePage() {
                   onChange={(e) => setPassportDateOfBirth(e.target.value)}
                 />
                 {highlightedFields.includes("passport_date_of_birth") && (
-                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
                 )}
               </div>
 
@@ -1056,7 +1097,7 @@ export default function MePage() {
                   onChange={(e) => setPassportExpiryDate(e.target.value)}
                 />
                 {highlightedFields.includes("passport_expiry_date") && (
-                  <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
                 )}
               </div>
 
@@ -1078,104 +1119,60 @@ export default function MePage() {
         </div>
 
         {/* Preferences */}
-        <div className="rounded-xl border border-border bg-surface shadow-sm p-4">
-          <div className="mb-3">
-            <div className="text-sm font-medium text-foreground">Preferences</div>
-          </div>
-          <div className="space-y-3">
+        <div className="border-t border-border pt-4 px-5">
+          <div className="text-xs text-secondary space-y-2">
             <div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-medium text-muted">Appearance</span>
-                <span className="text-muted">·</span>
-                <span className="text-foreground">Light (locked)</span>
-              </div>
-              <p className="mt-1 text-xs text-muted">
-                We're staying in light mode for now while design stabilises.
-              </p>
+              <span className="text-muted">Appearance</span>
+              <span className="text-muted"> · </span>
+              <span>Light (locked)</span>
             </div>
             <div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-medium text-muted">Distance units</span>
-                <span className="text-muted">·</span>
-                <span className="text-foreground">Coming soon</span>
-              </div>
-              <p className="mt-1 text-xs text-muted">
-                Metres / yards will be added when GPS lands.
-              </p>
+              <span className="text-muted">Distance units</span>
+              <span className="text-muted"> · </span>
+              <span>Coming soon</span>
             </div>
-          </div>
-        </div>
-
-        {/* About & Privacy links */}
-        <div className="rounded-xl border border-border bg-surface/50 p-4">
-          <div className="space-y-2">
-            <Link
-              href="/about"
-              className="flex items-center justify-between py-2 text-sm text-primary hover:opacity-80"
-            >
-              <span>About Day Fore It</span>
-              <span className="text-secondary opacity-60">›</span>
-            </Link>
-            <Link
-              href="/privacy"
-              className="flex items-center justify-between py-2 text-sm text-primary hover:opacity-80"
-            >
-              <span>Privacy</span>
-              <span className="text-secondary opacity-60">›</span>
-            </Link>
           </div>
         </div>
 
         {/* Sign out + Delete account */}
-        <div className="rounded-2xl border border-border bg-surface/50 p-4">
-          <div className="mb-3">
-            <div className="text-sm font-semibold text-foreground">Account</div>
-            <p className="mt-1 text-xs text-muted">
-              Sign out safely or permanently delete your account and associated data.
+        <div className="border-t border-border pt-4 px-5 space-y-3">
+          <button
+            type="button"
+            onClick={async () => {
+              if (signingOut) return;
+              setSigningOut(true);
+              try {
+                await supabase.auth.signOut();
+              } catch {
+                // Non-fatal; still navigate to login
+              } finally {
+                router.replace("/login");
+                router.refresh();
+                setSigningOut(false);
+              }
+            }}
+            className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
+            disabled={signingOut}
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+          <div className="pt-3 border-t border-dashed border-border">
+            <p className="mb-2 text-xs text-muted">
+              Permanently delete your account and associated data. This cannot be undone.
             </p>
-          </div>
-          <div className="flex flex-col gap-3">
             <button
-              type="button"
-              onClick={async () => {
-                if (signingOut) return;
-                setSigningOut(true);
-                try {
-                  await supabase.auth.signOut();
-                } catch {
-                  // Non-fatal; still navigate to login
-                } finally {
-                  router.replace("/login");
-                  router.refresh();
-                  setSigningOut(false);
-                }
+              onClick={() => {
+                setShowDeleteModal(true);
+                setDeleteConfirmText("");
+                setDeleteError(null);
               }}
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
-              disabled={signingOut}
+              disabled={deletingAccount}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {signingOut ? "Signing out…" : "Sign out"}
+              Delete my account
             </button>
-            <div className="pt-2 border-t border-dashed border-border">
-              <div className="text-sm font-semibold text-foreground">Delete account</div>
-              <p className="mt-1 text-xs text-muted">
-                Permanently deletes your account and associated data. This cannot be undone.
-              </p>
-            </div>
-            <div className="flex justify-center">
-              <button
-                onClick={() => {
-                  setShowDeleteModal(true);
-                  setDeleteConfirmText("");
-                  setDeleteError(null);
-                }}
-                disabled={deletingAccount}
-                className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Delete my account
-              </button>
-            </div>
             {deleteError && (
-              <p className="mt-3 text-center text-sm font-medium text-foreground">{deleteError}</p>
+              <p className="mt-2 text-xs text-foreground">{deleteError}</p>
             )}
           </div>
         </div>
@@ -1459,17 +1456,12 @@ function ProfileBlock({
   highlightedFields?: string[];
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface/50 p-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-sm font-semibold text-foreground">Profile</div>
-          <p className="mt-1 text-xs text-muted">
-            This helps organisers place you in groups and manage trips.
-          </p>
-        </div>
+    <div>
+      <div className="flex items-start justify-between mb-3">
+        <div className="text-sm font-medium text-foreground">Profile</div>
         <button
           onClick={onToggleEdit}
-          className="rounded-xl border border-border px-3 py-1 text-xs font-semibold hover:bg-background"
+          className="rounded-lg border border-border px-3 py-1 text-xs font-medium hover:bg-background"
         >
           {editing ? "Cancel" : "Edit"}
         </button>
@@ -1574,7 +1566,7 @@ function ProfileBlock({
           </div>
 
           <div>
-            <div className="text-xs font-semibold">Declared handicap</div>
+            <div className="text-xs font-semibold">Handicap</div>
             <input
               className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
                 highlightedFields.includes("handicap")
@@ -1632,39 +1624,34 @@ function ProfileBlock({
           <button
             onClick={onSave}
             disabled={saving || uploadingProfilePhoto}
-            className="w-full rounded-xl bg-brand-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            className="w-full rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-background disabled:opacity-60"
           >
             {saving ? "Saving…" : saved ? "Saved" : "Save"}
           </button>
         </div>
       ) : (
-        <div className="mt-3 space-y-2 text-sm">
+        <div className="mt-3">
           <div className="mb-3 flex justify-center">
             {member?.profile_photo_path ? (
               <img
                 src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${member.profile_photo_path}`}
                 alt="Profile"
-                className="h-24 w-24 rounded-full object-cover border border-border"
+                className="h-20 w-20 rounded-full object-cover border border-border"
               />
             ) : (
-              <div className="h-24 w-24 rounded-full border border-border bg-background flex items-center justify-center text-lg font-semibold text-muted">
+              <div className="h-20 w-20 rounded-full border border-border bg-background flex items-center justify-center text-base font-semibold text-muted">
                 {getInitials(member)}
               </div>
             )}
           </div>
-          <Row label="Email" value={member?.email ?? "—"} />
-          <Row label="Full name" value={member?.full_name ?? "—"} />
-          <Row label="Display name" value={member?.display_name ?? "—"} />
-          <Row label="Nationality" value={member?.nationality ?? "—"} />
-          <Row
-            label="Declared handicap"
-            value={
-              member?.declared_handicap === null ||
-              member?.declared_handicap === undefined
-                ? "—"
-                : String(member.declared_handicap)
-            }
-          />
+          <div className="space-y-1.5 text-sm">
+            {member?.full_name && member.full_name !== member?.display_name && (
+              <div className="text-secondary">{member.full_name}</div>
+            )}
+            {member?.nationality && (
+              <div className="text-secondary">{member.nationality}</div>
+            )}
+          </div>
         </div>
       )}
     </div>

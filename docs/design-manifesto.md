@@ -163,6 +163,24 @@ ornamentation, or expressive styling are considered regressions.
 
 ---
 
+### Unboxed Text Must Follow the Page Rail
+
+Primary instrument surfaces use a single consistent horizontal "rail".
+
+Rules:
+- Any text not inside a boxed surface (headings, labels, one-liners, instrument readings) must align to this rail.
+- Boxes are allowed to inset, but unboxed text must never "wander" horizontally between sections.
+- The rail is established by the page's primary content padding (e.g., `px-5` on Home).
+- All unboxed content on a page must share the same horizontal alignment.
+
+Typography restraint:
+- Use size/weight for hierarchy, not extra borders or louder color.
+- Section headers behave like labels (restrained: `text-sm font-medium`), not big form headings.
+- Capability metadata (e.g., "Admin") should be visually quiet (secondary text, smaller, not bold).
+- Conversational state lines should use secondary text with comfortable line-height.
+
+---
+
 ### 9. Flow Over Confirmation
 
 The app should feel like it knows what comes next.
@@ -215,6 +233,75 @@ Example:
 
 Success screens should feel helpful and considerate,
 not instructional or sales-driven.
+
+---
+
+## Admin Capability Entry Points
+
+Admin is a **capability**, not a separate product.
+
+Rules:
+- Member surfaces may include a quiet Admin entry point (secondary action), never competing with instrument readings.
+- Admin controls should feel like capabilities, not a separate app.
+- Avoid "dashboard vibes" inside member mode surfaces.
+- Admin buttons should be:
+  - Visually quiet (outline/secondary style)
+  - Placed contextually (e.g., near identity on Me page)
+  - Only visible to users who have admin access
+
+Example:
+- A subtle "Admin" button on the Me page that navigates to the admin dashboard.
+
+---
+
+## Creation vs Mode Transition CTA Precedence
+
+GameDay mode transitions are **earned moments** that take visual precedence.
+
+Rules:
+- **Amber mode transition CTAs** (Enter/Return GameDay) must be the **only primary-emphasis CTA** on a surface when present.
+- **Creation/admin actions** (e.g., "Host a round", "Create group trip") use Ink filled style and can be primary **only when no amber mode transition CTA is visible**.
+- If both exist on the same surface:
+  - Amber mode transition CTA is primary (filled, larger, prominent)
+  - Creation/admin actions are demoted (outline/text style) or hidden
+
+This ensures that:
+- Mode transitions feel earned and intentional
+- Creation actions don't compete with active GameDay states
+- Visual hierarchy supports user focus
+
+---
+
+## Admin is a Workshop
+
+Admin is a **capability**, not a mode.
+
+Most admin actions happen inside normal member surfaces (Trips, Trip Details, Home).
+
+The Admin area exists only for:
+- group governance
+- publishing group-owned rounds
+- structural setup (courses, group settings)
+
+Admin surfaces should never duplicate trip or scoring UI.
+Admin UI shows *what needs attention*, then routes the admin into the real surface to act.
+
+Avoid "dashboard" patterns:
+- No grids
+- No KPIs
+- No charts
+- No dense tables
+
+Admin surfaces must feel like a quiet workshop, not a separate app.
+
+---
+
+## Admin CTA Rules
+
+Rules:
+- Creation / admin actions use Ink styling.
+- Amber is reserved exclusively for mode transitions (Enter / Return GameDay).
+- Admin pages should never introduce amber CTAs.
 
 ---
 
@@ -469,6 +556,8 @@ Trips = **Instrument Ledger** (survey, comparison, progression)
 
 They share language.
 They differ in density and scope.
+
+Trip creation design & copy: see `docs/trips-creation.md` (authoritative).
 
 ---
 

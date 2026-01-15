@@ -225,7 +225,7 @@ export default function OnboardingPage() {
     // Handicap is optional, but if provided must be valid
     if (handicapNum !== null && (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 36)) {
       setSavingProfile(false);
-      setError("Declared handicap must be a number between 0 and 36.");
+      setError("Handicap must be a number between 0 and 36.");
       return;
     }
 
@@ -480,9 +480,9 @@ export default function OnboardingPage() {
       {currentStep === "welcome" && (
         <div className="space-y-6">
           <div>
-            <h1 className="text-2xl font-bold">Welcome to DayForeIt</h1>
+            <h1 className="text-2xl font-bold">Quick setup</h1>
             <p className="mt-2 text-sm text-muted">
-              Let's set up your profile. This will only take a few minutes.
+              A few basics, then you're in.
             </p>
           </div>
 
@@ -570,7 +570,7 @@ export default function OnboardingPage() {
 
             <div>
               <label className="block text-sm font-medium text-foreground">
-                Declared handicap
+                Handicap
               </label>
               <input
                 type="number"

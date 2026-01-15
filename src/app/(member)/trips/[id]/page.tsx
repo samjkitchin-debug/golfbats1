@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../../lib/courseActions";
@@ -19,7 +19,6 @@ import { PromptModal } from "../../../components/PromptModal";
 import { TripRsvpActions } from "../../../components/TripRsvpActions";
 import { perfMark, perfMeasure, perfLog } from "../../../lib/perf";
 import { checkMemberExportReadiness } from "../../../lib/memberExportReadiness";
-import { useRouter } from "next/navigation";
 import { getGolfNoun } from "../../../lib/roundNounHelper";
 
 function toTripId(raw: string): number | null {
@@ -189,6 +188,8 @@ export default function TripDetailPage() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [profileHandicap, setProfileHandicap] = useState<number | null>(null);
+  const [editingMeetDetails, setEditingMeetDetails] = useState(false);
+  const [scoringStarted, setScoringStarted] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -300,6 +301,51 @@ export default function TripDetailPage() {
     loadProfileHandicap();
   }, [currentUserId, supabase]);
 
+  // Check if scoring has started for this trip
+  useEffect(() => {
+    if (!tripId || !activeGroupId) {
+      setScoringStarted(false);
+      return;
+    }
+
+    async function checkScoringStarted() {
+      try {
+        // First, get the trip's uuid from the trips table using legacy_id
+        const { data: tripData, error: tripError } = await supabase
+          .from("trips")
+          .select("id")
+          .eq("legacy_id", tripId)
+          .maybeSingle();
+
+        if (tripError || !tripData) {
+          setScoringStarted(false);
+          return;
+        }
+
+        // Then check if any scores exist for this trip
+        const { data: scoreData, error: scoreError } = await supabase
+          .from("gameday_scores")
+          .select("id")
+          .eq("trip_id", tripData.id)
+          .limit(1)
+          .maybeSingle();
+
+        if (scoreError && scoreError.code !== "PGRST116") { // PGRST116 is "not found", which is fine
+          console.error("Failed to check scoring status:", scoreError);
+          setScoringStarted(false);
+          return;
+        }
+
+        setScoringStarted(Boolean(scoreData));
+      } catch (error) {
+        console.error("Failed to check scoring status:", error);
+        setScoringStarted(false);
+      }
+    }
+
+    checkScoringStarted();
+  }, [tripId, activeGroupId, supabase]);
+
   const trip = useMemo(() => {
     if (!tripId) return undefined;
     return trips.find((t) => t.id === tripId);
@@ -316,6 +362,20 @@ export default function TripDetailPage() {
         }
       }, 100);
     }
+  }, [trip]);
+
+  // Sync meet details edit state when trip changes
+  useEffect(() => {
+    if (!trip) return;
+    const meetTimeValue =
+      (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime || "").trim();
+    const meetingPointValue =
+      (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint || "").trim();
+    const hasMeetDetails = Boolean(meetTimeValue || meetingPointValue);
+    // If details become available (e.g. just saved), collapse to read-only.
+    if (hasMeetDetails) setEditingMeetDetails(false);
+    // If details are cleared somehow, go back to edit mode.
+    if (!hasMeetDetails) setEditingMeetDetails(true);
   }, [trip]);
 
   // Scheduled: open trip, but signups only open within 30 days of trip date
@@ -515,7 +575,19 @@ export default function TripDetailPage() {
   const locked = isTripLocked(trip);
   const joinDisabled = locked || isScheduled || trip.status === "cancelled";
 
+  // Meet details state: derive current values and edit mode
+  const meetTimeValue =
+    (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime || "").trim();
+
+  const meetingPointValue =
+    (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint || "").trim();
+
+  const hasMeetDetails = Boolean(meetTimeValue || meetingPointValue);
+
   async function handleImIn() {
+    // Prevent RSVP changes once scoring has started
+    if (scoringStarted) return;
+    
     // Prevent duplicate joins
     if (myEntry) return;
 
@@ -678,6 +750,9 @@ export default function TripDetailPage() {
   }
 
   async function handleImOut() {
+    // Prevent RSVP changes once scoring has started
+    if (scoringStarted) return;
+    
     setConfirmModal({
       isOpen: true,
       title: "Leave this trip?",
@@ -819,9 +894,19 @@ export default function TripDetailPage() {
   return (
     <div className="space-y-4 pb-24">
       <div>
-        <Link href="/trips" className="text-sm text-foreground hover:text-foreground">
-          ← Back to Trips
-        </Link>
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== "undefined" && window.history.length > 1) {
+              router.back();
+            } else {
+              router.push("/trips");
+            }
+          }}
+          className="text-sm text-foreground hover:text-foreground"
+        >
+          ← Back
+        </button>
 
         {/* Trip name */}
         <div className="mt-2 text-xl font-semibold text-foreground">
@@ -902,38 +987,82 @@ export default function TripDetailPage() {
         )}
       </div>
 
-      {/* Meet details editor (host only) */}
+      {/* Meet details (host only) */}
       {trip.createdByMemberId === currentUserId && (
         <section id="meet-details" className="rounded-xl border bg-surface p-5 shadow-sm">
-          <div className="mb-3">
-            <div className="text-sm font-medium text-foreground">Meet details</div>
-            <p className="mt-1 text-xs text-muted">Set the time and place so everyone's ready.</p>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-foreground">Meet details</div>
+              <p className="mt-1 text-xs text-muted">
+                {editingMeetDetails ? "Set the time and place so everyone's ready." : "All set."}
+              </p>
+            </div>
+
+            {hasMeetDetails && (
+              <button
+                type="button"
+                onClick={() => setEditingMeetDetails((v) => !v)}
+                className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface"
+              >
+                {editingMeetDetails ? "Cancel" : "Edit"}
+              </button>
+            )}
           </div>
-          <MeetDetailsEditor
-            trip={trip}
-            currentUserId={currentUserId}
-            supabase={supabase}
-            activeGroupId={activeGroupId}
-            onUpdate={(updatedTrip) => {
-              // Update local trip state
-              setTrips(prev => prev.map(t => t.id === trip.id ? updatedTrip : t));
-            }}
-          />
+
+          {editingMeetDetails ? (
+            <MeetDetailsEditor
+              trip={trip}
+              currentUserId={currentUserId}
+              supabase={supabase}
+              activeGroupId={activeGroupId}
+              onUpdate={(updatedTrip) => {
+                setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                // Collapse to read-only as soon as we have values locally.
+                setEditingMeetDetails(false);
+              }}
+            />
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-muted">Meet time</div>
+                <div className="mt-1 text-sm text-foreground">
+                  {meetTimeValue ? meetTimeValue : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted">Meeting point</div>
+                <div className="mt-1 text-sm text-foreground">
+                  {meetingPointValue ? meetingPointValue : "—"}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
       <section className="rounded-xl border bg-surface p-5 shadow-sm">
         <div className="mb-3 text-sm font-medium text-muted">RSVP</div>
 
-        <TripRsvpActions
-          status={myEntry?.status}
-          onJoin={handleImIn}
-          onLeave={handleImOut}
-          joinDisabled={joinDisabled}
-          leaveDisabled={locked}
-          showJoin={trip.status === "open" && !isScheduled}
-          showMicrocopy={true}
-        />
+        {scoringStarted ? (
+          <div className="mt-2">
+            <div className="text-sm text-foreground">
+              {myEntry?.status === "confirmed" ? "You're playing today." : "You're marked as not playing."}
+            </div>
+            <div className="mt-1 text-xs text-muted">
+              Scoring has started.
+            </div>
+          </div>
+        ) : (
+          <TripRsvpActions
+            status={myEntry?.status}
+            onJoin={handleImIn}
+            onLeave={handleImOut}
+            joinDisabled={joinDisabled}
+            leaveDisabled={locked}
+            showJoin={trip.status === "open" && !isScheduled}
+            showMicrocopy={true}
+          />
+        )}
 
         {/* Export readiness notice for cross_border_agent trips */}
         {trip.scenarioKey === "cross_border_agent" && 
@@ -952,9 +1081,9 @@ export default function TripDetailPage() {
                 const highlightParams = exportReadinessNotice.missingFields.join(",");
                 router.push(`/me?highlight=${encodeURIComponent(highlightParams)}`);
               }}
-              className="rounded-md bg-brand-green px-3 py-1.5 text-xs font-medium text-white hover:opacity-95"
+              className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface"
             >
-              Complete details
+              Add missing details
             </button>
           </div>
         )}
@@ -966,7 +1095,7 @@ export default function TripDetailPage() {
         )}
       </section>
 
-      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+      <section className="mt-4 border-t border-border bg-transparent px-1 pt-4">
         <div className="mb-3 text-sm font-medium text-muted">Handicap snapshot</div>
 
         {!myEntry ? (
@@ -1026,7 +1155,7 @@ export default function TripDetailPage() {
         </section>
       )}
 
-      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+      <section className="border-t border-border bg-transparent px-1 pt-4">
         <div className="mb-2 text-sm font-medium text-muted">Results</div>
 
         {trip.result ? (
@@ -1044,7 +1173,7 @@ export default function TripDetailPage() {
         )}
       </section>
 
-      <section className="rounded-xl border bg-surface p-5 shadow-sm">
+      <section className="border-t border-border bg-transparent px-1 pt-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="text-sm font-medium text-muted">Attendees</div>
           

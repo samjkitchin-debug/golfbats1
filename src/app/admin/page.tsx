@@ -22,7 +22,18 @@ export default async function AdminPage() {
     redirect("/login?next=/admin");
   }
 
-  // Platform admin: only via isEmailAdmin (members.is_admin removed from authorization checks)
+  // Fetch member id
+  const { data: member } = await supabase
+    .from("members")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!member) {
+    redirect("/login?next=/admin");
+  }
+
+  // Platform admin: only via isEmailAdmin
   const isPlatformAdmin = isEmailAdmin(user.email);
 
   // Find groups where user is an APPROVED admin
@@ -72,17 +83,12 @@ export default async function AdminPage() {
   // Determine which groups to show
   const groupsToShow = isPlatformAdmin ? allGroups : userAdminGroups;
 
-  // Redirect if exactly one group (use slug URL)
-  if (groupsToShow.length === 1) {
-    redirect(`/admin/g/${groupsToShow[0].slug}`);
-  }
-
-  // If no groups, show message
+  // If no groups, show calm empty state
   if (groupsToShow.length === 0) {
     return (
-      <div className="min-h-dvh bg-background">
+      <>
         <header className="sticky top-0 z-20 border-b bg-surface border-border">
-          <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
+          <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 pt-3 pb-2">
             <div className="flex items-center gap-3">
               <Link href="/" className="text-sm font-semibold text-foreground">
                 DayForeIt
@@ -91,34 +97,32 @@ export default async function AdminPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Link
-                href="/"
-                className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-              >
-                Back to app
-              </Link>
               <SignOutButton />
             </div>
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-5xl px-4 py-6">
-          <div className="rounded-xl border bg-surface p-8 text-center">
-            <h1 className="text-xl font-semibold text-foreground mb-2">Admin access</h1>
-            <p className="text-sm text-muted">
-              You don't have admin access to any groups.
-            </p>
-          </div>
+        <main className="mx-auto w-full max-w-md px-5 pt-6 pb-24">
+          <h1 className="text-xl font-semibold text-foreground mb-2">Admin</h1>
+          <p className="text-sm text-secondary mb-6">
+            You don't have admin access to any groups.
+          </p>
+          <Link
+            href="/me"
+            className="inline-block rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background transition-colors"
+          >
+            Back to profile
+          </Link>
         </main>
-      </div>
+      </>
     );
   }
 
-  // Multiple groups - show selector
+  // Show workshop landing with groups
   return (
-    <div className="min-h-dvh bg-background">
+    <>
       <header className="sticky top-0 z-20 border-b bg-surface border-border">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
+        <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 pt-3 pb-2">
           <div className="flex items-center gap-3">
             <Link href="/" className="text-sm font-semibold text-foreground">
               DayForeIt
@@ -127,38 +131,63 @@ export default async function AdminPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="rounded-md px-3 py-2 text-sm text-foreground hover:bg-background"
-            >
-              Back to app
-            </Link>
             <SignOutButton />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-4 py-6">
-        <div className="rounded-xl border bg-surface p-8">
-          <h1 className="text-xl font-semibold text-foreground mb-2">Select a group to manage</h1>
-          <p className="text-sm text-muted mb-6">
-            Choose a group from the list below to access its admin dashboard.
-          </p>
-          <ul className="space-y-2">
-            {groupsToShow.map((group) => (
-              <li key={group.id}>
+      <main className="mx-auto w-full max-w-md px-5 pt-6 pb-24">
+        <h1 className="text-xl font-semibold text-foreground mb-2">Admin</h1>
+        <p className="text-sm text-secondary mb-6">
+          Approvals, roles, and publishing.
+        </p>
+
+        <div className="space-y-3">
+          {groupsToShow.map((group) => (
+            <div
+              key={group.id}
+              className="rounded-lg border border-border bg-surface px-4 py-4 space-y-3"
+            >
+              <div>
+                <div className="text-base font-medium text-foreground">{group.name}</div>
+                <div className="text-xs text-secondary mt-0.5">Governance & publishing</div>
+              </div>
+              <Link
+                href={`/admin/g/${group.slug}/members`}
+                className="block w-full rounded-lg btn-primary px-4 py-2.5 text-sm font-medium text-white text-center hover:opacity-90 transition-opacity"
+              >
+                Open admin
+              </Link>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-secondary">
                 <Link
-                  href={`/admin/g/${group.slug}`}
-                  className="block rounded-lg border border-border bg-surface px-4 py-3 text-sm font-medium text-foreground hover:bg-background transition-colors"
+                  href={`/admin/tools/g/${group.slug}/settings`}
+                  className="hover:text-foreground underline"
                 >
-                  <div className="font-semibold">{group.name}</div>
-                  <div className="text-xs text-muted mt-0.5">Code: {group.slug}</div>
+                  Group settings
                 </Link>
-              </li>
-            ))}
-          </ul>
+                <Link
+                  href={`/admin/tools/g/${group.slug}/hygiene`}
+                  className="hover:text-foreground underline"
+                >
+                  Data hygiene
+                </Link>
+                <Link
+                  href={`/admin/tools/g/${group.slug}/audit`}
+                  className="hover:text-foreground underline"
+                >
+                  Audit
+                </Link>
+                <Link
+                  href={`/admin/tools/g/${group.slug}/migrations`}
+                  className="hover:text-foreground underline"
+                >
+                  Migrations <span className="text-muted">(rare)</span>
+                </Link>
+              </div>
+            </div>
+          ))}
         </div>
       </main>
-    </div>
+    </>
   );
 }
