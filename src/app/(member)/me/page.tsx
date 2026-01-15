@@ -545,9 +545,6 @@ export default function MePage() {
                 <div className="text-lg font-medium text-foreground">
                   {loading ? "Loading…" : titleName}
                 </div>
-                {isAdmin && (
-                  <div className="mt-1 text-xs text-secondary">Admin</div>
-                )}
                 {!loading && member && (
                   <div className="mt-2 text-xs text-secondary leading-relaxed">
                     {isApproved ? "You're good to go" : "Profile incomplete"}
@@ -555,14 +552,6 @@ export default function MePage() {
                 )}
               </div>
             </div>
-            {isAdmin && (
-              <Link
-                href="/admin"
-                className="ml-4 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background"
-              >
-                Admin
-              </Link>
-            )}
           </div>
         </div>
 
@@ -835,14 +824,10 @@ export default function MePage() {
                       </div>
                       <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
                         <span>{membership.role === "admin" ? "Admin" : "Member"}</span>
-                        <span>·</span>
-                        <span className={membership.status === "approved" ? "text-brand-green" : "text-muted"}>
-                          {membership.status === "approved" ? "Approved" : "Pending"}
-                        </span>
                         {membership.status === "approved" && membership.groupSlug && (
                           <>
                             <span>·</span>
-                            <span className="font-mono">Code: {membership.groupSlug}</span>
+                            <span>Code: {membership.groupSlug}</span>
                           </>
                         )}
                       </div>
@@ -877,20 +862,6 @@ export default function MePage() {
                             className="text-xs text-secondary hover:text-foreground underline"
                           >
                             Share invite
-                          </button>
-                          <button
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(membership.groupSlug);
-                                setCopyFeedback("Copied");
-                                setTimeout(() => setCopyFeedback(null), 1500);
-                              } catch (err) {
-                                // Silent fail
-                              }
-                            }}
-                            className="text-xs text-secondary hover:text-foreground underline"
-                          >
-                            Copy code
                           </button>
                           {copyFeedback && (
                             <span className="text-xs text-secondary">{copyFeedback}</span>
@@ -1223,7 +1194,7 @@ export default function MePage() {
               This will permanently delete your account and all associated data. This action cannot be undone.
             </p>
             <p className="mb-4 text-sm font-medium text-foreground">
-              Type <span className="font-mono text-brand-orange">DELETE</span> to confirm:
+              Type <span className="text-brand-orange">DELETE</span> to confirm:
             </p>
             <input
               type="text"

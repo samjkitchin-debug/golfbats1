@@ -31,16 +31,16 @@ export function ConfirmModal({
         <div className="flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5"
+            className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
           >
             {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white ${
+            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium ${
               confirmVariant === "danger"
-                ? "bg-red-600 hover:opacity-90"
-                : "btn-primary hover:opacity-90"
+                ? "bg-muted text-foreground hover:bg-muted/80"
+                : "btn-primary text-white hover:opacity-90"
             }`}
           >
             {confirmLabel}

@@ -853,17 +853,23 @@ export default function GameDayPage() {
       {/* Remove header/logo section when in_progress - scoring surface is the hero */}
       {gameDayData.gameday && gameDayData.gameday.state !== "in_progress" && (
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">GameDay</h1>
-          <p className="mt-2 text-sm text-muted">Your round is live</p>
+          <h1 className="text-2xl font-semibold text-foreground">In play</h1>
+          <p className="mt-2 text-sm text-muted">
+            {(() => {
+              const course = gameDayData.courseId
+                ? courses.find((c) => c.id === gameDayData.courseId)
+                : null;
+              return course?.name || "Round";
+            })()}
+          </p>
         </div>
       )}
 
       {gameDayData.gameday && gameDayData.gameday.state !== "in_progress" && (
       <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
         <div>
-          <div className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Round</div>
-          <div className="text-lg font-semibold text-foreground">Round #{gameDayData.roundId}</div>
-          <div className="text-sm text-muted mt-1">
+          <div className="text-sm text-muted mb-1">Round #{gameDayData.roundId}</div>
+          <div className="text-sm text-muted">
             Status: <span className="capitalize">{gameDayData.status.replace("_", " ")}</span>
           </div>
         </div>
@@ -885,8 +891,8 @@ export default function GameDayPage() {
                   flight.executionStatus === "in_progress"
                     ? "chip-success"
                     : flight.executionStatus === "finished"
-                    ? "bg-slate-100 text-slate-700"
-                    : "bg-amber-soft text-amber-800";
+                    ? "bg-muted/30 text-foreground"
+                    : "bg-amber-soft text-foreground";
 
                 const memberNames = flight.slots.map((s) => s.memberName).join(", ");
 
@@ -1367,15 +1373,7 @@ export default function GameDayPage() {
                   {/* Right: Player snapshot */}
                   <div className="text-right">
                     <div className="text-sm text-muted">Today: {myTotals.strokesTotal ?? "—"}</div>
-                    <div className={`text-2xl font-bold mt-1 ${
-                      myTotals.toPar === null 
-                        ? "text-foreground" 
-                        : myTotals.toPar < 0 
-                          ? "text-emerald-600" 
-                          : myTotals.toPar > 0 
-                            ? "text-red-600" 
-                            : "text-foreground"
-                    }`}>
+                    <div className={`text-2xl font-bold mt-1 text-foreground`}>
                       To par: {myToParSigned}
                     </div>
                   </div>
@@ -1635,7 +1633,7 @@ export default function GameDayPage() {
             </div>
             <Link
               href={`/results/${gameDayData.roundId}`}
-              className="block w-full rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 text-center"
+              className="block w-full rounded-lg btn-ghost px-4 py-2 text-sm font-medium text-center hover:opacity-80"
             >
               View results
             </Link>
@@ -1671,7 +1669,7 @@ export default function GameDayPage() {
 
         {gameDayData.courseId && gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
           <div>
-            <div className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Course</div>
+            <div className="text-sm text-muted mb-1">Course</div>
             <div className="text-sm text-foreground">
               {courses.find((c) => c.id === gameDayData.courseId)?.name || "Course selected"}
             </div>
@@ -1681,7 +1679,7 @@ export default function GameDayPage() {
         {gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
         <>
         <div>
-          <div className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Participants</div>
+          <div className="text-sm text-muted mb-2">Participants</div>
           {gameDayData.participants.length === 0 ? (
             <div className="text-sm text-muted">No participants yet</div>
           ) : (
@@ -1718,7 +1716,7 @@ export default function GameDayPage() {
             href={`/trips/${gameDayData.roundId}`}
             className="block w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50 text-center"
           >
-            Exit GameDay
+            Back to trip
           </Link>
         </div>
         </>

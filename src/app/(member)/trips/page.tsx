@@ -18,15 +18,11 @@ import { coordinationTripsStatusApi } from "../../lib/routes";
 import { apiJson } from "../../lib/apiClient";
 import { validateTripsStatus } from "../../lib/apiContracts";
 
-// Helper function to check if cutoff has passed (11:59pm SGT on cutoff date)
+// Helper function to check if cutoff has passed
 function isCutoffPassed(cutoffAt: string | undefined): boolean {
   if (!cutoffAt) return false;
   const cutoff = new Date(cutoffAt);
-  const now = new Date();
-  // SGT is UTC+8, so add 8 hours to UTC
-  const sgtOffset = 8 * 60 * 60 * 1000;
-  const nowSGT = new Date(now.getTime() + sgtOffset);
-  return nowSGT > cutoff;
+  return Date.now() > cutoff.getTime();
 }
 
 // Helper function to generate a consistent color from a group ID
@@ -65,6 +61,7 @@ export default function TripsListPage() {
   const [pastTripsExpanded, setPastTripsExpanded] = useState<boolean>(false);
   const [completionPrompt, setCompletionPrompt] = useState<{ tripId: number; missingFields: string[] } | null>(null);
   const [coordinationStatusData, setCoordinationStatusData] = useState<{ todayYmd: string; inProgressTripIds: string[]; inProgressLegacyIds: number[] } | null>(null);
+  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -175,7 +172,7 @@ export default function TripsListPage() {
   async function handleJoinTrip(tripId: number, trip: Trip) {
     try {
       if (!currentUserId || !activeGroupId) {
-        alert("You must be signed in and have an active group to join a trip.");
+        setNotice({ title: "Something went wrong", message: "You must be signed in and have an active group to join a trip." });
         return;
       }
 
@@ -191,177 +188,110 @@ export default function TripsListPage() {
           ? memberData.declared_handicap
           : null;
 
-      // Prepare the join action function
-      const continueWithHandicap = async (handicapValue: number | null) => {
-        try {
-          const now = new Date().toISOString();
+      // Show optional notice if handicap is missing
+      if (existingHandicap === null) {
+        setNotice({ 
+          title: "Handicap", 
+          message: "You can update your handicap anytime from Me." 
+        });
+      }
 
-          if (memberData) {
+      // Proceed with join immediately using existing handicap (or null)
+      try {
+        const now = new Date().toISOString();
+
+        if (memberData) {
+          await supabase
+            .from("members")
+            .update({
+              declared_handicap: existingHandicap,
+              last_seen: now,
+              full_name: memberData.full_name ?? null,
+              display_name: memberData.display_name ?? null,
+              nationality: memberData.nationality ?? null,
+            })
+            .eq("id", currentUserId);
+        } else {
+          // This shouldn't happen if bootstrap loaded correctly, but handle it
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
             await supabase
               .from("members")
-              .update({
-                declared_handicap: handicapValue,
+              .insert({
+                id: user.id,
+                email: user.email || "",
+                declared_handicap: existingHandicap,
                 last_seen: now,
-                full_name: memberData.full_name ?? null,
-                display_name: memberData.display_name ?? null,
-                nationality: memberData.nationality ?? null,
-              })
-              .eq("id", currentUserId);
-          } else {
-            // This shouldn't happen if bootstrap loaded correctly, but handle it
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-              await supabase
-                .from("members")
-                .insert({
-                  id: user.id,
-                  email: user.email || "",
-                  declared_handicap: handicapValue,
-                  last_seen: now,
-                  created_at: now,
-                });
-            }
-          }
-
-          // Add to trip and save handicap for this trip
-          const updated = await joinTrip(trips, tripId, handicapValue, activeGroupId || undefined);
-          setTrips(updated);
-
-          // Reload all trips for all groups
-          let reloadedTrip: Trip | null = null;
-          if (approvedGroups.length > 0) {
-            try {
-              const tripsPromises = approvedGroups.map(async (group) => {
-                const groupTrips = await loadTrips(group.id, true); // Bypass cache
-                return groupTrips.map((trip) => ({ ...trip, groupName: group.name, groupId: group.id }));
+                created_at: now,
               });
-              const [allTripsArrays, coursesData] = await Promise.all([
-                Promise.all(tripsPromises),
-                loadCourses()
-              ]);
-              
-              const allTripsWithGroupsData = allTripsArrays.flat();
-              setAllTripsWithGroups(allTripsWithGroupsData);
-              
-              // Update active group trips for backward compatibility
-              if (activeGroupId) {
-                const activeGroupIndex = approvedGroups.findIndex((g) => g.id === activeGroupId);
-                if (activeGroupIndex >= 0) {
-                  const activeGroupTrips = allTripsArrays[activeGroupIndex].map(({ groupName, groupId, ...trip }) => trip);
-                  setTrips(activeGroupTrips);
-                  // Find the reloaded trip for completion check
-                  reloadedTrip = activeGroupTrips.find((t) => t.id === tripId) || null;
-                }
-              }
-              
-              setCourses(coursesData);
-            } catch (reloadError) {
-              perfLog("handleJoinTrip: reload error", { tripId, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
-            }
           }
-
-          // Check if this is a Batam trip and member details are complete
-          if (trip.scenarioKey === "cross_border_agent" && currentUserId) {
-            try {
-              const readiness = await checkMemberExportReadiness(currentUserId, handicapValue);
-              if (!readiness.isReady) {
-                // Show completion prompt
-                setCompletionPrompt({
-                  tripId,
-                  missingFields: readiness.missingFields,
-                });
-              }
-            } catch (error) {
-              perfLog("handleJoinTrip: completion check error", { tripId, error: error instanceof Error ? error.message : String(error) });
-            }
-          }
-        } catch (error) {
-          perfLog("handleJoinTrip: error", { tripId, error: error instanceof Error ? error.message : String(error) });
-          alert(
-            `Failed to join trip: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
-          );
         }
-      };
 
-      // Ask if they want to edit their current handicap
-      if (existingHandicap !== null) {
-        // Show confirm modal to ask if they want to edit
-        setConfirmModal({
-          isOpen: true,
-          title: "Edit Handicap?",
-          message: `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`,
-          onConfirm: () => {
-            setConfirmModal(prev => ({ ...prev, isOpen: false }));
-            // Show prompt modal for editing handicap
-            setPromptModal({
-              isOpen: true,
-              title: "Enter Handicap",
-              message: "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
-              defaultValue: String(existingHandicap),
-              placeholder: "0–36",
-              onConfirm: (input: string) => {
-                setPromptModal(prev => ({ ...prev, isOpen: false }));
-                const trimmed = input.trim();
-                let handicapValue: number | null = existingHandicap;
-                if (trimmed === "") {
-                  handicapValue = existingHandicap;
-                } else {
-                  const parsed = Number(trimmed);
-                  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-                    alert("Handicap must be a number between 0 and 36.");
-                    return;
-                  }
-                  handicapValue = parsed;
-                }
-                void continueWithHandicap(handicapValue);
-              },
-              onCancel: () => {
-                setPromptModal(prev => ({ ...prev, isOpen: false }));
-                // Join with existing handicap even if they cancel the prompt
-                void continueWithHandicap(existingHandicap);
-              },
+        // Add to trip and save handicap for this trip
+        const updated = await joinTrip(trips, tripId, existingHandicap, activeGroupId || undefined);
+        setTrips(updated);
+
+        // Reload all trips for all groups
+        let reloadedTrip: Trip | null = null;
+        if (approvedGroups.length > 0) {
+          try {
+            const tripsPromises = approvedGroups.map(async (group) => {
+              const groupTrips = await loadTrips(group.id, true); // Bypass cache
+              return groupTrips.map((trip) => ({ ...trip, groupName: group.name, groupId: group.id }));
             });
-          },
-          onCancel: () => {
-            setConfirmModal(prev => ({ ...prev, isOpen: false }));
-            // Join with existing handicap without editing
-            void continueWithHandicap(existingHandicap);
-          },
-        });
-      } else {
-        // Show prompt modal for new handicap
-        setPromptModal({
-          isOpen: true,
-          title: "Enter Handicap",
-          message: "Please enter your current handicap (0–36), or leave blank if you are not sure yet:",
-          defaultValue: "",
-          placeholder: "0–36",
-          onConfirm: (input: string) => {
-            setPromptModal(prev => ({ ...prev, isOpen: false }));
-            const trimmed = input.trim();
-            let handicapValue: number | null = null;
-            if (trimmed !== "") {
-              const parsed = Number(trimmed);
-              if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-                alert("Handicap must be a number between 0 and 36.");
-                return;
+            const [allTripsArrays, coursesData] = await Promise.all([
+              Promise.all(tripsPromises),
+              loadCourses()
+            ]);
+            
+            const allTripsWithGroupsData = allTripsArrays.flat();
+            setAllTripsWithGroups(allTripsWithGroupsData);
+            
+            // Update active group trips for backward compatibility
+            if (activeGroupId) {
+              const activeGroupIndex = approvedGroups.findIndex((g) => g.id === activeGroupId);
+              if (activeGroupIndex >= 0) {
+                const activeGroupTrips = allTripsArrays[activeGroupIndex].map(({ groupName, groupId, ...trip }) => trip);
+                setTrips(activeGroupTrips);
+                // Find the reloaded trip for completion check
+                reloadedTrip = activeGroupTrips.find((t) => t.id === tripId) || null;
               }
-              handicapValue = parsed;
             }
-            void continueWithHandicap(handicapValue);
-          },
-          onCancel: () => {
-            setPromptModal(prev => ({ ...prev, isOpen: false }));
-            // Join without handicap
-            void continueWithHandicap(null);
-          },
-        });
+            
+            setCourses(coursesData);
+          } catch (reloadError) {
+            perfLog("handleJoinTrip: reload error", { tripId, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
+          }
         }
+
+        // Check if this is a Batam trip and member details are complete
+        if (trip.scenarioKey === "cross_border_agent" && currentUserId) {
+          try {
+            const readiness = await checkMemberExportReadiness(currentUserId, existingHandicap);
+            if (!readiness.isReady) {
+              // Show completion prompt
+              setCompletionPrompt({
+                tripId,
+                missingFields: readiness.missingFields,
+              });
+            }
+          } catch (error) {
+            perfLog("handleJoinTrip: completion check error", { tripId, error: error instanceof Error ? error.message : String(error) });
+          }
+        }
+      } catch (error) {
+        perfLog("handleJoinTrip: error", { tripId, error: error instanceof Error ? error.message : String(error) });
+        setNotice({ 
+          title: "Something went wrong", 
+          message: `Failed to join trip: ${error instanceof Error ? error.message : String(error)}. Please try again or refresh the page.` 
+        });
+      }
     } catch (error) {
       perfLog("handleJoinTrip: start error", { tripId, error: error instanceof Error ? error.message : String(error) });
-      alert(
-        `Failed to start join process: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or refresh the page.`
-      );
+      setNotice({ 
+        title: "Something went wrong", 
+        message: `Failed to start join process: ${error instanceof Error ? error.message : String(error)}. Please try again or refresh the page.` 
+      });
     }
   }
 
@@ -406,7 +336,7 @@ export default function TripsListPage() {
           }
         } catch (error) {
           perfLog("handleLeaveTrip: error", { tripId, error: error instanceof Error ? error.message : String(error) });
-          alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
+          setNotice({ title: "Something went wrong", message: `Failed to leave trip: ${error instanceof Error ? error.message : String(error)}` });
         }
       },
       onCancel: () => {
@@ -765,10 +695,12 @@ export default function TripsListPage() {
           
           {/* Right column: Status badge + Join button (if not joined) */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Status badge - always show */}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusStyles} shrink-0 whitespace-nowrap`}>
-              {statusBadge}
-            </span>
+            {/* Status badge - hide "Open" if Join button is present */}
+            {!(rsvpStatus !== "joined" && signupTiming.status === "open" && statusBadge === "Open") && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusStyles} shrink-0 whitespace-nowrap`}>
+                {statusBadge}
+              </span>
+            )}
             {/* Join button - only show if not joined and signups open */}
             {rsvpStatus !== "joined" && signupTiming.status === "open" && (
               <button
@@ -910,14 +842,30 @@ export default function TripsListPage() {
 
   return (
     <div className="px-5 space-y-6">
+      {/* In-app notice */}
+      {notice && (
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-foreground mb-1">{notice.title}</div>
+              <div className="text-sm text-muted">{notice.message}</div>
+            </div>
+            <button
+              onClick={() => setNotice(null)}
+              className="text-sm text-muted hover:text-foreground underline shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-2">
         <div className="text-xl font-semibold text-foreground">Trips</div>
         <div className="flex items-center gap-2">
           {isGroupAdmin && approvedGroups.length > 0 && (
             <Link
-              href={approvedGroups.find((g) => g.id === activeGroupId) 
-                ? `/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)!.slug}`
-                : `/admin/g/${approvedGroups[0].slug}`}
+              href="/host?mode=group_trip"
               className="rounded-lg btn-ghost px-3 py-2 text-sm font-medium text-foreground hover:opacity-80 active:scale-[0.98] transition-transform"
             >
               Create group trip

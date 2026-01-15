@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import MemberProfileCard from "../components/MemberProfileCard";
@@ -255,6 +256,15 @@ export default function MembersPage() {
       <div className="mb-4">
         <h1 className="text-xl font-semibold text-foreground">Members</h1>
         <p className="mt-1 text-xs text-muted">Everyone in this group</p>
+      </div>
+      
+      <div className="mb-4">
+        <Link
+          href="/join?from=/members"
+          className="text-sm text-muted hover:text-foreground underline"
+        >
+          Join a group
+        </Link>
       </div>
       
       <div className="mb-4 flex items-center justify-between gap-3">

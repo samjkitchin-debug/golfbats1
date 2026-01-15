@@ -12,8 +12,7 @@ const CACHE_TAG = "trips";
  */
 async function fetchTripsData(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  groupId: string,
-  currentMemberId?: string | null // For filtering member trips visibility
+  groupId: string
 ) {
   // Get today's date in local timezone (YYYY-MM-DD format)
   // Use UTC date but compare as date strings (YYYY-MM-DD) to avoid timezone issues
@@ -21,26 +20,14 @@ async function fetchTripsData(
   const todayYmd = today.toISOString().slice(0, 10);
   
   // Build base query
-  let query = supabase
+  // Return ALL trips for the group - no filtering by origin, creator, or posted status
+  const { data: tripsDataRaw, error: tripsError } = await supabase
     .from("trips")
     .select(
       "id,legacy_id,name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group"
     )
     .eq("group_id", groupId)
-    .gte("trip_date", todayYmd); // Only trips with date >= today (upcoming only)
-
-  // For member-facing requests, filter member trips by visibility
-  // Show: group trips OR (member trips that are posted OR created by current member)
-  if (currentMemberId !== undefined) {
-    if (currentMemberId) {
-      query = query.or(`trip_origin.eq.group,and(trip_origin.eq.member,or(is_posted_to_group.eq.true,created_by_member_id.eq.${currentMemberId}))`);
-    } else {
-      // No member ID - only show group trips and posted member trips
-      query = query.or(`trip_origin.eq.group,and(trip_origin.eq.member,is_posted_to_group.eq.true)`);
-    }
-  }
-  
-  const { data: tripsDataRaw, error: tripsError } = await query
+    .gte("trip_date", todayYmd) // Only trips with date >= today (upcoming only)
     .order("trip_date", { ascending: false });
 
   if (tripsError) {
@@ -309,17 +296,7 @@ export async function GET(req: Request) {
       );
     }
 
-    // Get current member ID for filtering member trips visibility
-    // In canonical schema: members.id == auth.user.id
-    let currentMemberId: string | null = null;
-    const { data: memberData } = await supabase
-      .from("members")
-      .select("id")
-      .eq("id", user.id)
-      .maybeSingle();
-    currentMemberId = memberData?.id || null;
-
-    const result = await fetchTripsData(supabase, groupId, currentMemberId);
+    const result = await fetchTripsData(supabase, groupId);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Get trips error:", error);
@@ -647,8 +624,8 @@ export async function POST(req: Request) {
       
       // Determine is_posted_to_group
       // Group trips: always true
-      // Member trips: use trip.isPostedToGroup or default to false
-      const isPostedToGroup = tripOrigin === 'group' ? true : (trip.isPostedToGroup ?? false);
+      // Member trips: always true (hosted rounds in a group are visible to the entire group immediately)
+      const isPostedToGroup = true;
 
       // Build INSERT payload with validated fields
       const tripId = crypto.randomUUID();

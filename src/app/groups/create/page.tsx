@@ -144,7 +144,7 @@ export default function CreateGroupPage() {
         <div className="space-y-4">
           <div className="rounded-lg border border-border bg-surface p-4">
             <div className="text-sm font-medium text-foreground mb-1">Group code</div>
-            <div className="font-mono text-lg font-semibold text-foreground mb-4">
+            <div className="text-lg font-semibold text-foreground mb-4">
               {createdGroupSlug}
             </div>
             <div className="flex gap-2">

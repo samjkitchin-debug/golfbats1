@@ -60,6 +60,10 @@ export default function HomePage() {
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [hasMemberships, setHasMemberships] = useState<boolean | null>(null);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
+  const [isBootstrapResolved, setIsBootstrapResolved] = useState(false);
+  const [homeReady, setHomeReady] = useState(false);
+  const [bootstrapDone, setBootstrapDone] = useState(false);
+  const [activeGameDayDone, setActiveGameDayDone] = useState(false);
   const [isProfileComplete, setIsProfileComplete] = useState<boolean | null>(null);
   const [profilePhotoPath, setProfilePhotoPath] = useState<string | null>(null);
   const [memberFullName, setMemberFullName] = useState<string | null>(null);
@@ -158,6 +162,7 @@ export default function HomePage() {
             // Not authenticated - redirect handled by layout
             perfMeasure("bootstrap", start);
             setLoadingBootstrap(false);
+            setBootstrapDone(true);
             return;
           }
           throw new Error("Failed to load bootstrap data");
@@ -186,11 +191,15 @@ export default function HomePage() {
           activeGroupId: bootstrap.activeGroupId,
           membershipCount: bootstrap.approvedGroups?.length || 0,
         });
+        setIsBootstrapResolved(true);
+        setBootstrapDone(true);
       } catch (error) {
         perfMeasure("bootstrap", start);
         perfLog("bootstrap: error", { error: error instanceof Error ? error.message : String(error) });
         setHasMemberships(false);
         setIsProfileComplete(false);
+        setIsBootstrapResolved(true);
+        setBootstrapDone(true);
       } finally {
         setLoadingBootstrap(false);
       }
@@ -275,11 +284,21 @@ export default function HomePage() {
 
   // Fetch active GameDay for mode banner
   useEffect(() => {
-    if (!hasMemberships) return;
+    if (!hasMemberships) {
+      // If no memberships, mark initial fetch as complete (nothing to fetch)
+      if (!activeGameDayDone) {
+        setActiveGameDayDone(true);
+      }
+      return;
+    }
 
     // Simple cache: fetch at most once every 5 seconds
     const now = Date.now();
     if (now - lastGameDayFetch < 5000 && activeGameDay) {
+      // If we already have data and it's cached, mark as fetched if not already
+      if (!activeGameDayDone) {
+        setActiveGameDayDone(true);
+      }
       return;
     }
 
@@ -309,20 +328,31 @@ export default function HomePage() {
               route: null, // Will construct from roundId
             });
             setLastGameDayFetch(now);
-            return;
+          } else {
+            // No active GameDay
+            setActiveGameDay(null);
           }
+        } else {
+          // Request failed, no active GameDay
+          setActiveGameDay(null);
         }
-        // No active GameDay
-        setActiveGameDay(null);
+        setActiveGameDayDone(true);
       } catch (error) {
         console.error("Failed to fetch active gameday:", error);
         setActiveGameDay(null);
+        setActiveGameDayDone(true);
       }
     }
 
     fetchActiveGameDay();
-  }, [hasMemberships, lastGameDayFetch, activeGameDay]);
+  }, [hasMemberships, lastGameDayFetch, activeGameDay, activeGameDayDone]);
 
+  // Resolve home state when both bootstrap and active gameday fetch are complete
+  useEffect(() => {
+    if (bootstrapDone && activeGameDayDone) {
+      setHomeReady(true);
+    }
+  }, [bootstrapDone, activeGameDayDone]);
 
   // Helper to get relative time phrasing (deterministic, calm)
   function getRelativeTimePhrase(tripDate: string): string {
@@ -700,10 +730,10 @@ export default function HomePage() {
     fetchWeather();
   }, [allTripsWithGroups, courses, currentUserId, currentUserName]);
 
-  if (loadingBootstrap) {
+  if (loadingBootstrap || !homeReady) {
     content = (
       <div className="py-12 text-center">
-        <p className="text-sm text-muted">Loading…</p>
+        <p className="text-sm text-muted">Just a moment…</p>
       </div>
     );
   } else if (!hasApprovedGroup) {
@@ -801,24 +831,31 @@ export default function HomePage() {
             </p>
           </div>
         ) : (
-          // Profile complete but no group: show "Create or join a group" card
-          <div className="rounded-2xl border border-border bg-surface p-6">
-            <h2 className="text-lg font-semibold text-foreground">Create or join a group</h2>
-            <p className="mt-1 text-sm text-muted">
-              Groups keep trips private to your mates.
-            </p>
-            <div className="mt-6 space-y-3">
+          // Profile complete but no group: show welcome instrument
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">Welcome to DayForeIt</h1>
+            </div>
+            <div className="space-y-3">
+              <Link
+                href="/join"
+                className="block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
+              >
+                Join a group
+              </Link>
               <Link
                 href="/groups/create"
                 className="block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
               >
                 Create a group
               </Link>
+            </div>
+            <div className="pt-2">
               <Link
-                href="/join"
-                className="block w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground hover:bg-background text-center"
+                href="/groups"
+                className="text-sm text-muted hover:text-foreground underline"
               >
-                Join a group
+                Browse public groups
               </Link>
             </div>
           </div>
@@ -1102,8 +1139,20 @@ export default function HomePage() {
 
     content = (
       <div className="space-y-12">
+        {/* Join a group - subtle secondary link */}
+        {homeReady && hasApprovedGroup && (
+          <div className="px-5">
+            <Link
+              href="/join?from=/"
+              className="text-sm text-muted hover:text-foreground underline"
+            >
+              Join a group
+            </Link>
+          </div>
+        )}
+        
         {/* Mode banner: GameDay in progress */}
-        {activeGameDay && (
+        {homeReady && activeGameDay && (
           <div className="px-5 pt-4">
             <div className="mode-banner">
               <div>
@@ -1123,14 +1172,14 @@ export default function HomePage() {
                 }}
                 className="btn-primary px-3 py-2 text-sm rounded-xl hover:opacity-90"
               >
-                Return
+                Enter GameDay
               </Link>
             </div>
           </div>
         )}
 
         {/* Afterglow panel: Round complete today (only when no active GameDay) */}
-        {!activeGameDay && afterglowRound && (
+        {homeReady && !activeGameDay && afterglowRound && (
           <div className="px-5 pt-4">
             <div className="afterglow-panel">
               <div className="afterglow-title">Round complete</div>
@@ -1320,95 +1369,76 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Primary Action: Return/Enter GameDay or Host a round */}
-        <div className="pt-8 space-y-3">
-          {activeGameDay ? (
-            <>
-              <Link
-                href={activeGameDay.route || gamedayHole(activeGameDay.roundId, activeGameDay.currentHoleIndex + 1)}
-                onClick={() => {
-                  if (typeof window !== 'undefined') {
-                    localStorage.setItem('dayforeit:last_mode', 'gameday');
-                  }
-                }}
-                className="block w-full py-4 text-base font-medium text-center btn-mode hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
-              >
-                Return to GameDay
-              </Link>
-              <Link
-                href="/host"
-                className="block w-full py-3 text-sm font-medium text-center btn-ghost hover:opacity-80 rounded-lg active:scale-[0.98] transition-transform"
-              >
-                Host a round
-              </Link>
-            </>
-          ) : canEnterGameDay && !hostGuardrail?.blockEnterGameDay ? (
-            <>
-              <button
-                onClick={async () => {
-                  if (!nextGameTrip || startingGameDay) return;
-                  if (typeof window !== 'undefined') {
-                    localStorage.setItem('dayforeit:last_mode', 'gameday');
-                  }
-                  setStartingGameDay(true);
-                  try {
-                    const data = await apiJson(gamedayStartApi(), {
-                      method: "POST",
-                      body: JSON.stringify({ tripId: String(nextGameTrip.id) }),
-                    });
-                    validateGamedayStart(data);
-                    router.push(`/gameday/${nextGameTrip.id}`);
-                  } catch (error) {
-                    console.error("Failed to start GameDay:", error);
-                    // Still navigate on error (user can try again on GameDay page)
-                    router.push(`/gameday/${nextGameTrip.id}`);
-                  } finally {
-                    setStartingGameDay(false);
-                  }
-                }}
-                disabled={startingGameDay || hostGuardrail?.blockEnterGameDay}
-                className="block w-full py-4 text-base font-medium text-center btn-mode hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {startingGameDay ? "Starting…" : "Enter GameDay"}
-              </button>
-              <Link
-                href="/host"
-                className="block w-full py-3 text-sm font-medium text-center btn-ghost hover:opacity-80 rounded-lg active:scale-[0.98] transition-transform"
-              >
-                Host a round
-              </Link>
-            </>
-          ) : (
-            <>
+        {/* Primary Action: Enter GameDay or Host a round */}
+        {homeReady && (
+          <div className="pt-8 space-y-3">
+            {activeGameDay || isPlayingToday ? (
+              <>
+                {activeGameDay ? (
+                  <Link
+                    href={activeGameDay.route || gamedayHole(activeGameDay.roundId, activeGameDay.currentHoleIndex + 1)}
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem('dayforeit:last_mode', 'gameday');
+                      }
+                    }}
+                    className="block w-full py-4 text-base font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
+                  >
+                    Enter GameDay
+                  </Link>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      if (!nextGameTrip || startingGameDay) return;
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem('dayforeit:last_mode', 'gameday');
+                      }
+                      setStartingGameDay(true);
+                      try {
+                        const data = await apiJson(gamedayStartApi(), {
+                          method: "POST",
+                          body: JSON.stringify({ tripId: String(nextGameTrip.id) }),
+                        });
+                        validateGamedayStart(data);
+                        router.push(`/gameday/${nextGameTrip.id}`);
+                      } catch (error) {
+                        console.error("Failed to start GameDay:", error);
+                        // Still navigate on error (user can try again on GameDay page)
+                        router.push(`/gameday/${nextGameTrip.id}`);
+                      } finally {
+                        setStartingGameDay(false);
+                      }
+                    }}
+                    disabled={startingGameDay || hostGuardrail?.blockEnterGameDay}
+                    className="block w-full py-4 text-base font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {startingGameDay ? "Starting…" : "Enter GameDay"}
+                  </button>
+                )}
+                <Link
+                  href="/host"
+                  className="block w-full py-3 text-sm font-medium text-center btn-ghost hover:opacity-80 rounded-lg active:scale-[0.98] transition-transform"
+                >
+                  Host a round
+                </Link>
+              </>
+            ) : (
               <Link
                 href="/host"
                 className="block w-full py-4 text-base font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
               >
                 Host a round
               </Link>
-              {/* Admin-only: Create group trip (demoted when Host a round is primary) */}
-              {isGroupAdmin && approvedGroups.length > 0 && (
-                <Link
-                  href={approvedGroups.find((g) => g.id === activeGroupId) 
-                    ? `/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)!.slug}`
-                    : `/admin/g/${approvedGroups[0].slug}`}
-                  className="block w-full py-3 text-sm font-medium text-center btn-ghost hover:opacity-80 rounded-lg active:scale-[0.98] transition-transform"
-                >
-                  Create group trip
-                </Link>
-              )}
-            </>
-          )}
-        </div>
+            )}
+          </div>
+        )}
         
-        {/* Admin-only: Create group trip (primary when no amber CTA and idle) */}
-        {!activeGameDay && !canEnterGameDay && isGroupAdmin && approvedGroups.length > 0 && (
-          <div className="px-5 pt-4">
+        {/* Admin-only: Create group trip (quiet text link, never replaces primary) */}
+        {homeReady && isGroupAdmin && approvedGroups.length > 0 && (
+          <div className="px-5 pt-2">
             <Link
-              href={approvedGroups.find((g) => g.id === activeGroupId) 
-                ? `/admin/g/${approvedGroups.find((g) => g.id === activeGroupId)!.slug}`
-                : `/admin/g/${approvedGroups[0].slug}`}
-              className="block w-full py-3 text-sm font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
+              href="/host?mode=group_trip"
+              className="text-sm text-muted hover:text-foreground underline"
             >
               Create group trip
             </Link>

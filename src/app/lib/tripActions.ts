@@ -1,9 +1,7 @@
 /**
  * Trip Actions (database-backed)
  *
- * This file MUST export the functions imported by:
- * - /admin/page.tsx
- * - /admin/trips/[id]/page.tsx
+ * This file exports functions used by:
  * - /(member)/trips/[id]/page.tsx
  *
  * All operations now use the database API:
@@ -679,7 +677,7 @@ export async function setTripLogistics(
 }
 
 /* ================================
-   Results (Admin)
+   Results
 ================================ */
 
 export async function publishTripResult(
@@ -838,7 +836,7 @@ export async function setMyHandicapForTrip(
 }
 
 /* ================================
-   CSV export (Admin)
+   CSV export
 ================================ */
 
 export function exportTripCsv(trip: Trip) {
@@ -908,7 +906,7 @@ export function exportTripCsv(trip: Trip) {
 }
 
 /* ================================
-   Organiser / booking contact CSV export (Admin)
+   Organiser / booking contact CSV export
    Exports trip details with member names, nationalities, and passport info
 ================================ */
 

@@ -190,6 +190,7 @@ export default function TripDetailPage() {
   const [profileHandicap, setProfileHandicap] = useState<number | null>(null);
   const [editingMeetDetails, setEditingMeetDetails] = useState(false);
   const [scoringStarted, setScoringStarted] = useState(false);
+  const [showLaterSteps, setShowLaterSteps] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -1096,6 +1097,149 @@ export default function TripDetailPage() {
           );
         })()}
       </section>
+
+      {/* Next steps (host only) */}
+      {trip.createdByMemberId === currentUserId && (() => {
+        const isGroupTrip = trip.tripOrigin === "group" || trip.isPostedToGroup;
+        const isHost = trip.createdByMemberId === currentUserId;
+        const signupsOpen = trip.status === "open" && !isScheduled;
+        const signupsClosed = trip.status === "closed";
+        const hasLogistics = Boolean(trip.logistics?.meetingPoint || trip.ferry || trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails || trip.logistics?.notes);
+        
+        // Build steps array
+        const steps: Array<{
+          id: string;
+          intent: string;
+          action: string;
+          onClick: () => void;
+        }> = [];
+
+        // 1) Meet details
+        if (isGroupTrip && !hasMeetDetails) {
+          steps.push({
+            id: "meet_details",
+            intent: "Set the meetup time and place.",
+            action: "Add meet details",
+            onClick: () => {
+              setEditingMeetDetails(true);
+              setTimeout(() => {
+                const element = document.getElementById('meet-details');
+                if (element) {
+                  element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }, 100);
+            },
+          });
+        }
+
+        // 2) Signups
+        if (isGroupTrip && !signupsOpen && !signupsClosed) {
+          steps.push({
+            id: "signups",
+            intent: "Let people lock in for the day.",
+            action: "Open signups",
+            onClick: async () => {
+              // TODO: Implement open signups action
+              alert("Open signups functionality to be implemented");
+            },
+          });
+        }
+
+        // 3) Logistics
+        if (isGroupTrip && !hasLogistics) {
+          steps.push({
+            id: "logistics",
+            intent: "Share the plan once it's settled.",
+            action: "Publish logistics",
+            onClick: () => {
+              // TODO: Implement publish logistics action
+              alert("Publish logistics functionality to be implemented");
+            },
+          });
+        }
+
+        // 4) Flights
+        if (signupsClosed) {
+          steps.push({
+            id: "flights",
+            intent: "Balance flights once signups close.",
+            action: "Set flights",
+            onClick: () => {
+              router.push(`/trips/${trip.id}/flights`);
+            },
+          });
+        }
+
+        // 5) Exports (only for later, all group trips when appropriate)
+        const exportStep = isGroupTrip && (signupsClosed || hasLogistics) ? {
+          id: "exports",
+          intent: "Export details when needed.",
+          action: "Export",
+          onClick: () => {
+            // TODO: Implement export action
+            alert("Export functionality to be implemented");
+          },
+        } : null;
+
+        if (steps.length === 0 && !exportStep) return null;
+
+        const defaultVisible = steps.slice(0, 2);
+        const laterSteps = steps.slice(2);
+        const allLaterSteps = [...laterSteps, ...(exportStep ? [exportStep] : [])];
+
+        return (
+          <section className="rounded-xl border bg-surface p-5 shadow-sm">
+            <div className="mb-4 text-sm font-medium text-foreground">Next steps</div>
+            
+            <div className="space-y-3">
+              {defaultVisible.map((step) => (
+                <div key={step.id} className="flex items-start justify-between gap-3">
+                  <p className="text-sm text-muted flex-1">{step.intent}</p>
+                  <button
+                    onClick={step.onClick}
+                    className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background shrink-0"
+                  >
+                    {step.action}
+                  </button>
+                </div>
+              ))}
+
+              {allLaterSteps.length > 0 && (
+                <>
+                  {showLaterSteps ? (
+                    <>
+                      {allLaterSteps.map((step) => (
+                        <div key={step.id} className="flex items-start justify-between gap-3">
+                          <p className="text-sm text-muted flex-1">{step.intent}</p>
+                          <button
+                            onClick={step.onClick}
+                            className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background shrink-0"
+                          >
+                            {step.action}
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => setShowLaterSteps(false)}
+                        className="text-xs text-muted hover:text-foreground underline"
+                      >
+                        Hide
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setShowLaterSteps(true)}
+                      className="text-xs text-muted hover:text-foreground underline"
+                    >
+                      Later
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Flights (host only, when signups closed) */}
       {trip.status === "closed" && trip.createdByMemberId === currentUserId && (

@@ -46,18 +46,9 @@ export default function CoursesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xl font-semibold text-foreground">Courses</div>
-          <div className="text-sm text-muted">Browse course + tees</div>
-        </div>
-
-        <Link
-          href="/admin/courses"
-          className="rounded-md border bg-surface px-3 py-2 text-sm text-foreground hover:bg-background"
-        >
-          Edit (admin)
-        </Link>
+      <div>
+        <div className="text-xl font-semibold text-foreground">Courses</div>
+        <div className="text-sm text-muted">Browse course + tees</div>
       </div>
 
       {/* Search Input */}

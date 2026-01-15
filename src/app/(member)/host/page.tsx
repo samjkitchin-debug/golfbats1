@@ -1,18 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { createBrowserClient } from "@supabase/ssr";
 import { loadCourseLookup, type CourseLookup } from "../../lib/courseActions";
 import { createTrip } from "../../lib/tripActions";
-
-type MemberLite = {
-  id: string;
-  display_name: string | null;
-  full_name: string | null;
-  profile_photo_path: string | null;
-};
 
 type GroupRow = {
   id: string;
@@ -22,52 +14,42 @@ type GroupRow = {
 
 export default function HostPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [approvedGroups, setApprovedGroups] = useState<GroupRow[]>([]);
+  const [isGroupAdmin, setIsGroupAdmin] = useState(false);
   const [isProfileComplete, setIsProfileComplete] = useState<boolean | null>(null);
   const [courses, setCourses] = useState<CourseLookup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentStep, setCurrentStep] = useState<"who" | "mode" | "planning" | "social" | "confirm">("who");
+  const [currentStep, setCurrentStep] = useState<"chooser" | "q1_when_where" | "q2_travel" | "q3_organisation" | "q4_meetup" | "q5_duration" | "summary" | "confirm_hosted" | "confirm">("chooser");
   
-  // Step 1: WHO (multi-select)
-  const [whoSelections, setWhoSelections] = useState<Set<"just_me" | "with_mates" | "open_to_groups">>(new Set());
+  // Chooser - intent selection
+  const [tripIntent, setTripIntent] = useState<"hosted_round" | "group_trip" | null>(null);
   
-  // Step 2: MODE
-  const [playMode, setPlayMode] = useState<"playing_now" | "planning_ahead" | null>(null);
-  
-  // Step 3B: Planning ahead - When & where
+  // Q1: When & where
   const [tripDate, setTripDate] = useState("");
-  const [tripTime, setTripTime] = useState("Now");
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   
-  // Step 4: Social details - Mates
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
-  const [recommendedMates, setRecommendedMates] = useState<MemberLite[]>([]);
-  const [searchResults, setSearchResults] = useState<MemberLite[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searching, setSearching] = useState(false);
+  // Q2: Travel
+  const [travelType, setTravelType] = useState<"local" | "travel" | null>(null);
   
-  // Step 4: Social details - Groups
-  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  // Q3: Organisation level
+  const [organisationLevel, setOrganisationLevel] = useState<"hosted_round" | "group_trip" | null>(null);
+  
+  // Q4: Meetup
+  const [hasMeetup, setHasMeetup] = useState<boolean | null>(null);
+  
+  // Q5: Duration (conditional)
+  const [isMultiDay, setIsMultiDay] = useState<boolean | null>(null);
   
   // Submission
   const [submitting, setSubmitting] = useState(false);
   const [createdTripId, setCreatedTripId] = useState<number | null>(null);
 
-  // Refs for date/time inputs
-  const dateInputRef = useRef<HTMLInputElement>(null);
-  const timeInputRef = useRef<HTMLInputElement>(null);
-
-  const supabase = useMemo(() => {
-    return createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-  }, []);
 
   useEffect(() => {
-    document.title = "DayForeIt - Host a round";
-  }, []);
+    document.title = tripIntent === "group_trip" ? "DayForeIt - Create group trip" : "DayForeIt - Host a round";
+  }, [tripIntent]);
 
   // Bootstrap: load activeGroupId, approvedGroups, profile status
   useEffect(() => {
@@ -85,6 +67,15 @@ export default function HostPage() {
         setActiveGroupId(bootstrap.activeGroupId);
         setApprovedGroups(bootstrap.approvedGroups || []);
         setIsProfileComplete(bootstrap.isProfileComplete);
+        
+        // Check if user is admin in any group
+        const hasAdminRole = (bootstrap.approvedGroups || []).some((g: { role?: string }) => g.role === 'admin');
+        setIsGroupAdmin(hasAdminRole);
+        
+        // If mode=group_trip and admin, preselect but still show chooser
+        if (searchParams.get("mode") === "group_trip" && hasAdminRole) {
+          setTripIntent("group_trip");
+        }
         
         // Check profile completion - route to profile if incomplete
         if (bootstrap.isProfileComplete === false) {
@@ -109,92 +100,7 @@ export default function HostPage() {
     loadCoursesData();
   }, []);
 
-  // Load recommended mates when entering social step
-  useEffect(() => {
-    if (currentStep !== "social" || !whoSelections.has("with_mates")) {
-      setRecommendedMates([]);
-      setSearchResults([]);
-      return;
-    }
 
-    async function loadRecommendedMates() {
-      try {
-        const res = await fetch("/api/me/mates", { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.ok) {
-            setRecommendedMates(data.recommended || []);
-            // Pre-populate search results if there's a query
-            if (searchQuery.trim()) {
-              setSearchResults(data.results || []);
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load recommended mates:", error);
-      }
-    }
-    loadRecommendedMates();
-  }, [currentStep, whoSelections, searchQuery]);
-
-  // Search mates when query changes (debounced)
-  useEffect(() => {
-    if (!searchQuery.trim() || currentStep !== "social" || !whoSelections.has("with_mates")) {
-      setSearchResults([]);
-      return;
-    }
-
-    const timeoutId = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res = await fetch(`/api/me/mates?query=${encodeURIComponent(searchQuery)}&limit=50`, {
-          credentials: "include",
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.ok) {
-            setSearchResults(data.results || []);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to search mates:", error);
-      } finally {
-        setSearching(false);
-      }
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery, currentStep, whoSelections]);
-
-  function toggleWho(option: "just_me" | "with_mates" | "open_to_groups") {
-    setWhoSelections((prev) => {
-      const next = new Set(prev);
-      if (option === "just_me") {
-        // Just me is exclusive
-        if (next.has("just_me")) {
-          return next; // Already selected, do nothing
-        }
-        return new Set(["just_me"]);
-      } else {
-        // With mates and open to groups can coexist
-        if (next.has("just_me")) {
-          next.delete("just_me");
-        }
-        if (next.has(option)) {
-          next.delete(option);
-        } else {
-          next.add(option);
-        }
-        // If nothing selected, default to just_me
-        if (next.size === 0) {
-          return new Set(["just_me"]);
-        }
-        return next;
-      }
-    });
-    // Auto-advance to Step 2 (MODE) after selection
-    setCurrentStep("mode");
-  }
 
   function getWeekday(dateStr: string): string {
     if (!dateStr) return "";
@@ -253,68 +159,17 @@ export default function HostPage() {
     return "Round";
   }
 
-  async function handlePlayingNow() {
-    if (!activeGroupId) {
-      alert("No active group found. Please refresh and try again.");
+  async function handleCreateGroupTrip() {
+    if (!activeGroupId || !tripDate || !selectedCourseId) {
+      alert("Please complete all required fields.");
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const tripName = "Playing now";
-
-      const result = await createTrip([], activeGroupId, {
-        name: tripName,
-        date: today,
-        format: "Stableford",
-        status: "open",
-        courseId: null, // Allowed for playing now
-        teeId: null,
-        capacity: 4,
-        tripOrigin: "member",
-        isPostedToGroup: whoSelections.has("open_to_groups"),
-        scenarioKey: null,
-        logistics: undefined,
-      });
-
-      if (result.newTripId) {
-        // Route to GameDay
-        router.push(`/gameday/${result.newTripId}`);
-      } else {
-        throw new Error("Round created but no ID returned");
-      }
-    } catch (error) {
-      console.error("Failed to create round:", error);
-      alert(`Failed to create round: ${error instanceof Error ? error.message : String(error)}`);
-      setSubmitting(false);
-    }
-  }
-
-  async function handleSubmit() {
-    if (!activeGroupId) {
-      alert("No active group found. Please refresh and try again.");
-      return;
-    }
-
-    if (!tripDate) {
-      alert("Please select a date.");
-      return;
-    }
-
-    if (!selectedCourseId) {
-      alert("Please select a course.");
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const tripName = generateDefaultName();
-      // Posting: if "open_to_groups" checked OR specific groups selected
-      const isPostedToGroup = whoSelections.has("open_to_groups") || selectedGroupIds.length > 0;
-      const finalCapacity = 4; // Default capacity
+      const course = courses.find((c) => c.id === selectedCourseId);
+      const tripName = course ? `${course.name} trip` : "Group trip";
 
       const result = await createTrip([], activeGroupId, {
         name: tripName,
@@ -323,81 +178,63 @@ export default function HostPage() {
         status: "open",
         courseId: selectedCourseId,
         teeId: null,
-        capacity: finalCapacity,
-        tripOrigin: "member",
-        isPostedToGroup: selectedGroupIds.length > 0 || isPostedToGroup, // Post if groups selected OR open_to_groups checked
+        capacity: 16,
+        tripOrigin: "group",
+        isPostedToGroup: true,
         scenarioKey: null,
         logistics: undefined,
       });
 
       if (result.newTripId) {
-        // Invite selected mates (add them as confirmed attendees)
-        // Invites occupy slots - capacity logic handled by invite API
-        if (selectedMemberIds.length > 0) {
-          try {
-            // Invite each member using invite endpoint
-            await Promise.all(
-              selectedMemberIds.map((memberId) =>
-                fetch(`/api/trips/${result.newTripId}/invite`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  credentials: "include",
-                  body: JSON.stringify({ memberId }),
-                }).catch((err) => {
-                  console.warn(`Failed to invite member ${memberId}:`, err);
-                  // Continue even if some invites fail
-                })
-              )
-            );
-          } catch (error) {
-            console.error("Failed to invite some members:", error);
-            // Continue to confirmation even if invites fail
-          }
-        }
+        setCreatedTripId(result.newTripId);
+        setCurrentStep("confirm");
+      } else {
+        throw new Error("Trip created but no ID returned");
+      }
+    } catch (error) {
+      console.error("Failed to create group trip:", error);
+      alert(`Failed to create trip: ${error instanceof Error ? error.message : String(error)}`);
+      setSubmitting(false);
+    }
+  }
 
+  async function handleCreateHostedRound() {
+    if (!activeGroupId || !tripDate || !selectedCourseId) {
+      alert("Please complete all required fields.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const tripName = generateDefaultName();
+
+      const result = await createTrip([], activeGroupId, {
+        name: tripName,
+        date: tripDate,
+        format: "Stableford",
+        status: "open",
+        courseId: selectedCourseId,
+        teeId: null,
+        capacity: 4,
+        tripOrigin: "member",
+        isPostedToGroup: true,
+        scenarioKey: null,
+        logistics: undefined,
+      });
+
+      if (result.newTripId) {
         setCreatedTripId(result.newTripId);
         setCurrentStep("confirm");
       } else {
         throw new Error("Round created but no ID returned");
       }
     } catch (error) {
-      console.error("Failed to create round:", error);
+      console.error("Failed to create hosted round:", error);
       alert(`Failed to create round: ${error instanceof Error ? error.message : String(error)}`);
       setSubmitting(false);
     }
   }
-
-  function toggleMember(memberId: string) {
-    setSelectedMemberIds((prev) =>
-      prev.includes(memberId)
-        ? prev.filter((id) => id !== memberId)
-        : [...prev, memberId]
-    );
-  }
-
-  function removeMember(memberId: string) {
-    setSelectedMemberIds((prev) => prev.filter((id) => id !== memberId));
-  }
-
-  function getMemberDisplayName(member: MemberLite): string {
-    return member.display_name || member.full_name || "Unknown";
-  }
-
-  function toggleGroup(groupId: string) {
-    setSelectedGroupIds((prev) =>
-      prev.includes(groupId)
-        ? prev.filter((id) => id !== groupId)
-        : [...prev, groupId]
-    );
-  }
-
-  // Get members to display (recommended if no search, search results if searching)
-  const displayMembers = useMemo(() => {
-    if (searchQuery.trim()) {
-      return searchResults;
-    }
-    return recommendedMates;
-  }, [searchQuery, searchResults, recommendedMates]);
 
   if (loading) {
     return (
@@ -419,36 +256,61 @@ export default function HostPage() {
     );
   }
 
-  // Step 1: WHO (first, always)
-  if (currentStep === "who") {
+  // Step 1: CHOOSER (first, always)
+  if (currentStep === "chooser") {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">Host a round</h1>
-          <p className="mt-2 text-sm text-muted">Who are you playing with?</p>
+          <h1 className="text-2xl font-semibold text-foreground">What are you organising?</h1>
         </div>
 
         <div className="space-y-3">
+          {/* Primary option: Hosted round (available to everyone) */}
           <button
-            onClick={() => toggleWho("just_me")}
-            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all"
+            onClick={() => {
+              setTripIntent("hosted_round");
+              setCurrentStep("q1_when_where");
+            }}
+            className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
           >
-            <div className="font-medium text-foreground">🧍 Just me</div>
+            <div className="font-medium text-foreground">Hosted round</div>
+            <div className="mt-1 text-sm text-muted">A simple round you're hosting.</div>
           </button>
 
-          <button
-            onClick={() => toggleWho("with_mates")}
-            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all"
-          >
-            <div className="font-medium text-foreground">👥 With mates</div>
-          </button>
+          {/* Admin capability section */}
+          {isGroupAdmin && approvedGroups.length > 0 && (
+            <>
+              <div className="pt-2">
+                <div className="text-xs font-medium text-muted uppercase tracking-wide mb-1">Admin</div>
+                <div className="text-xs text-muted mb-3">For organising official group days.</div>
+              </div>
+              <button
+                onClick={() => {
+                  setTripIntent("group_trip");
+                  setOrganisationLevel("group_trip"); // Preselect for Q3
+                  setCurrentStep("q1_when_where");
+                }}
+                className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
+              >
+                <div className="font-medium text-foreground">Group trip</div>
+                <div className="mt-1 text-sm text-muted">An organised event for the whole group.</div>
+              </button>
+            </>
+          )}
 
-          <button
-            onClick={() => toggleWho("open_to_groups")}
-            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all"
-          >
-            <div className="font-medium text-foreground">🌍 Open to groups</div>
-          </button>
+          {/* Member view: show disabled group trip option */}
+          {!isGroupAdmin && (
+            <>
+              <div className="pt-2">
+                <div className="text-xs font-medium text-muted uppercase tracking-wide mb-1">Admin</div>
+                <div className="text-xs text-muted mb-3">For organising official group days.</div>
+              </div>
+              <div className="w-full rounded-lg border border-border bg-surface/50 p-4 text-left opacity-60">
+                <div className="font-medium text-muted">Group trip</div>
+                <div className="mt-1 text-sm text-muted">An organised event for the whole group.</div>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="mt-6">
@@ -463,52 +325,8 @@ export default function HostPage() {
     );
   }
 
-  // Step 2: MODE OF PLAY
-  if (currentStep === "mode") {
-    return (
-      <div className="container mx-auto max-w-2xl px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">When are you playing?</h1>
-        </div>
-
-        <div className="space-y-3">
-          <button
-            onClick={handlePlayingNow}
-            disabled={submitting}
-            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all disabled:opacity-50"
-          >
-            <div className="font-medium text-foreground">▶️ Playing now</div>
-            {submitting && <div className="mt-1 text-sm text-muted">Creating round…</div>}
-          </button>
-
-          <button
-            onClick={() => {
-              setPlayMode("planning_ahead");
-              setCurrentStep("planning");
-            }}
-            className="w-full rounded-lg bg-white p-4 text-left shadow-sm active:scale-[0.985] active:shadow-none transition-all"
-          >
-            <div className="font-medium text-foreground">🗓️ Planning ahead</div>
-          </button>
-        </div>
-
-        <div className="mt-6">
-          <button
-            onClick={() => {
-              setCurrentStep("who");
-              setWhoSelections(new Set());
-            }}
-            className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
-          >
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Step 3B: PLANNING AHEAD - When & where (combined)
-  if (currentStep === "planning") {
+  // Q1: When & where
+  if (currentStep === "q1_when_where") {
     // Generate date options (next 60 days)
     const generateDateOptions = () => {
       const options: Array<{ value: string; label: string; weekday: string; date: string }> = [];
@@ -538,39 +356,13 @@ export default function HostPage() {
       return options;
     };
 
-    // Generate time options (15-minute increments from 6:00 AM to 7:30 PM)
-    const generateTimeOptions = () => {
-      const options: Array<{ value: string; label: string }> = [];
-      
-      // If in "playing_now" mode, add "Now" as first option
-      if (playMode === "playing_now") {
-        options.push({ value: "Now", label: "Now" });
-      }
-      
-      // Generate times in 15-minute increments
-      for (let hour = 6; hour < 20; hour++) {
-        for (let minute = 0; minute < 60; minute += 15) {
-          const timeStr = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-          const ampm = hour >= 12 ? "PM" : "AM";
-          const hour12 = hour % 12 || 12;
-          const label = `${hour12}:${minute.toString().padStart(2, "0")} ${ampm}`;
-          options.push({ value: timeStr, label });
-        }
-      }
-      
-      return options;
-    };
 
     const dateOptions = generateDateOptions();
-    const timeOptions = generateTimeOptions();
 
-    // Find selected indices (default to first option if not set)
+    // Find selected index (default to first option if not set)
     const selectedDateIndex = tripDate
       ? Math.max(0, dateOptions.findIndex((opt) => opt.value === tripDate))
       : 0;
-    const selectedTimeIndex = tripTime
-      ? Math.max(0, timeOptions.findIndex((opt) => opt.value === tripTime))
-      : playMode === "playing_now" ? 0 : Math.max(0, timeOptions.findIndex((opt) => opt.value === "07:00"));
 
     // Handle date selection from scroll
     const handleDateScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -580,17 +372,6 @@ export default function HostPage() {
       const selectedIndex = Math.round(scrollTop / itemHeight);
       if (dateOptions[selectedIndex] && dateOptions[selectedIndex].value !== tripDate) {
         setTripDate(dateOptions[selectedIndex].value);
-      }
-    };
-
-    // Handle time selection from scroll
-    const handleTimeScroll = (e: React.UIEvent<HTMLDivElement>) => {
-      const container = e.currentTarget;
-      const scrollTop = container.scrollTop;
-      const itemHeight = 56;
-      const selectedIndex = Math.round(scrollTop / itemHeight);
-      if (timeOptions[selectedIndex] && timeOptions[selectedIndex].value !== tripTime) {
-        setTripTime(timeOptions[selectedIndex].value);
       }
     };
 
@@ -630,55 +411,13 @@ export default function HostPage() {
                       scrollSnapAlign: "center",
                     }}
                     className={`flex flex-col justify-center px-4 transition-colors ${
-                      index === selectedDateIndex ? "bg-action-blue-soft font-medium" : ""
+                      index === selectedDateIndex ? "bg-muted/30 font-medium" : ""
                     }`}
                   >
                     <div className="text-base font-medium text-foreground">
                       {option.weekday}
                     </div>
                     <div className="text-xs text-muted">{option.label}</div>
-                  </div>
-                ))}
-                <div style={{ height: "72px" }} /> {/* Bottom padding for centering */}
-              </div>
-            </div>
-          </div>
-
-          {/* Time wheel instrument */}
-          <div>
-            <div className="text-xs text-muted mb-2">Time</div>
-            <div className="relative rounded-lg bg-white shadow-sm overflow-hidden">
-              {/* Fade overlays */}
-              <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
-              <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-b from-transparent to-white z-10 pointer-events-none" />
-              
-              {/* Selection indicator */}
-              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-14 border-t border-b border-border/20 z-0" />
-              
-              {/* Scrollable time list */}
-              <div
-                className="relative overflow-y-auto"
-                style={{
-                  height: "200px",
-                  scrollSnapType: "y mandatory",
-                }}
-                onScroll={handleTimeScroll}
-              >
-                <div style={{ height: "72px" }} /> {/* Top padding for centering */}
-                {timeOptions.map((option, index) => (
-                  <div
-                    key={option.value}
-                    style={{
-                      height: "56px",
-                      scrollSnapAlign: "center",
-                    }}
-                    className={`flex items-center justify-center px-4 transition-colors ${
-                      index === selectedTimeIndex ? "bg-action-blue-soft font-medium" : ""
-                    }`}
-                  >
-                    <div className="text-base font-medium text-foreground">
-                      {option.label}
-                    </div>
                   </div>
                 ))}
                 <div style={{ height: "72px" }} /> {/* Bottom padding for centering */}
@@ -709,8 +448,8 @@ export default function HostPage() {
         <div className="mt-6 flex gap-3">
           <button
             onClick={() => {
-              setCurrentStep("mode");
-              setPlayMode(null);
+              setCurrentStep("chooser");
+              setTripIntent(null);
             }}
             className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
           >
@@ -718,231 +457,298 @@ export default function HostPage() {
           </button>
           <button
             onClick={() => {
-              // Check if we need social details step
-              if (whoSelections.has("with_mates") || whoSelections.has("open_to_groups")) {
-                setCurrentStep("social");
+              if (tripIntent === "group_trip") {
+                setCurrentStep("q2_travel");
               } else {
-                handleSubmit();
+                setCurrentStep("confirm_hosted");
               }
             }}
-            disabled={!tripDate || !selectedCourseId || submitting}
+            disabled={!tripDate || !selectedCourseId}
             className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
           >
-            {submitting ? "Creating…" : "Host round"}
+            Continue
           </button>
         </div>
       </div>
     );
   }
 
-  // Step 4: SOCIAL DETAILS (conditional)
-  if (currentStep === "social") {
+  // Q2: Travel (group trips only)
+  if (currentStep === "q2_travel") {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">Add details</h1>
+          <h1 className="text-2xl font-semibold text-foreground">How are people getting there?</h1>
         </div>
 
-        <div className="space-y-6">
-          {/* Add mates section */}
-          {whoSelections.has("with_mates") && (
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-3">
-                Add mates
-              </label>
-
-              {/* Selected mates chips */}
-              {selectedMemberIds.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {selectedMemberIds.map((memberId) => {
-                    // Find member in recommended or search results
-                    const member = [...recommendedMates, ...searchResults].find((m) => m.id === memberId);
-                    if (!member) return null;
-                    return (
-                      <div
-                        key={memberId}
-                        className="inline-flex items-center gap-2 rounded-full border border-brand-green bg-brand-green/10 px-3 py-1 text-sm"
-                      >
-                        <span className="text-foreground">{getMemberDisplayName(member)}</span>
-                        <button
-                          onClick={() => removeMember(memberId)}
-                          className="text-brand-green hover:text-brand-green/80"
-                          type="button"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              
-              {/* Search */}
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search mates..."
-                className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground mb-3"
-              />
-
-              {/* Recommended section (shown when no search query) */}
-              {!searchQuery.trim() && recommendedMates.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-xs font-medium text-muted uppercase tracking-wide mb-2">
-                    Recommended
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {recommendedMates.map((member) => {
-                      const isSelected = selectedMemberIds.includes(member.id);
-                      if (isSelected) return null; // Don't show selected members in recommended
-                      return (
-                        <button
-                          key={member.id}
-                          onClick={() => toggleMember(member.id)}
-                          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground hover:bg-muted/50 transition-colors"
-                          type="button"
-                        >
-                          {getMemberDisplayName(member)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Search results */}
-              {searchQuery.trim() && (
-                <div>
-                  <div className="text-xs font-medium text-muted uppercase tracking-wide mb-2">
-                    {searching ? "Searching..." : "Results"}
-                  </div>
-                  <div className="space-y-2 max-h-60 overflow-y-auto border border-border rounded-lg p-3 bg-surface">
-                    {searchResults.length === 0 ? (
-                      <p className="text-sm text-muted">
-                        {searching ? "Searching..." : "No mates found"}
-                      </p>
-                    ) : (
-                      searchResults.map((member) => {
-                        const isSelected = selectedMemberIds.includes(member.id);
-                        if (isSelected) return null; // Don't show selected members in results
-                        return (
-                          <button
-                            key={member.id}
-                            onClick={() => toggleMember(member.id)}
-                            className="w-full rounded-lg border border-border bg-surface p-3 text-left transition-colors hover:bg-muted/50"
-                            type="button"
-                          >
-                            <div className="text-sm font-medium text-foreground">
-                              {getMemberDisplayName(member)}
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Post to groups section */}
-          {whoSelections.has("open_to_groups") && (
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-3">
-                Post to groups
-              </label>
-              <p className="text-xs text-muted mb-3">
-                Select groups to advertise this round. Invites occupy slots; posting advertises remaining spots.
-              </p>
-              <div className="space-y-2">
-                {approvedGroups.map((group) => {
-                  const isSelected = selectedGroupIds.includes(group.id);
-                  return (
-                    <button
-                      key={group.id}
-                      onClick={() => toggleGroup(group.id)}
-                      className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                        isSelected
-                          ? "border-brand-green bg-brand-green/10"
-                          : "border-border bg-surface hover:bg-muted/50"
-                      }`}
-                      type="button"
-                    >
-                      <div className="text-sm font-medium text-foreground">{group.name}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-6 flex gap-3">
+        <div className="space-y-3">
           <button
-            onClick={() => setCurrentStep("planning")}
-            className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
+            onClick={() => {
+              setTravelType("local");
+              setCurrentStep("q3_organisation");
+            }}
+            className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
+          >
+            <div className="font-medium text-foreground">Local course</div>
+          </button>
+
+          <button
+            onClick={() => {
+              setTravelType("travel");
+              setCurrentStep("q3_organisation");
+            }}
+            className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
+          >
+            <div className="font-medium text-foreground">Travel involved</div>
+          </button>
+        </div>
+
+        <div className="mt-6">
+          <button
+            onClick={() => setCurrentStep("q1_when_where")}
+            className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
           >
             Back
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Q3: Organisation level (group trips only)
+  if (currentStep === "q3_organisation") {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-foreground">How organised is the day?</h1>
+        </div>
+
+        <div className="space-y-3">
           <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => {
+              setOrganisationLevel("hosted_round");
+              setCurrentStep("q4_meetup");
+            }}
+            className={`w-full rounded-lg border p-4 text-left hover:bg-background active:scale-[0.985] transition-all ${
+              organisationLevel === "hosted_round" ? "border-foreground/20 bg-muted/30" : "border-border bg-surface"
+            }`}
           >
-            {submitting ? "Creating…" : "Host round"}
+            <div className="font-medium text-foreground">Hosted round</div>
+            <div className="mt-1 text-sm text-muted">You're organising a simple round. Details stay flexible.</div>
+          </button>
+
+          <button
+            onClick={() => {
+              setOrganisationLevel("group_trip");
+              setCurrentStep("q4_meetup");
+            }}
+            className={`w-full rounded-lg border p-4 text-left hover:bg-background active:scale-[0.985] transition-all ${
+              organisationLevel === "group_trip" ? "border-foreground/20 bg-muted/30" : "border-border bg-surface"
+            }`}
+          >
+            <div className="font-medium text-foreground">Group trip</div>
+            <div className="mt-1 text-sm text-muted">A planned group event with shared expectations.</div>
+          </button>
+        </div>
+
+        <div className="mt-6">
+          <button
+            onClick={() => setCurrentStep("q2_travel")}
+            className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
+          >
+            Back
           </button>
         </div>
       </div>
     );
   }
 
-  // Step 5: CONFIRMATION (shown after successful creation)
-  if (currentStep === "confirm" && createdTripId) {
-    // Detect spare slots: capacity is 4, host + selectedMemberIds.length
-    const totalPlayers = 1 + selectedMemberIds.length; // host + invited mates
-    const capacity = 4;
-    const hasSpareSlot = totalPlayers < capacity;
+  // Q4: Meetup (group trips only)
+  if (currentStep === "q4_meetup") {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-foreground">Is there a group meetup?</h1>
+        </div>
+
+        <div className="space-y-3">
+          <button
+            onClick={() => {
+              setHasMeetup(false);
+              if (travelType === "travel") {
+                setCurrentStep("q5_duration");
+              } else {
+                setCurrentStep("summary");
+              }
+            }}
+            className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
+          >
+            <div className="font-medium text-foreground">No fixed meetup</div>
+          </button>
+
+          <button
+            onClick={() => {
+              setHasMeetup(true);
+              if (travelType === "travel") {
+                setCurrentStep("q5_duration");
+              } else {
+                setCurrentStep("summary");
+              }
+            }}
+            className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
+          >
+            <div className="font-medium text-foreground">Yes, we'll meet first</div>
+          </button>
+        </div>
+
+        <div className="mt-6">
+          <button
+            onClick={() => setCurrentStep("q3_organisation")}
+            className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
+          >
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Q5: Duration (conditional, group trips only)
+  if (currentStep === "q5_duration") {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-foreground">Is this more than one day?</h1>
+        </div>
+
+        <div className="space-y-3">
+          <button
+            onClick={() => {
+              setIsMultiDay(false);
+              setCurrentStep("summary");
+            }}
+            className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
+          >
+            <div className="font-medium text-foreground">Single day</div>
+          </button>
+
+          <button
+            onClick={() => {
+              setIsMultiDay(true);
+              setCurrentStep("summary");
+            }}
+            className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
+          >
+            <div className="font-medium text-foreground">Multiple days / stay</div>
+          </button>
+        </div>
+
+        <div className="mt-6">
+          <button
+            onClick={() => setCurrentStep("q4_meetup")}
+            className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
+          >
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Summary (group trips only)
+  if (currentStep === "summary") {
+    const course = courses.find((c) => c.id === selectedCourseId);
+    const courseName = course?.name || "Selected course";
+    const date = tripDate ? new Date(tripDate + "T00:00:00") : null;
+    const dateFormatted = date ? date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }) : "";
+
+    const travelPhrase = travelType === "local" ? "local course" : "with travel involved";
+    const meetupPhrase = hasMeetup ? " and a group meetup" : "";
+    const durationPhrase = isMultiDay ? ", over multiple days" : "";
+
+    const orgLevel = organisationLevel === "group_trip" ? "group trip" : "hosted round";
 
     return (
       <div className="container mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">Round hosted</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Confirm trip</h1>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-6 space-y-4 mb-6">
+          <p className="text-base text-foreground">
+            A <strong>{orgLevel}</strong> at <strong>{courseName}</strong> on <strong>{dateFormatted}</strong>, {travelPhrase}{meetupPhrase}{durationPhrase}.
+          </p>
+          <p className="text-sm text-muted">We'll set this up as a group trip.</p>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => setCurrentStep("q1_when_where")}
+            className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
+          >
+            Change details
+          </button>
+          <button
+            onClick={handleCreateGroupTrip}
+            disabled={submitting}
+            className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
+          >
+            {submitting ? "Creating…" : "Confirm & create trip"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Confirm hosted round
+  if (currentStep === "confirm_hosted") {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-foreground">Ready to post?</h1>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => setCurrentStep("q1_when_where")}
+            className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
+          >
+            Change details
+          </button>
+          <button
+            onClick={handleCreateHostedRound}
+            disabled={submitting}
+            className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
+          >
+            {submitting ? "Creating…" : "Create hosted round"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Confirmation (shown after successful creation)
+  if (currentStep === "confirm" && createdTripId) {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-foreground">{tripIntent === "group_trip" ? "Trip created" : "Round hosted"}</h1>
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
           <div className="text-sm text-muted">
-            Your round is ready. Share it with your mates or start playing.
+            {tripIntent === "group_trip" 
+              ? "This trip has been added to the group."
+              : "Your round is ready. Share it with your mates or start playing."}
           </div>
-
-          {hasSpareSlot && (
-            <div className="rounded-lg border border-border bg-surface/50 p-4 space-y-2">
-              <div className="text-sm font-medium text-foreground">Got a spare spot?</div>
-              <div className="text-xs text-muted">
-                Share the invite link in the group chat so someone can join.
-              </div>
-            </div>
-          )}
 
           <div className="flex gap-3">
             <Link
               href={`/trips/${createdTripId}`}
-              className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90 text-center"
+              className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 text-center"
             >
-              View round
+              View {tripIntent === "group_trip" ? "trip" : "round"}
             </Link>
-            {whoSelections.has("with_mates") && (
-              <button
-                onClick={() => {
-                  const inviteLink = `${window.location.origin}/trips/${createdTripId}?invite=1`;
-                  navigator.clipboard.writeText(inviteLink);
-                  alert("Invite link copied!");
-                }}
-                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
-              >
-                Copy invite link
-              </button>
-            )}
           </div>
         </div>
       </div>
