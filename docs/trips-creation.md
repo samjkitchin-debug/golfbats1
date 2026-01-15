@@ -361,6 +361,25 @@ They answer one question:
 
 ---
 
+## Meet Details (Ownership & Behaviour)
+
+Meet details are a **host-owned coordination instrument**.
+
+Rules:
+- Only the host (or group admin) can add or edit meet details.
+- Non-host members always see meet details as read-only.
+- If meet details have not yet been added, non-host members see a calm empty state:
+  > "Meet details haven't been added yet."
+
+Meet details are:
+- Compact
+- Optional
+- Non-blocking
+
+They exist to reduce coordination friction, not to enforce attendance or behaviour.
+
+---
+
 ## "Later" Affordance (Locked)
 
 Additional coordination steps are collapsed under a single affordance.
@@ -438,6 +457,21 @@ Hosted rounds use the same coordination model, but lighter.
 - Exports
 
 These may surface only if the hosted round is later shared with a group or gains structure.
+
+---
+
+## Primary Action Hierarchy (Global Rule)
+
+At any point in the trip lifecycle, there must be **one and only one dominant primary action** on screen.
+
+Rules:
+- The primary action answers the single most relevant question for that phase.
+- All other actions must be visually demoted (tertiary button or text link).
+- No two actions should compete for attention.
+
+Examples:
+- RSVP actions take priority over profile or handicap updates.
+- GameDay entry takes priority over coordination or admin actions.
 
 ---
 
@@ -625,6 +659,24 @@ No badges. No progress indicators. No phase labels.
 
 ---
 
+## Temporal Cue Reinforcement (Copy)
+
+To reinforce temporal transitions without introducing alerts or badges, the UI may show a single muted line beneath the trip status header.
+
+Approved copy:
+- If the round is happening today:
+  > "Today's the day."
+- If the trip is locked but not yet today:
+  > "All set — see you on <Day>."
+  (If the day is not available, fallback is "All set — see you soon.")
+
+Rules:
+- This line is informational only.
+- It must never compete with the primary action.
+- It must never use warning or attention colours.
+
+---
+
 ## Flights & Exports — Beta-Critical Flow (Locked)
 
 This section defines the **authoritative coordination flow** for beta trips where **flights formation and travel-agent export** are central.
@@ -740,6 +792,55 @@ Suggested subtle cue (optional):
 Reset behaviour:
 - Clears manual markings
 - Rebuilds the entire layout from scratch
+
+---
+
+## Flights Editor Entry
+
+The Flights Editor becomes available only after signups close.
+
+Entry point:
+- Appears on the trip detail page as a calm instrument card.
+- Copy:
+  - Title: "Flights"
+  - Body: "Balanced automatically. Adjust if you want."
+  - Action: "Review flights"
+
+The Flights Editor is optional but beta-critical.
+
+---
+
+## Flights Editor (Full-screen mode)
+
+### Purpose
+- A full-screen editing surface used after signups close, to produce a club-safe flight list and a travel-agent bundle.
+- Instrument-first. Calm. Social.
+
+### Top-of-screen copy (frozen)
+Primary:
+"Drag players to adjust flights."
+
+Secondary:
+"Flights start balanced by handicap. Any flight you edit is kept as-is."
+
+Optional tertiary (muted, allowed):
+"Drag onto a player to swap, or into an empty slot to complete a flight."
+
+### Interaction model (frozen)
+- Drag-and-drop works on mobile and desktop.
+- Drag onto a player = swap, then recompute automatic flights.
+- Drag into a vacant slot (manual flights only, <4 players) = insert, then recompute automatic flights.
+- Manual flights are excluded from quartile recalcs, but layout validity enforcement can borrow from the nearest prior flight (including manual) to prevent orphans.
+
+### Packing rule (frozen)
+- Prefer 4s.
+- No flight smaller than 3.
+- Minimal disturbance: tail fix produces …3,3 rather than …4,1 or …4,2.
+- If auto donor is blocked, allow nearest prior flight donation while preserving Edited state.
+
+### Export gating (frozen)
+- Export disabled while recompute is in progress.
+- Export disabled if player-count invariant fails.
 
 ---
 

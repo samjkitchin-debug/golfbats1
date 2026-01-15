@@ -985,58 +985,133 @@ export default function TripDetailPage() {
             )}
           </div>
         )}
+
+        {/* Temporal cue */}
+        {(() => {
+          const today = new Date().toISOString().slice(0, 10);
+          const isToday = trip.date === today;
+          const isClosed = trip.status === "closed";
+          
+          if (isToday && trip.status !== "cancelled") {
+            return (
+              <div className="mt-2 text-xs text-muted">Today's the day.</div>
+            );
+          } else if (isClosed && !isToday && trip.date) {
+            const tripDate = new Date(trip.date + "T00:00:00");
+            const dayName = tripDate.toLocaleDateString("en-GB", { weekday: "long" });
+            return (
+              <div className="mt-2 text-xs text-muted">All set — see you on {dayName}.</div>
+            );
+          }
+          return null;
+        })()}
       </div>
 
-      {/* Meet details (host only) */}
-      {trip.createdByMemberId === currentUserId && (
-        <section id="meet-details" className="rounded-xl border bg-surface p-5 shadow-sm">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-medium text-foreground">Meet details</div>
-              <p className="mt-1 text-xs text-muted">
-                {editingMeetDetails ? "Set the time and place so everyone's ready." : "All set."}
-              </p>
-            </div>
+      {/* Meet details */}
+      <section id="meet-details" className="rounded-xl border bg-surface p-5 shadow-sm">
+        {(() => {
+          const canEditMeetDetails = trip.createdByMemberId === currentUserId;
+          
+          if (!canEditMeetDetails) {
+            // Non-host view: show read-only or empty state
+            if (!hasMeetDetails) {
+              return (
+                <div>
+                  <div className="text-sm font-medium text-foreground mb-1">Meet details</div>
+                  <p className="text-xs text-muted">Meet details haven't been added yet.</p>
+                </div>
+              );
+            }
+            // Show read-only details
+            return (
+              <div className="space-y-3">
+                <div className="text-sm font-medium text-foreground">Meet details</div>
+                <div>
+                  <div className="text-xs text-muted">Meet time</div>
+                  <div className="mt-1 text-sm text-foreground">
+                    {meetTimeValue ? meetTimeValue : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted">Meeting point</div>
+                  <div className="mt-1 text-sm text-foreground">
+                    {meetingPointValue ? meetingPointValue : "—"}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          
+          // Host view: existing behavior
+          return (
+            <>
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-foreground">Meet details</div>
+                  <p className="mt-1 text-xs text-muted">
+                    {editingMeetDetails ? "Set the time and place so everyone's ready." : "All set."}
+                  </p>
+                </div>
 
-            {hasMeetDetails && (
-              <button
-                type="button"
-                onClick={() => setEditingMeetDetails((v) => !v)}
-                className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface"
-              >
-                {editingMeetDetails ? "Cancel" : "Edit"}
-              </button>
-            )}
+                {hasMeetDetails && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingMeetDetails((v) => !v)}
+                    className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface"
+                  >
+                    {editingMeetDetails ? "Cancel" : "Edit"}
+                  </button>
+                )}
+              </div>
+
+              {editingMeetDetails ? (
+                <MeetDetailsEditor
+                  trip={trip}
+                  currentUserId={currentUserId}
+                  supabase={supabase}
+                  activeGroupId={activeGroupId}
+                  onUpdate={(updatedTrip) => {
+                    setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                    // Collapse to read-only as soon as we have values locally.
+                    setEditingMeetDetails(false);
+                  }}
+                />
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs text-muted">Meet time</div>
+                    <div className="mt-1 text-sm text-foreground">
+                      {meetTimeValue ? meetTimeValue : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted">Meeting point</div>
+                    <div className="mt-1 text-sm text-foreground">
+                      {meetingPointValue ? meetingPointValue : "—"}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </section>
+
+      {/* Flights (host only, when signups closed) */}
+      {trip.status === "closed" && trip.createdByMemberId === currentUserId && (
+        <section className="rounded-xl border bg-surface p-5 shadow-sm">
+          <div className="mb-3">
+            <div className="text-sm font-medium text-foreground">Flights</div>
+            <p className="mt-1 text-xs text-muted">
+              Balanced automatically. Adjust if you want.
+            </p>
           </div>
-
-          {editingMeetDetails ? (
-            <MeetDetailsEditor
-              trip={trip}
-              currentUserId={currentUserId}
-              supabase={supabase}
-              activeGroupId={activeGroupId}
-              onUpdate={(updatedTrip) => {
-                setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-                // Collapse to read-only as soon as we have values locally.
-                setEditingMeetDetails(false);
-              }}
-            />
-          ) : (
-            <div className="space-y-3">
-              <div>
-                <div className="text-xs text-muted">Meet time</div>
-                <div className="mt-1 text-sm text-foreground">
-                  {meetTimeValue ? meetTimeValue : "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-muted">Meeting point</div>
-                <div className="mt-1 text-sm text-foreground">
-                  {meetingPointValue ? meetingPointValue : "—"}
-                </div>
-              </div>
-            </div>
-          )}
+          <Link
+            href={`/trips/${trip.id}/flights`}
+            className="inline-block rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
+          >
+            Review flights
+          </Link>
         </section>
       )}
 
@@ -1111,7 +1186,12 @@ export default function TripDetailPage() {
             />
             <button
               onClick={saveHandicap}
-              className="rounded-md btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className={`rounded-md px-4 py-2 text-sm font-medium hover:opacity-95 ${
+                // Demote to tertiary if RSVP section has primary Join button
+                trip.status === "open" && !isScheduled && !myEntry
+                  ? "border border-border bg-transparent text-foreground hover:bg-surface"
+                  : "btn-primary text-white"
+              }`}
             >
               Save
             </button>

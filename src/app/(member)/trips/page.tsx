@@ -486,6 +486,7 @@ export default function TripsListPage() {
   }, [hostedRounds, searchQuery, courses]);
 
   // Set default expanded trip: first group trip if exists, else first hosted round (only on first render)
+  // Note: User can collapse all trips by clicking the expanded one
   useEffect(() => {
     if (!didInitExpandRef.current && expandedTripId === null) {
       if (groupTripsFiltered.length > 0) {

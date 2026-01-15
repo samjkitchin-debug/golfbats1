@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 // ACTIVE GLOBALS IMPORT (THIS IS THE ONE USED BY THE APP)
 import "./globals.css";
+import DevSandboxLauncher from "./components/dev/DevSandboxLauncher";
 
 export const metadata: Metadata = {
   title: {
@@ -44,6 +45,7 @@ export default function RootLayout({
       <body className="antialiased">
         {children}
         <SpeedInsights />
+        <DevSandboxLauncher />
       </body>
     </html>
   );
