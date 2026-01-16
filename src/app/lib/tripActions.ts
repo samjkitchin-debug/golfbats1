@@ -82,6 +82,9 @@ export type Trip = {
   /** Trip name - displayed prominently on tiles */
   name?: string;
 
+  /** Auto-generated trip name: "{CourseName} · {Dow} {D Mon}" */
+  tripName?: string;
+
   date: string; // YYYY-MM-DD
   format: string;
 
@@ -107,6 +110,14 @@ export type Trip = {
 
   /** Transport mode for itinerary (self/plane/ferry/train/car/mixed) */
   transportMode?: TransportMode | null;
+
+  /** Travel details for group trips (from Q2 Trip shape) */
+  travelInvolved?: boolean;
+  travelType?: 'ferry' | 'flight' | 'coach' | 'drive' | 'other' | null;
+  travelScope?: 'domestic' | 'international' | null;
+  bookingApproach?: 'self' | 'centralised' | null;
+  bookingProviderName?: string | null;
+  travelNote?: string | null;
 
   /** Decision logistics - editable while signups are open (meet point, meet time) */
   decisionLogistics?: DecisionLogistics;
@@ -172,6 +183,7 @@ function normalizeTrip(input: any): Trip {
   return {
     id: Number(t.id),
     name: t.name ?? undefined,
+    tripName: (t as any).tripName ?? undefined,
     date: String(t.date ?? ""),
     format: String(t.format ?? ""),
 
@@ -190,6 +202,13 @@ function normalizeTrip(input: any): Trip {
     scenarioKey: (t as any).scenarioKey !== undefined ? ((t as any).scenarioKey ?? null) : undefined,
 
     transportMode: (t as any).transportMode !== undefined ? ((t as any).transportMode ?? null) : undefined,
+
+    travelInvolved: (t as any).travel_involved !== undefined ? Boolean((t as any).travel_involved) : undefined,
+    travelType: (t as any).travel_type !== undefined ? ((t as any).travel_type ?? null) : undefined,
+    travelScope: (t as any).travel_scope !== undefined ? ((t as any).travel_scope ?? null) : undefined,
+    bookingApproach: (t as any).booking_approach !== undefined ? ((t as any).booking_approach ?? null) : undefined,
+    bookingProviderName: (t as any).booking_provider_name !== undefined ? ((t as any).booking_provider_name ?? null) : undefined,
+    travelNote: (t as any).travel_note !== undefined ? ((t as any).travel_note ?? null) : undefined,
 
     decisionLogistics: (t as any).decisionLogistics ?? undefined,
 
@@ -462,6 +481,13 @@ export async function createTrip(
       ferryDetails: partial.logistics.ferryDetails ?? null,
       notes: partial.logistics.notes ?? null,
     } : null,
+    // Travel fields (only for group trips)
+    travelInvolved: partial.travelInvolved ?? false,
+    travelType: partial.travelType ?? null,
+    travelScope: partial.travelScope ?? null,
+    bookingApproach: partial.bookingApproach ?? null,
+    bookingProviderName: partial.bookingProviderName ?? null,
+    travelNote: partial.travelNote ?? null,
     attendees: partial.attendees ?? [],
     result: partial.result ?? null,
     createdAtUtc: partial.createdAtUtc ?? nowIsoUtc(),

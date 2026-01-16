@@ -23,8 +23,8 @@ async function fetchTripsData(
   // Return ALL trips for the group - no filtering by origin, creator, or posted status
   const { data: tripsDataRaw, error: tripsError } = await supabase
     .from("trips")
-    .select(
-      "id,legacy_id,name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group"
+      .select(
+      "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group,travel_involved,travel_type,travel_scope,booking_approach,booking_provider_name,travel_note"
     )
     .eq("group_id", groupId)
     .gte("trip_date", todayYmd) // Only trips with date >= today (upcoming only)
@@ -206,6 +206,7 @@ async function fetchTripsData(
     return {
       id: numericId,
       name: trip.name || undefined,
+      tripName: (trip as any).trip_name || undefined,
       date: trip.trip_date,
       format: trip.format,
       course: undefined,
@@ -248,6 +249,13 @@ async function fetchTripsData(
            memberCreatorsById[(trip as any).created_by_member_id]?.full_name || 
            null)
         : null,
+      // Travel fields (group trips only)
+      travelInvolved: (trip as any).travel_involved !== undefined ? Boolean((trip as any).travel_involved) : undefined,
+      travelType: (trip as any).travel_type || null,
+      travelScope: (trip as any).travel_scope || null,
+      bookingApproach: (trip as any).booking_approach || null,
+      bookingProviderName: (trip as any).booking_provider_name || null,
+      travelNote: (trip as any).travel_note || null,
     };
   });
 
@@ -501,6 +509,26 @@ export async function POST(req: Request) {
         updateData.notes = trip.logistics?.notes || null;
       }
 
+      // Handle travel fields (group trips only)
+      if (trip.travelInvolved !== undefined) {
+        updateData.travel_involved = Boolean(trip.travelInvolved);
+      }
+      if (trip.travelType !== undefined) {
+        updateData.travel_type = trip.travelType || null;
+      }
+      if (trip.travelScope !== undefined) {
+        updateData.travel_scope = trip.travelScope || null;
+      }
+      if (trip.bookingApproach !== undefined) {
+        updateData.booking_approach = trip.bookingApproach || null;
+      }
+      if (trip.bookingProviderName !== undefined) {
+        updateData.booking_provider_name = trip.bookingProviderName || null;
+      }
+      if (trip.travelNote !== undefined) {
+        updateData.travel_note = trip.travelNote || null;
+      }
+
       const { error: updateError } = await supabase
         .from("trips")
         .update(updateData)
@@ -627,6 +655,30 @@ export async function POST(req: Request) {
       // Member trips: always true (hosted rounds in a group are visible to the entire group immediately)
       const isPostedToGroup = true;
 
+      // Derive default trip_name: "{CourseName} · {Dow} {D Mon}" if user did not provide one
+      let tripName: string | null = null;
+      if (!trip.tripName && trip.courseId) {
+        // Fetch course name
+        const { data: courseData } = await supabase
+          .from("courses")
+          .select("name")
+          .eq("id", trip.courseId)
+          .maybeSingle();
+        
+        const courseName = courseData?.name || null;
+        if (courseName) {
+          // Format date as "{Dow} {D Mon}"
+          const dateObj = new Date(validatedDate + "T00:00:00");
+          const dow = dateObj.toLocaleDateString("en-GB", { weekday: "short" });
+          const day = dateObj.getDate();
+          const mon = dateObj.toLocaleDateString("en-GB", { month: "short" });
+          tripName = `${courseName} · ${dow} ${day} ${mon}`;
+        }
+      } else if (trip.tripName) {
+        // Use provided trip_name if user provided one
+        tripName = trip.tripName;
+      }
+
       // Build INSERT payload with validated fields
       const tripId = crypto.randomUUID();
       const insertData: any = {
@@ -636,6 +688,7 @@ export async function POST(req: Request) {
         legacy_id: nextLegacyId,
         // Required fields (validated)
         name: validatedName,
+        trip_name: tripName, // Auto-generated default name
         trip_date: validatedDate,
         // Other fields with defaults
         format: trip.format || "Stableford",
@@ -653,6 +706,13 @@ export async function POST(req: Request) {
         trip_origin: tripOrigin,
         created_by_member_id: createdByMemberId,
         is_posted_to_group: isPostedToGroup,
+        // Travel fields (only set for group trips)
+        travel_involved: tripOrigin === 'group' ? (trip.travelInvolved ? true : false) : false,
+        travel_type: tripOrigin === 'group' ? (trip.travelType || null) : null,
+        travel_scope: tripOrigin === 'group' ? (trip.travelScope || null) : null,
+        booking_approach: tripOrigin === 'group' ? (trip.bookingApproach || null) : null,
+        booking_provider_name: tripOrigin === 'group' ? (trip.bookingProviderName || null) : null,
+        travel_note: tripOrigin === 'group' ? (trip.travelNote || null) : null,
         created_at: now,
         updated_at: now,
       };

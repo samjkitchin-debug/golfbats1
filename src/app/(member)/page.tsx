@@ -1015,7 +1015,9 @@ export default function HomePage() {
     };
 
     // Build identity and place lines
+    // Use tripName (auto-generated) if present, otherwise fall back to current logic
     const identity =
+      nextGameTrip?.tripName ||
       nextGameTrip?.name ||
       (nextGameTrip?.createdByMemberName ? `${nextGameTrip.createdByMemberName}'s round` : null) ||
       courseText?.title ||

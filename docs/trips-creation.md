@@ -78,43 +78,67 @@ Scenarios are inferred through answers to simple, high-signal questions.
 ### Q1 — When & where
 (Date + course selection)
 
+#### Date
+
+The date is selected using an inline calendar instrument.
+
+Requirements:
+- The calendar is embedded directly in the page (not modal).
+- It uses a vertically scrollable month stack (bounded, not infinite).
+- Scroll snapping is enabled so the view settles cleanly on a month.
+- The month containing the current selection is the default anchor.
+- Day-of-week is clearly visible for all dates.
+- Dates before today are softly disabled (visible but not selectable).
+- Today is selectable.
+- Selecting a date immediately updates the trip state.
+- No "Apply", "Confirm", or secondary actions are used for date selection.
+
+A compact echo line must appear below the calendar:
+- Label: "Selected:" (muted)
+- Value: Full day + date (e.g. "Saturday · 18 April 2026")
+
+The presence of a selected date contributes to enabling progression,
+but date selection alone must never block navigation once set.
+
+Progression gating (Q1):
+
+The Continue action is enabled if and only if:
+- A valid date is selected
+- A course is selected
+
+No other conditions may gate progression at this step.
+
+Layout constraint:
+
+Q1 ("When & where") must function as a single-screen instrument on mobile.
+Primary actions (Back / Continue) must remain reachable without requiring page scroll.
+
 ---
 
-### Q2 — Travel
-**How are people getting there?**
-- Local course
-- Travel involved
+### Q2 — Trip shape
+**What kind of trip is this?**
 
----
+This step is a single screen instrument with three sections:
 
-### Q3 — Organisation level
-**How organised is the day?**
+#### A) Travel
+- **Travel involved?** (Local | Travel involved)
+- **IF Travel involved:**
+  - **Travel type** (single-select): Ferry | Flight | Coach / bus | Drive | Other
+  - **Travel scope** (single-select): Domestic | International
+  - **Booking approach** (single-select):
+    - Everyone books their own
+    - Centralised booking
+  - **IF Centralised booking:** "Booked via (optional)" free-text (agent/concierge name)
 
-- **Hosted round**
-  - Helper: You're organising a simple round. Details stay flexible.
-- **Group trip**
-  - Helper: A planned group event with shared expectations.
+#### B) Group meetup (toggle)
+- **Group meetup** (true/false)
+
+#### C) More than one day (toggle)
+- **More than one day** (true/false)
 
 Notes:
-- This question is about **structure**, not ownership.
-- A hosted round may still be shared with groups.
-- A group trip implies coordination, governance, and clearer plans.
-
----
-
-### Q4 — Meetup
-**Is there a group meetup?**
-- No fixed meetup
-- Yes, we'll meet first
-
----
-
-### Q5 — Duration (conditional)
-*Only shown if travel involved = yes*
-
-**Is this more than one day?**
-- Single day
-- Multiple days / stay
+- These toggles are independent (single-day can still have travel).
+- Creation captures intent only; passports/hotels/etc are NOT collected during creation.
 
 ---
 
@@ -201,7 +225,6 @@ It must never resemble an admin panel, checklist, or settings screen.
 
 Shown when:
 - Group trip
-- OR hosted round with meetup inferred / suggested
 
 Copy:
 > *Set the meetup time and place.*
@@ -213,6 +236,8 @@ Notes:
 - Keep this lightweight (time, place, short note)
 - No publishing language
 
+Note: Hosted rounds do not use Next steps. Meet details for hosted rounds are managed directly on Trip Details (see Hosted round — Trip details section).
+
 ---
 
 ### 2) Signups
@@ -220,7 +245,6 @@ Notes:
 
 Shown when:
 - Group trip
-- OR hosted round posted to a group
 
 Copy:
 > *Let people lock in for the day.*
@@ -231,6 +255,8 @@ Action:
 Notes:
 - Do not expose cutoff logic here
 - Avoid "registration" language
+
+Note: Hosted rounds do not use Next steps or separate signup management.
 
 ---
 
@@ -322,8 +348,9 @@ They answer one question:
 
 ### When this instrument appears
 
-- As the first Next step when a meetup is inferred or likely
+- As the first Next step for group trips when a meetup is inferred or likely
 - Accessible later from the trip page (same instrument)
+- For hosted rounds: available directly on Trip Details (no Next steps)
 
 ---
 
@@ -460,6 +487,50 @@ These may surface only if the hosted round is later shared with a group or gains
 
 ---
 
+### Hosted round completion
+
+Hosted rounds do not use a confirmation or "posting" step.
+
+Rules:
+- Once required fields are satisfied, creation proceeds directly.
+- No intermediate "Ready to post" or confirmation screen is shown.
+- A lightweight success state may be shown after creation.
+
+Copy rules for hosted round success:
+- Title: "All set"
+- Primary action: "View details"
+- No use of "post", "share", or "publish" language.
+
+Rationale:
+Hosted rounds are intentionally lightweight.
+Creation should feel immediate, not performative.
+
+---
+
+### Hosted round — Trip details (post-creation)
+
+Meet details are the only coordination input for hosted rounds.
+
+Meet details consist of:
+- Meet time (time wheel instrument, default 07:00)
+- Where to meet
+- Optional note (short context like "Mike will pick us up…")
+
+Saving meet details makes them immediately visible to attendees.
+
+There is no "publish / lock / logistics" step on hosted rounds.
+
+"Next steps", transport/ferry/flights, and logistics publishing are group-trip concepts and must not appear in hosted rounds.
+
+Handicap is profile state and must not be reviewed/edited on Trip Details for hosted rounds (handicap surfaces in GameDay pre-play).
+
+Hierarchy:
+- Meet details is the primary instrument surface (fully framed).
+- RSVP is secondary and visually lighter (subtle divider, less framed).
+- Results is tertiary and de-emphasised until relevant (muted text, minimal styling).
+
+---
+
 ## Primary Action Hierarchy (Global Rule)
 
 At any point in the trip lifecycle, there must be **one and only one dominant primary action** on screen.
@@ -578,6 +649,31 @@ Notes:
 **UI focus:**
 - Results
 - Light commentary
+
+---
+
+## Group Trip Details — Base Camp
+
+**The canonical Base Camp specification lives in: [`docs/trips/base-camp.md`](./trips/base-camp.md)**
+
+This document contains the authoritative specification for:
+- Page zones (Zone A: Top Chrome, Zone B: Base Camp Timeline, Zone C: Secondary Surfaces)
+- Rail + anchor model (spine starts inside Zone B, not above chrome)
+- Instrument contract + lifecycle states (hidden → outstanding inline → outstanding quiet → completed past → compiled chrome)
+- Current instruments: `meet_details`, `travel_outline`, `trip_name`, `signups_close`
+- Guardrails:
+  - Inline editors are rare
+  - v1: only one inline editor visible at a time (others become quiet lines)
+
+**Base Camp temporal moments and anchor switching are defined in [`docs/trips/base-camp.md`](./trips/base-camp.md) (Canonical moments and anchor switching v2.2).**
+
+For phase definitions and entry conditions, see the [Trip Phases — Temporal Framework](#trip-phases--temporal-framework-locked) section below.
+
+**Note:** Sign-ups close defaults to 4 days before trip date, editable from Base Camp (not asked during creation).
+
+---
+
+**Note:** Any previous Base Camp subsections in this document (if present) are superseded by `docs/trips/base-camp.md`.
 
 ---
 

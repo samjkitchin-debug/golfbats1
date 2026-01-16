@@ -9,6 +9,7 @@ type TripRsvpActionsProps = {
   showJoin?: boolean; // Controls if Join button should be visible (e.g., trip is open and not scheduled)
   showMicrocopy?: boolean; // Show optional muted microcopy "You're on the attendee list" (only if space allows, e.g., Trip Details page)
   className?: string; // Optional className for the container
+  neutralLeaveButton?: boolean; // If true, "Can't make it" button uses neutral styling instead of green
 };
 
 export function TripRsvpActions({
@@ -20,6 +21,7 @@ export function TripRsvpActions({
   showJoin = true,
   showMicrocopy = false,
   className = "",
+  neutralLeaveButton = false,
 }: TripRsvpActionsProps) {
   const isConfirmed = status === "confirmed";
 
@@ -51,6 +53,8 @@ export function TripRsvpActions({
               className={`shrink-0 rounded border px-3 py-1.5 text-sm font-medium ${
                 leaveDisabled
                   ? "border-border bg-background text-muted cursor-not-allowed"
+                  : neutralLeaveButton
+                  ? "border-border bg-transparent text-foreground hover:bg-surface"
                   : "border-brand-green bg-surface text-brand-green hover:bg-brand-green/5"
               }`}
             >
@@ -78,7 +82,7 @@ export function TripRsvpActions({
         className={`w-full rounded px-4 py-2 text-sm font-medium text-white ${
           joinDisabled
             ? "bg-border text-muted cursor-not-allowed"
-            : "bg-brand-green hover:opacity-90"
+            : "btn-primary hover:opacity-90"
         }`}
       >
         Join

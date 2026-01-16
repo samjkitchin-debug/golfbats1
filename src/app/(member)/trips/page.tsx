@@ -582,7 +582,8 @@ export default function TripsListPage() {
     onLeave: () => void;
   }) {
     const courseText = getTripCourseText(trip, courses);
-    const tripName = trip.name || courseText.title || (getGolfNoun(trip) === "trip" ? "Trip" : "Round");
+    // Use tripName (auto-generated) if present, otherwise fall back to current logic
+    const tripName = trip.tripName || trip.name || courseText.title || (getGolfNoun(trip) === "trip" ? "Trip" : "Round");
     const tripDateParts = formatTripRowDate(trip.date);
     const groupName = trip.groupName || "";
     const groupId = trip.groupId || "";

@@ -31,7 +31,7 @@ export async function GET(
     let tripQuery = supabase
       .from("trips")
       .select(
-        "id,legacy_id,name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group"
+        "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group,travel_involved,travel_type,travel_scope,booking_approach,booking_provider_name,travel_note"
       );
 
     if (isNumeric) {
@@ -213,6 +213,7 @@ export async function GET(
     const tripDetail = {
       id: numericId,
       name: tripData.name || undefined,
+      tripName: (tripData as any).trip_name || undefined,
       date: tripData.trip_date,
       format: tripData.format,
       course: undefined,
@@ -247,6 +248,13 @@ export async function GET(
       createdByMemberId: (tripData as any).created_by_member_id || null,
       isPostedToGroup: (tripData as any).is_posted_to_group !== undefined ? (tripData as any).is_posted_to_group : true,
       createdByMemberName,
+      // Travel fields (group trips only)
+      travelInvolved: (tripData as any).travel_involved !== undefined ? Boolean((tripData as any).travel_involved) : undefined,
+      travelType: (tripData as any).travel_type || null,
+      travelScope: (tripData as any).travel_scope || null,
+      bookingApproach: (tripData as any).booking_approach || null,
+      bookingProviderName: (tripData as any).booking_provider_name || null,
+      travelNote: (tripData as any).travel_note || null,
     };
 
     return NextResponse.json({ ok: true, trip: tripDetail });

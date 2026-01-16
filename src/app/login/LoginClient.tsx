@@ -89,20 +89,18 @@ export default function LoginClient() {
         </button>
 
         <button
-          onClick={() => signInOAuth("apple")}
-          disabled={busy !== null}
-          className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-4 text-base font-medium text-foreground hover:bg-background disabled:opacity-50"
+          disabled
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-4 text-base font-medium text-foreground opacity-50 cursor-not-allowed"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zm-5.02-13.03c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
           </svg>
-          {busy === "apple" ? "Opening Apple…" : "Continue with Apple"}
+          Continue with Apple
         </button>
 
         <button
-          onClick={() => signInOAuth("facebook")}
-          disabled={busy !== null}
-          className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-4 text-base font-medium text-foreground hover:bg-background disabled:opacity-50"
+          disabled
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-4 text-base font-medium text-foreground opacity-50 cursor-not-allowed"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
@@ -110,7 +108,7 @@ export default function LoginClient() {
               fill="currentColor"
             />
           </svg>
-          {busy === "facebook" ? "Opening Facebook…" : "Continue with Facebook"}
+          Continue with Facebook
         </button>
 
         {/* Divider */}

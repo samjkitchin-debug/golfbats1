@@ -59,6 +59,8 @@ Instruments:
 - State-first layout
 - Direct manipulation
 - Reading before acting
+- Clear hierarchy: primary instrument first, secondary context lighter, tertiary items quiet
+- Avoid stacking multiple equally-framed "cards" that create CRUD/list energy
 
 If it looks like a card, it is probably wrong.
 
@@ -130,6 +132,38 @@ Undo is available, but quiet.
 
 ---
 
+### Date & time instruments
+
+Date selection must behave as an instrument, not a form control.
+
+Rules:
+- Date selection is inline and embedded in the page flow.
+- Modals, popovers, or system calendar pickers must not be used for primary flow control.
+- Dates must support long-range planning (months ahead), not just near-term presets.
+- Day-of-week must be visually explicit and readable at all times.
+- Past dates are softly disabled (visible but non-interactive); today is always allowed.
+- Selecting a date updates state immediately (no "Apply" or confirmation step).
+- Instruments should prefer continuous interaction (scrolling, snapping) over repeated taps.
+- Primary actions must remain reachable without page scrolling.
+
+Rationale:
+Golf trips are planned around days, not timestamps.
+Date is state, not configuration.
+
+---
+
+### Hosted rounds vs group trips
+
+Hosted rounds are intentionally lightweight and must not include group-trip logistics concepts.
+
+Hosted rounds treat meet details as the only logistics (time, place, optional note). Saving meet details makes them visible immediately (no publishing/locking).
+
+Group trips may capture travel intent during creation: travel involved, travel type (ferry/flight/coach/drive/other), travel scope (domestic/international), booking approach (self-booked vs centralised). Creation captures intent only: no passport collection, hotel booking capture, or document/photo gathering during creation. Execution details belong on Trip Details instruments later, gated by these flags.
+
+Group trip logistics (transport/ferry/flights, publishing, exports, staged steps) must not leak into hosted rounds. Trip Details for hosted rounds must read as a single coordination instrument, not a CRUD surface.
+
+---
+
 ### 8. Personal-First, Group-Aware
 
 The user's state is gently emphasised.
@@ -140,6 +174,28 @@ No judgement.
 No pressure.
 
 The tone is calm, social, and observational.
+
+---
+
+### Language and tone
+
+Day Fore It is a coordination tool, not a social network.
+
+Rules:
+- Avoid social-media language such as "post", "share", or "publish".
+- Use neutral, calm coordination language:
+  - "Create", "Set up", "All set", "View details".
+- Actions describe state transitions, not broadcasting.
+- Copy should assume small groups organising together, not performing for an audience.
+
+Examples:
+- "All set" (not "Ready to post")
+- "View details" (not "View post" or "View round" when ambiguous)
+- "Invite participants" (not "Share with mates")
+
+Rationale:
+Trips and rounds are coordination artefacts.
+They are created to be used, not posted.
 
 ---
 

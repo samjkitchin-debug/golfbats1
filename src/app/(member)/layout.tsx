@@ -37,9 +37,9 @@ export default async function MemberLayout({ children }: { children: React.React
             <Image
               src="/logo.png"
               alt="DayForeIt"
-              width={160}
-              height={80}
-              className="h-auto w-auto max-h-[80px] object-contain"
+              width={128}
+              height={64}
+              className="h-auto w-auto max-h-[64px] object-contain"
               style={{ width: "auto" }}
               priority
             />
