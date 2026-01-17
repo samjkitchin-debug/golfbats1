@@ -37,8 +37,10 @@ It uses **instruments** (internal primitives) to keep the UI calm, modular, and 
 
 - **Persisted sign-ups gates**
   - Sign-ups timing is controlled by persisted gates (`signups_opened_at` and `cutoff_at`).
-  - Default behaviour: sign-ups open at trip_date - 30 days unless opened early via gate.
+  - Derived open moment: `derivedOpenMoment = trip.date - 30 days`
+  - Effective open moment: `effectiveOpenMoment = trip.signups_opened_at ?? derivedOpenMoment`
   - Default close: trip_date - 4 days, 23:59 Asia/Singapore unless `cutoff_at` is set.
+  - `signups_opened_at` is one-way: set once during Scheduled phase, never cleared.
 
 ---
 
@@ -113,7 +115,8 @@ Base Camp anchors switch based on five canonical temporal moments. These moments
 ### Five canonical moments
 
 - **Sign-ups open moment:**
-  - `openMoment = trip.date - 30 days` (derived, not editable)
+  - `derivedOpenMoment = trip.date - 30 days` (derived)
+  - `effectiveOpenMoment = trip.signups_opened_at ?? derivedOpenMoment` (one-way override during Scheduled phase)
 
 - **Sign-ups close moment:**
   - `effectiveCloseMoment = trip.cutoffAt ?? (trip.date - 4 days at 23:59 SGT)`
@@ -149,19 +152,19 @@ Phase is derived from canonical moments using this precedence (frozen):
 2. `scoringStarted` → `"in_play"` (irreversible)
 3. `isGameDay` (trip.date === today SGT) → `"gameday"`
 4. `now >= signupCloseAtEffective` AND `today < trip.date` → `"locked"`
-5. `now >= signupOpenAt` AND `now < signupCloseAtEffective` → `"signups_open"`
+5. `now >= effectiveOpenMoment` AND `now < signupCloseAtEffective` → `"signups_open"`
 6. else → `"scheduled"` (default)
 
 Manual phase override is supported for hosts/admins, but cannot contradict irreversible truths (completed/in_play always win).
 
 ### Base Camp anchor switching rules
 
-**Scheduled** (`now < openMoment`)
+**Scheduled** (`now < effectiveOpenMoment`)
 - Top anchor: "Scheduled."
 - Bottom anchor: "Sign-ups open on {Dow D Mon}."
 - Lane instruments: `trip_name` (formation phase only)
 
-**Sign-ups open** (`openMoment <= now < effectiveCloseMoment`)
+**Sign-ups open** (`effectiveOpenMoment <= now < effectiveCloseMoment`)
 - Top anchor: "Sign-ups are open now."
 - Bottom anchor: "Sign-ups close on {Dow D Mon}."
 - Lane instruments: `meet_details`, `travel_outline`
@@ -414,7 +417,7 @@ Instruments are keyed to phases via `getLaneInstrumentIds(phase)`:
 
 ## Anchor interactions (Phase control)
 
-Base Camp anchors serve as the organiser's manual control surface for phase progression and regression.
+Base Camp anchors serve as the organiser's manual control surface for phase progression.
 
 **Rules:**
 - Anchors remain system-owned statements by default
@@ -423,25 +426,23 @@ Base Camp anchors serve as the organiser's manual control surface for phase prog
 - Entire anchor row is clickable
 - Clicking an actionable anchor opens a minimal action sheet
 - Instruments are NOT responsible for phase control
-- Automation resumes once overrides are resolved
 
-**Top anchor — "Sign-ups are open now." (when signups_open):**
-- Actionable: "Revert to scheduled (before sign-ups open)"
-- Confirm: "Revert to scheduled?" / "Sign-ups will no longer be open."
-- Behaviour: Clears phase override, resumes canonical logic
+**Bottom anchor — "Sign-ups open on {date}" (when scheduled):**
+- Actionable: "Open sign-ups now"
+- Behaviour: Sets `signups_opened_at` to current server time (one-way, Scheduled-only action)
+- Confirm: "Open sign-ups now?" / "Sign-ups will be open immediately."
 
 **Bottom anchor — "Sign-ups close on {date}" (when signups_open):**
 - Action 1: Change sign-ups close date (date picker, persists as 23:59 SGT)
 - Action 2: Close sign-ups now (sets cutoff_at to current time, requires confirmation)
 
-**Top anchor — "Sign-ups are closed." (when signups_closed):**
+**Top anchor — "Sign-ups are closed." (when locked):**
 - Actionable: "Re-open sign-ups"
-- Confirm: "Re-open sign-ups?" / "This will allow new players to join again."
-- Behaviour: Sets cutoff_at to future date (default: trip.date - 4 days, 23:59 SGT)
+- Confirm: "Re-open sign-ups?" / "This will allow new players to join again. If you change the list, regenerate flights and exports."
+- Behaviour: Sets `cutoff_at` to end of today (23:59 SGT), not trip.date - 4 days
 
 **Note:**
-- Phase overrides are initiated via anchor interactions
-- Automation is default, manual override is explicit (local state, not persisted)
+- `signups_opened_at` is one-way: set once during Scheduled phase, never cleared
 - Sign-ups close control lives on the bottom anchor
 - No separate "settings" instrument exists for sign-ups
 

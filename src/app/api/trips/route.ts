@@ -415,7 +415,7 @@ export async function POST(req: Request) {
       // Update existing trip - find by legacy_id and verify it belongs to this group
       const { data: existingTrip } = await supabase
         .from("trips")
-        .select("id, group_id, created_by")
+        .select("id, group_id, created_by, trip_date, signups_opened_at")
         .eq("legacy_id", id)
         .single();
 
@@ -526,8 +526,7 @@ export async function POST(req: Request) {
       if (trip.status !== undefined) {
         updateData.status = trip.status;
       }
-      // Handle signups gates (group trips only)
-      // Validate ISO parsing and check permissions
+      // Handle signups gates (group trips only, one-way enforcement)
       if ((trip as any).signupsOpenedAt !== undefined || (trip as any).signups_opened_at !== undefined) {
         if (!isGroupTrip) {
           return NextResponse.json(
@@ -535,20 +534,49 @@ export async function POST(req: Request) {
             { status: 400 }
           );
         }
-        // Validate ISO parsing
+        
         const signupsOpenedAtValue = (trip as any).signupsOpenedAt !== undefined ? (trip as any).signupsOpenedAt : (trip as any).signups_opened_at;
-        if (signupsOpenedAtValue !== null && signupsOpenedAtValue !== undefined) {
-          const parsed = new Date(signupsOpenedAtValue);
-          if (isNaN(parsed.getTime())) {
-            return NextResponse.json(
-              { error: "signupsOpenedAt must be a valid ISO timestamp" },
-              { status: 400 }
-            );
-          }
-          updateData.signups_opened_at = parsed.toISOString();
-        } else {
-          updateData.signups_opened_at = null;
+        
+        // One-way rule: reject if null (cannot clear)
+        if (signupsOpenedAtValue === null || signupsOpenedAtValue === undefined) {
+          return NextResponse.json(
+            { error: "Cannot clear signups_opened_at. It can only be set once." },
+            { status: 400 }
+          );
         }
+        
+        // One-way rule: reject if already set
+        if (existingTrip.signups_opened_at) {
+          return NextResponse.json(
+            { error: "signups_opened_at can only be set once. It cannot be changed." },
+            { status: 400 }
+          );
+        }
+        
+        // Validate ISO format (basic check)
+        const parsed = new Date(signupsOpenedAtValue);
+        if (isNaN(parsed.getTime())) {
+          return NextResponse.json(
+            { error: "signupsOpenedAt must be a valid ISO timestamp" },
+            { status: 400 }
+          );
+        }
+        
+        // Scheduled-only rule: check if trip is still in scheduled phase
+        const { computeSignupOpenAt } = await import('@/app/lib/tripDates');
+        const derivedOpenAt = computeSignupOpenAt(existingTrip.trip_date);
+        const derivedOpenTime = new Date(derivedOpenAt).getTime();
+        const nowTime = new Date().getTime();
+        
+        if (nowTime >= derivedOpenTime) {
+          return NextResponse.json(
+            { error: "Cannot set signups_opened_at. Trip is no longer in scheduled phase." },
+            { status: 400 }
+          );
+        }
+        
+        // Store server time (ignore client-provided timestamp)
+        updateData.signups_opened_at = new Date().toISOString();
       }
       
       if (trip.cutoffAt !== undefined) {

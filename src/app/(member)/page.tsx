@@ -1141,17 +1141,6 @@ export default function HomePage() {
 
     content = (
       <div className="space-y-12">
-        {/* Join a group - subtle secondary link */}
-        {homeReady && hasApprovedGroup && (
-          <div className="px-5">
-            <Link
-              href="/join?from=/"
-              className="text-sm text-muted hover:text-foreground underline"
-            >
-              Join a group
-            </Link>
-          </div>
-        )}
         
         {/* Mode banner: GameDay in progress */}
         {homeReady && activeGameDay && (
@@ -1172,7 +1161,7 @@ export default function HomePage() {
                     localStorage.setItem('dayforeit:last_mode', 'gameday');
                   }
                 }}
-                className="btn-primary px-3 py-2 text-sm rounded-xl hover:opacity-90"
+                className="btn-anticipation px-3 py-2 text-sm rounded-xl"
               >
                 Enter GameDay
               </Link>
@@ -1358,7 +1347,7 @@ export default function HomePage() {
                 {typeof declaredHandicap === 'number' ? declaredHandicap.toFixed(1) : declaredHandicap}
               </div>
               <div className="text-sm secondary-text">
-                Handicap index
+                Your handicap
               </div>
             </div>
           ) : (
@@ -1384,7 +1373,7 @@ export default function HomePage() {
                         localStorage.setItem('dayforeit:last_mode', 'gameday');
                       }
                     }}
-                    className="block w-full py-4 text-base font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
+                    className="block w-full py-4 text-base font-medium text-center btn-anticipation rounded-lg active:scale-[0.98] transition-transform"
                   >
                     Enter GameDay
                   </Link>
@@ -1412,7 +1401,7 @@ export default function HomePage() {
                       }
                     }}
                     disabled={startingGameDay || hostGuardrail?.blockEnterGameDay}
-                    className="block w-full py-4 text-base font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="block w-full py-4 text-base font-medium text-center btn-anticipation rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {startingGameDay ? "Starting…" : "Enter GameDay"}
                   </button>
@@ -1427,7 +1416,7 @@ export default function HomePage() {
             ) : (
               <Link
                 href="/host"
-                className="block w-full py-4 text-base font-medium text-center btn-primary hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
+                className="block w-full py-4 text-base font-medium text-center btn-ghost rounded-lg active:scale-[0.98] transition-transform"
               >
                 Host a round
               </Link>
@@ -1435,17 +1424,6 @@ export default function HomePage() {
           </div>
         )}
         
-        {/* Admin-only: Create group trip (quiet text link, never replaces primary) */}
-        {homeReady && isGroupAdmin && approvedGroups.length > 0 && (
-          <div className="px-5 pt-2">
-            <Link
-              href="/host?mode=group_trip"
-              className="text-sm text-muted hover:text-foreground underline"
-            >
-              Create group trip
-            </Link>
-          </div>
-        )}
       </div>
     );
   }

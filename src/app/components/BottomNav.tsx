@@ -35,7 +35,7 @@ export default function BottomNav() {
               <li key={item.href} className="flex-1 relative">
                 <Link
                   href={item.href}
-                  className={`block px-2 py-3 text-center text-sm relative ${
+                  className={`flex flex-col items-center justify-center px-2 py-3 text-center text-sm relative ${
                     active ? "font-semibold text-primary" : "text-muted hover:text-foreground"
                   }`}
                 >

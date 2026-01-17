@@ -681,7 +681,6 @@ export default function TripDetailPage() {
   // Pending anchor action (for confirmation modal)
   type PendingAction =
     | { kind: "open_signups_now" }
-    | { kind: "revert_to_scheduled" }
     | { kind: "close_signups_now" }
     | { kind: "reopen_signups" }
     | { kind: "set_signups_close_date"; dateIso: string };
@@ -3537,18 +3536,7 @@ export default function TripDetailPage() {
             </div>
 
             <div className="space-y-4">
-              {canonicalPhase === "signups_open" ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowTopAnchorSheet(false);
-                    setPendingAction({ kind: "revert_to_scheduled" });
-                  }}
-                  className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
-                >
-                  Revert to scheduled
-                </button>
-              ) : canonicalPhase === "locked" ? (
+              {canonicalPhase === "locked" ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -3689,7 +3677,6 @@ export default function TripDetailPage() {
         isOpen={pendingAction !== null}
         title={
           pendingAction?.kind === "open_signups_now" ? "Open sign-ups now?" :
-          pendingAction?.kind === "revert_to_scheduled" ? "Revert to scheduled?" :
           pendingAction?.kind === "close_signups_now" ? "Close sign-ups now?" :
           pendingAction?.kind === "reopen_signups" ? "Re-open sign-ups?" :
           pendingAction?.kind === "set_signups_close_date" ? "Set sign-ups close date?" :
@@ -3697,15 +3684,13 @@ export default function TripDetailPage() {
         }
         message={
           pendingAction?.kind === "open_signups_now" ? "Sign-ups will be open immediately." :
-          pendingAction?.kind === "revert_to_scheduled" ? "Sign-ups will no longer be open." :
           pendingAction?.kind === "close_signups_now" ? "This will stop new joiners immediately." :
-          pendingAction?.kind === "reopen_signups" ? "This will allow new players to join again." :
+          pendingAction?.kind === "reopen_signups" ? "This will allow new players to join again. If you change the list, regenerate flights and exports." :
           pendingAction?.kind === "set_signups_close_date" ? "Sign-ups will close on the selected date." :
           ""
         }
         confirmLabel={
           pendingAction?.kind === "open_signups_now" ? "Open" :
-          pendingAction?.kind === "revert_to_scheduled" ? "Revert" :
           pendingAction?.kind === "close_signups_now" ? "Close" :
           pendingAction?.kind === "reopen_signups" ? "Re-open" :
           pendingAction?.kind === "set_signups_close_date" ? "Set" :
@@ -3741,24 +3726,6 @@ export default function TripDetailPage() {
                 }
                 break;
               }
-              case "revert_to_scheduled": {
-                // Clear signupsOpenedAt (set to null) to revert to scheduled
-                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
-                  signupsOpenedAt: undefined,
-                });
-                
-                // Optimistic UI update
-                setTrips(updatedTrips);
-                
-                // Reload trips to get fresh data
-                const freshTrips = await loadTrips(activeGroupId, true);
-                const updatedTrip = freshTrips.find(t => t.id === trip.id);
-                
-                if (updatedTrip) {
-                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-                }
-                break;
-              }
               case "close_signups_now": {
                 // Set cutoffAt = now ISO
                 const cutoffAtValue = new Date().toISOString();
@@ -3780,27 +3747,12 @@ export default function TripDetailPage() {
                 break;
               }
               case "reopen_signups": {
-                // Compute default close moment: trip_date - 4 days at 23:59 Asia/Singapore
-                const defaultCloseYmd = trip.date ? (() => {
-                  const [year, month, day] = trip.date.split('-').map(Number);
-                  const tripDateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-                  tripDateObj.setUTCDate(tripDateObj.getUTCDate() - 4);
-                  const closeYear = tripDateObj.getUTCFullYear();
-                  const closeMonth = String(tripDateObj.getUTCMonth() + 1).padStart(2, '0');
-                  const closeDay = String(tripDateObj.getUTCDate()).padStart(2, '0');
-                  return `${closeYear}-${closeMonth}-${closeDay}`;
-                })() : null;
-                
-                const cutoffAtValue = defaultCloseYmd 
-                  ? new Date(`${defaultCloseYmd}T23:59:59+08:00`).toISOString()
-                  : null;
-                
-                // Ensure signups_opened_at is set (if null, set it to now ISO)
-                const signupsOpenedAtValue = trip.signupsOpenedAt || new Date().toISOString();
+                // Set cutoffAt to end of today (23:59 SGT)
+                const todaySGT = todayInSGT(); // YYYY-MM-DD
+                const cutoffAtValue = new Date(`${todaySGT}T23:59:59+08:00`).toISOString();
                 
                 const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
-                  cutoffAt: cutoffAtValue || undefined,
-                  signupsOpenedAt: signupsOpenedAtValue,
+                  cutoffAt: cutoffAtValue,
                 });
                 
                 // Optimistic UI update

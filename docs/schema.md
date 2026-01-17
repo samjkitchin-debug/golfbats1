@@ -76,9 +76,9 @@ phase_override | text | YES |
 
 **Note:** `members.id == auth.uid()` (see RLS policies); do not rely on `members.user_id` for lookups.
 
-**Note:** `phase_override` is a manual phase override for group trips. Allowed values: `scheduled`, `signups_open`, `locked`. Null = use canonical derivation. Irreversible phases (in_play, completed) always override this value.
+**Note:** `phase_override` (deprecated) - Not used by the app. Phase is derived from canonical moments only.
 
-**Note:** `signups_opened_at` (timestamptz, nullable) - For group trips, when set (<= now), sign-ups are considered open regardless of the derived open date (trip_date - 30 days). Written by group admins via base camp "Open sign-ups now". We intentionally avoid a global "phase override"; only persisted gates are stored. 
+**Note:** `signups_opened_at` (timestamptz, nullable) - For group trips only. One-way gate: can be set once during Scheduled phase, never cleared. When set, makes sign-ups considered open regardless of derived open date (trip_date - 30 days). Written by group admins via base camp "Open sign-ups now" action (Scheduled bottom anchor). Cannot be set if already set, cannot be set to null, cannot be set if trip is no longer in Scheduled phase. 
 
 ### public.trip_attendees
 

@@ -177,13 +177,15 @@ export function getEffectiveTripPhase(
   // Future trip: determine phase based on auto-open logic, cutoff, and status
   const nowTime = now.getTime();
   
-  // Compute when signups open (30 days before trip date at 00:00 SGT)
-  const signupOpenAt = computeSignupOpenAt(tripDateStr, timezone);
-  const signupOpenTime = new Date(signupOpenAt).getTime();
+  // Compute derived open moment (30 days before trip date at 00:00 SGT)
+  const derivedOpenAt = computeSignupOpenAt(tripDateStr, timezone);
+  // Use effective open moment: persisted signupsOpenedAt if set, else derived
+  const effectiveOpenAt = trip.signupsOpenedAt ?? derivedOpenAt;
+  const effectiveOpenTime = new Date(effectiveOpenAt).getTime();
   
-  // Check if signups have opened (auto-open logic)
-  // If now >= signupOpenAt, signups are open (unless manually closed or cutoff passed)
-  const signupsHaveOpened = nowTime >= signupOpenTime;
+  // Check if signups have opened (using effective open moment)
+  // If now >= effectiveOpenAt, signups are open (unless manually closed or cutoff passed)
+  const signupsHaveOpened = nowTime >= effectiveOpenTime;
   
   // Check cutoff (cutoffAt is stored as UTC ISO string, interpret as SGT 23:59)
   if (trip.cutoffAt) {
