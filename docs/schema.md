@@ -1,5 +1,10 @@
 # Database Schema
 
+## Authoritative schema artifacts
+
+- `docs/schema_snapshot/public_functions.sql` is authoritative for public schema SQL function definitions.
+- Full schema tables/columns/constraints/indexes/policies must be captured via `docs/schema_snapshot/schema_snapshot_supabase.sql` exports.
+
 ## Current DB Tables (relevant)
 
 ### public.courses
@@ -59,6 +64,7 @@ notes | text | YES |
 status | USER-DEFINED | NO | 'draft'::trip_status
 coordination_status | USER-DEFINED | NO | 'forming'::trip_coordination_status
 cutoff_at | timestamp with time zone | YES | 
+signups_opened_at | timestamp with time zone | YES | 
 created_at | timestamp with time zone | NO | now()
 updated_at | timestamp with time zone | NO | now()
 legacy_id | integer | YES | 
@@ -66,8 +72,13 @@ name | text | YES |
 group_id | uuid | NO | 
 trip_kind | USER-DEFINED | NO | 'official'::trip_kind
 created_by | uuid | YES | 
+phase_override | text | YES | 
 
-**Note:** `members.id == auth.uid()` (see RLS policies); do not rely on `members.user_id` for lookups. 
+**Note:** `members.id == auth.uid()` (see RLS policies); do not rely on `members.user_id` for lookups.
+
+**Note:** `phase_override` is a manual phase override for group trips. Allowed values: `scheduled`, `signups_open`, `locked`. Null = use canonical derivation. Irreversible phases (in_play, completed) always override this value.
+
+**Note:** `signups_opened_at` (timestamptz, nullable) - For group trips, when set (<= now), sign-ups are considered open regardless of the derived open date (trip_date - 30 days). Written by group admins via base camp "Open sign-ups now". We intentionally avoid a global "phase override"; only persisted gates are stored. 
 
 ### public.trip_attendees
 

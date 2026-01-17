@@ -101,6 +101,9 @@ export type Trip = {
   /** IMPORTANT: admin UI helper expects string | undefined (not null) */
   cutoffAt?: string;
 
+  /** When set, group trip sign-ups are open from this moment regardless of trip_date-30 derived open */
+  signupsOpenedAt?: string;
+
   /** IMPORTANT: admin UI expects nullable (string | null), not undefined */
   courseId: string | null;
   teeId: string | null;
@@ -143,6 +146,9 @@ export type Trip = {
 
   /** Creator name (for member trips, populated by API) */
   createdByMemberName?: string | null;
+
+  /** Manual phase override for group trips (scheduled | signups_open | locked) */
+  phaseOverride?: 'scheduled' | 'signups_open' | 'locked' | null;
 };
 
 /* ================================
@@ -196,6 +202,8 @@ function normalizeTrip(input: any): Trip {
 
     cutoffAt: normalizeCutoffAt((t as any).cutoffAt),
 
+    signupsOpenedAt: normalizeCutoffAt((t as any).signupsOpenedAt ?? (t as any).signups_opened_at),
+
     courseId: (t as any).courseId ?? null,
     teeId: (t as any).teeId ?? null,
 
@@ -233,6 +241,7 @@ function normalizeTrip(input: any): Trip {
     createdByMemberId: (t as any).createdByMemberId || (t as any).created_by_member_id || null,
     isPostedToGroup: (t as any).isPostedToGroup !== undefined ? (t as any).isPostedToGroup : ((t as any).is_posted_to_group !== undefined ? (t as any).is_posted_to_group : ((t as any).tripOrigin === 'group' || (t as any).trip_origin === 'group' ? true : false)),
     createdByMemberName: (t as any).createdByMemberName || (t as any).created_by_member_name || null,
+    phaseOverride: (t as any).phaseOverride !== undefined ? ((t as any).phaseOverride ?? null) : ((t as any).phase_override !== undefined ? ((t as any).phase_override ?? null) : undefined),
   };
 }
 
@@ -626,6 +635,9 @@ export async function updateTrip(trips: Trip[], tripId: number, groupId: string,
 
     // cutoffAt must be string | undefined (not null)
     cutoffAt: patch.cutoffAt === (null as any) ? undefined : patch.cutoffAt,
+
+    // signupsOpenedAt must be string | undefined (not null)
+    signupsOpenedAt: patch.signupsOpenedAt === (null as any) ? undefined : patch.signupsOpenedAt,
 
     decisionLogistics: patch.decisionLogistics !== undefined ? patch.decisionLogistics : normalized.decisionLogistics,
     

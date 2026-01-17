@@ -1196,7 +1196,7 @@ export default function FlightsSandboxPage() {
                       pointerEvents: isActiveDrag ? "none" : "auto",
                     }}
                     className={`flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 transition-all select-none ${
-                      isActiveDrag ? "shadow-lg cursor-grabbing" : isDragging ? "opacity-50 cursor-grabbing" : isOverTarget ? "bg-background/50 ring-2 ring-foreground/30 cursor-grab" : isRecentDropPlayer ? "bg-black/5 transition-colors duration-200" : "hover:bg-background/30 cursor-grab"
+                      isActiveDrag ? "shadow-lg cursor-grabbing" : isDragging ? "opacity-50 cursor-grabbing" : isOverTarget ? "bg-background/50 ring-2 ring-foreground/30 cursor-grab" : isRecentDropPlayer ? "bg-surface transition-colors duration-200" : "hover:bg-background/30 cursor-grab"
                     }`}
                   >
                     <button

@@ -823,14 +823,14 @@ export default function TripsListPage() {
                     e.stopPropagation();
                     onLeave();
                   }}
-                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-secondary hover:bg-background active:scale-[0.98] transition-all"
+                  className="rounded-md bg-transparent text-ink-600 px-3 py-1.5 text-xs font-medium hover:text-ink-900 hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/10 active:scale-[0.98] transition-all"
                 >
                   Leave
                 </button>
               )}
               <Link
                 href={`/trips/${trip.id}`}
-                className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background active:scale-[0.98] transition-all"
+                className="rounded-md bg-transparent border border-ink-300 text-ink-700 px-3 py-1.5 text-xs font-medium hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/20 active:scale-[0.98] transition-all"
               >
                 Details
               </Link>
@@ -863,18 +863,10 @@ export default function TripsListPage() {
 
       <div className="flex items-center justify-between gap-2">
         <div className="text-xl font-semibold text-foreground">Trips</div>
-        <div className="flex items-center gap-2">
-          {isGroupAdmin && approvedGroups.length > 0 && (
-            <Link
-              href="/host?mode=group_trip"
-              className="rounded-lg btn-ghost px-3 py-2 text-sm font-medium text-foreground hover:opacity-80 active:scale-[0.98] transition-transform"
-            >
-              Create group trip
-            </Link>
-          )}
+        <div className="flex items-center gap-2 shrink-0">
           <Link
             href="/host"
-            className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-[0.98] transition-transform"
+            className="rounded-lg btn-anticipation px-3 py-2 text-sm font-medium active:scale-[0.98] transition-transform whitespace-nowrap"
           >
             Host a round
           </Link>

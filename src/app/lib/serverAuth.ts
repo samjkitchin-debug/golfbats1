@@ -23,17 +23,20 @@ export async function requireAuthedUser(): Promise<{ userId: string }> {
 
 /**
  * Resolves member ID for a given user ID.
- * Uses canonical mapping: members.user_id == userId.
+ * Uses canonical mapping: members.id == auth.uid() (per docs/schema.md).
+ * Do not rely on members.user_id.
  * Throws if member not found.
  */
 export async function requireMemberIdForUser(
   userId: string,
   supabase: SupabaseClient
 ): Promise<string> {
+  // Canonical mapping: members.id == auth.uid()
+  // So userId IS the member id
   const { data: memberData, error } = await supabase
     .from("members")
     .select("id")
-    .eq("user_id", userId)
+    .eq("id", userId)
     .maybeSingle();
 
   if (error || !memberData) {

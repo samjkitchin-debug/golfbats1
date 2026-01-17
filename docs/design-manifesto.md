@@ -150,6 +150,17 @@ Rationale:
 Golf trips are planned around days, not timestamps.
 Date is state, not configuration.
 
+### Time picker standard
+
+All time inputs use the standard time picker component.
+
+Rules:
+- All time inputs use the standard time picker component.
+- No free typing; selection only.
+- Two-step selection: hour then minute.
+- Stores time as hh:mm (24h).
+- Supports clear.
+
 ---
 
 ### Hosted rounds vs group trips
@@ -683,6 +694,46 @@ Preferences should be:
 - Informational first
 - Calm and non-interactive when options are not yet available
 - Free of placeholder toggles or dead controls
+
+---
+
+## Brand Assets and Colour Tokens
+
+### Canonical Assets
+
+- **`public/brand/logo-mark.png`** — Primary in-app logo mark
+- **`src/app/icon.tsx`** — Browser favicon (via Next.js metadata)
+- **`src/app/apple-icon.tsx`** — iOS home screen icon (if exists)
+- **`public/icon-192.png`** and **`public/icon-512.png`** — PWA manifest icons
+
+### Asset Reference Rule
+
+UI should reference assets from `/public` (e.g. `/brand/logo-mark.png`). Do not reference `src/app/*.png` by URL.
+
+### Theme Colour Rule
+
+When updating brand colours, update both:
+- CSS variables/tokens (`globals.css` / Tailwind tokens)
+- Metadata `themeColor` in `src/app/layout.tsx` (viewport export)
+- `theme_color` in `public/manifest.json` (PWA manifest)
+
+### Cache Note
+
+Icons may require hard refresh / clear site data to appear updated. See `docs/brand.md` for cache busting checklist.
+
+**Runbook:** See [`docs/brand.md`](./brand.md) for complete asset and colour update procedures.
+
+---
+
+## Buttons and CTAs
+
+- Use btn-* semantic classes for all CTAs.
+- Do not build CTAs with bg-brand-* / text-* utilities directly.
+- Use bg-surface/bg-background/text-foreground/border-border for surfaces.
+- Green is for anticipation (btn-anticipation), not for general navigation.
+- If a one-off CTA needs custom spacing, add only spacing/layout utilities (px/py/w/justify) in addition to btn-*.
+
+See "Brand Assets and Colour Tokens" above for token definitions.
 
 ---
 

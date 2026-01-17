@@ -1019,7 +1019,7 @@ function ImageCropModal({
   const isPassport = title === "Crop Passport Photo";
   
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "var(--overlay-scrim)" }}>
       <div className="w-full max-w-md rounded-xl bg-surface p-4">
         <h3 className="mb-4 text-lg font-semibold text-foreground">{title}</h3>
         

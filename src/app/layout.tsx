@@ -3,6 +3,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 // ACTIVE GLOBALS IMPORT (THIS IS THE ONE USED BY THE APP)
 import "./globals.css";
 import DevSandboxLauncher from "./components/dev/DevSandboxLauncher";
+import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
 
 export const metadata: Metadata = {
   title: {
@@ -16,23 +17,23 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "DayForeIt",
   },
-  // Icons are handled by icon.tsx file in app directory for proper aspect ratio
+  // Icons reference brand assets
   icons: {
     icon: [
-      { url: "/browserIcon.png?v=20260115a" },
-      { url: "/icon.png?v=20260115a", sizes: "192x192", type: "image/png" },
+      { url: "/brand/logo-mark.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon.ico" },
     ],
     shortcut: [
-      { url: "/icon.png?v=20260115a" },
+      { url: "/favicon.ico" },
     ],
     apple: [
-      { url: "/icon.png?v=20260115a" },
+      { url: "/brand/logo-mark.png", sizes: "180x180", type: "image/png" },
     ],
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#FAF7F0",
+  themeColor: "#2E8F63",
 };
 
 export default function RootLayout({
@@ -46,6 +47,7 @@ export default function RootLayout({
         {children}
         <SpeedInsights />
         <DevSandboxLauncher />
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );

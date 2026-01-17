@@ -1,0 +1,149 @@
+---
+name: dayforeitprojectguardrails
+description: This is a new rule
+---
+
+# Overview
+
+dayforeit — project guardrails v1
+(applies to all modules, features, and future work)
+
+1. product constitution (locked)
+
+day fore it’s product behaviour is defined by canonical documentation and scenario-driven design.
+these rules apply to all features, not just trips.
+
+1.1 canonical sources of truth
+before proposing, modifying, or refactoring any product behaviour (including trip creation, trip management, rsvp, logistics, exports, scoring, or related ui/logic), you must read and respect:
+
+- docs/trips/readme.md
+- docs/trips/scenarios.md
+- docs/trips/iteration-playbook.md
+- docs/trips/ai-scenario-assist.md
+
+these documents are the authoritative product truth.
+
+1.2 non-negotiable product principles
+- minimum prompts beats completeness
+- phase ≠ form
+  - phase is time-based
+  - scenarios decide modules and steps
+- no dead ends
+  every screen must have:
+  - a next action
+  - a skip
+  - an exit
+- defaults first; ask later; never ask twice
+- do not re-invent flows that already exist
+- do not introduce new prompts, steps, or forms without:
+  - mapping them to an existing scenario, or
+  - explicitly adding a new scenario via the iteration playbook
+
+1.3 scenario enforcement
+any change to trip coordination must explicitly state:
+- which scenariokey(s) it affects
+- whether it changes:
+  - scenario classification
+  - coordination sequence
+  - readiness rules
+- why it does not introduce:
+  - loops
+  - autoprompter behaviour
+
+1.4 cross-border agent scenario (locked)
+for the cross_border_agent (batam) scenario, the following rules are immutable:
+
+- trip creation requires only:
+  - date
+  - course
+- agent export must include:
+  - passport_full_name
+  - passport_number
+  - passport_nationality
+  - passport_date_of_birth
+  - passport_expiry_date
+  - handicap
+- flights can only be generated after sign-ups close
+- quartile method is the default
+- manual flight edits must persist
+
+1.5 ai assistance constraints
+ai may assist only as defined in docs/trips/ai-scenario-assist.md:
+
+- ai may propose:
+  - scenarioanswers
+  - confidence only
+- deterministic classifier decides scenario_key
+- ai must never:
+  - write to the database
+  - skip required steps
+
+2. engineering guardrails
+
+these rules govern how work is executed safely across the entire project.
+
+2.1 data and persistence
+- no local storage
+- always use the database
+- database schema is defined in docs/schema.md and is authoritative
+- do not invent fields or types not listed in the schema
+
+2.2 supabase setup (do not change unless asked)
+- uses supabase auth + postgres
+- auth methods:
+  - google oauth
+  - magic link
+- uses @supabase/ssr with cookie-based auth
+- environment variables (names only):
+  - next_public_supabase_url
+  - next_public_supabase_anon_key
+- service role key exists but must never be used client-side
+- createsupabaseserverclient() is async and must be awaited
+- cookies may only be written in:
+  - route handlers
+  - server actions
+- rls is currently off (do not enable unless explicitly asked)
+
+2.3 code safety and discipline
+- prefer minimal diffs over full rewrites
+- never rewrite an entire file unless explicitly asked
+- do not refactor or rename files/functions for cleanliness unless requested
+- follow existing architecture patterns and file-local style
+- when unsure about a type or field:
+  - search the codebase for the source of truth
+  - do not guess
+- always keep builds green:
+  - ensure typescript correctness
+  - avoid introducing mismatched types
+- make changes in:
+  - small
+  - reversible
+  - well-scoped commits
+- suggest commit messages
+
+3. collaboration protocol (you ↔ cursor)
+
+these rules govern how work is proposed and executed.
+
+3.1 planning before execution
+- always explain what you will do before making changes
+- always ask whether you should proceed
+- if editing more than ~30 lines:
+  - summarise proposed changes first
+
+3.2 language and presentation
+- all user-facing ui text must use sentence case
+- always use uk english
+
+3.3 conflict handling
+if a requested change conflicts with any rule in this document, you must:
+- flag the conflict
+- explain why
+- stop before proceeding
+
+status
+- version: v1
+- scope: whole-of-project
+- change frequency: rare (constitutional)
+- applies to: all current and future modules
+

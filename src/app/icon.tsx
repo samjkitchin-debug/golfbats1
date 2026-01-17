@@ -9,6 +9,13 @@ export const size = {
 export const contentType = 'image/png';
 
 export default async function Icon() {
+  // Construct absolute URL for the icon asset
+  // For production, this will use the actual site URL; for local dev, use localhost
+  const baseUrl = process.env.VERCEL_URL 
+    ? `https://${process.env.VERCEL_URL}`
+    : process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  const iconUrl = `${baseUrl}/brand/logo-mark.png`;
+
   return new ImageResponse(
     (
       <div
@@ -21,19 +28,15 @@ export default async function Icon() {
           background: '#FAF7F0',
         }}
       >
-        <div
+        <img
+          src={iconUrl}
+          alt="DayForeIt"
           style={{
-            width: '90%',
-            height: '90%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 300,
-            color: '#0B1220',
+            width: '76%',
+            height: '76%',
+            objectFit: 'contain',
           }}
-        >
-          ⛳
-        </div>
+        />
       </div>
     ),
     {

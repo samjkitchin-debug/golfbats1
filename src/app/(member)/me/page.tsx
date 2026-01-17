@@ -931,7 +931,7 @@ export default function MePage() {
         <div className="border-t border-border pt-4 px-5">
           <div className="flex items-start justify-between mb-3">
             <div>
-              <div className="text-sm font-medium text-foreground">Passport</div>
+              <div className="text-sm font-medium text-foreground">Travel documents</div>
             </div>
             <div className="flex items-center gap-2">
               <button

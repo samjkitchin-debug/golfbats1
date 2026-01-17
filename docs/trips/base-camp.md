@@ -31,6 +31,15 @@ It uses **instruments** (internal primitives) to keep the UI calm, modular, and 
 - **Token-only styling**
   - No hard-coded colours.
 
+- **Group trip permissions**
+  - Group trips are owned by the group. Any group admin may edit and coordinate the trip.
+  - The creator (`created_by_member_id`) is for audit/attribution only, not permissions.
+
+- **Persisted sign-ups gates**
+  - Sign-ups timing is controlled by persisted gates (`signups_opened_at` and `cutoff_at`).
+  - Default behaviour: sign-ups open at trip_date - 30 days unless opened early via gate.
+  - Default close: trip_date - 4 days, 23:59 Asia/Singapore unless `cutoff_at` is set.
+
 ---
 
 ## Page Zones (Group Trip Details)
@@ -38,17 +47,19 @@ It uses **instruments** (internal primitives) to keep the UI calm, modular, and 
 ### Zone A — Top chrome (Compiled Trip Card)
 
 Always shows identity:
-- Trip name (primary, with inline edit for host/admin)
+- Trip name (primary)
 - Course · location
 - Date
-- Host indication
+- Host indication: "Hosted by {group name}" (group trips only), "Hosted by you" or "Hosted by {creator name}" (hosted rounds)
+- Overflow control (⋯) for rare identity edits (host/admin only, group trips only) — opens action sheet with "Edit trip name" and "Edit trip details" options
 
 Compiled lines appear only when their instrument is complete:
 - `Meet: {time} · {place}`
 - `Travel: {type} · {scope} · {booking}`
 
 Rules:
-- Chrome is calm + read-only (except existing inline trip-name edit for host/admin).
+- Chrome is calm + declarative (read-only except overflow control for host/admin).
+- Chrome never shows inline "Edit name" or "Edit details" links (use overflow control instead).
 - Chrome never shows "Add …" states. Those belong to Base Camp.
 - Chrome appears **above** Zone B (no rail/spine above chrome).
 
@@ -119,37 +130,61 @@ Base Camp anchors switch based on five canonical temporal moments. These moments
 - **Completed moment:**
   - `completedMoment = resultsPublished === true` (or canonical completion signal)
 
+## Canonical phases (Group Trips)
+
+Base Camp uses a single canonical phase enum for all branching logic:
+
+- **Scheduled** (before sign-ups open)
+- **Sign-ups open**
+- **Locked** (sign-ups closed → GameDay)
+- **GameDay**
+- **In play**
+- **Completed**
+
+### Derivation rules
+
+Phase is derived from canonical moments using this precedence (frozen):
+
+1. `resultsPublished` → `"completed"` (irreversible)
+2. `scoringStarted` → `"in_play"` (irreversible)
+3. `isGameDay` (trip.date === today SGT) → `"gameday"`
+4. `now >= signupCloseAtEffective` AND `today < trip.date` → `"locked"`
+5. `now >= signupOpenAt` AND `now < signupCloseAtEffective` → `"signups_open"`
+6. else → `"scheduled"` (default)
+
+Manual phase override is supported for hosts/admins, but cannot contradict irreversible truths (completed/in_play always win).
+
 ### Base Camp anchor switching rules
 
-**State 1 — Before sign-ups open** (`now < openMoment`)
-- Top anchor: "Sign-ups open on {Dow D Mon}."
-- Bottom anchor: "Sign-ups close on {Dow D Mon}." (uses effectiveCloseMoment)
-- Between lane boundary: `before_open`
+**Scheduled** (`now < openMoment`)
+- Top anchor: "Scheduled."
+- Bottom anchor: "Sign-ups open on {Dow D Mon}."
+- Lane instruments: `trip_name` (formation phase only)
 
-**State 2 — Sign-ups open** (`openMoment <= now < effectiveCloseMoment`)
+**Sign-ups open** (`openMoment <= now < effectiveCloseMoment`)
 - Top anchor: "Sign-ups are open now."
 - Bottom anchor: "Sign-ups close on {Dow D Mon}."
-- Between lane boundary: `before_close`
+- Lane instruments: `meet_details`, `travel_outline`
 
-**State 3 — Sign-ups closed** (`now >= effectiveCloseMoment AND now < gameDayMoment AND !inPlay AND !completed`)
+**Locked** (`now >= effectiveCloseMoment AND now < gameDayMoment AND !inPlay AND !completed`)
 - Top anchor: "Sign-ups are closed."
-- Bottom anchor: "Next: GameDay on {Dow D Mon}."
-- Between lane boundary: `before_gameday`
+- Bottom anchor: "GameDay on {Dow D Mon}."
+- Lane instruments: `travel_outline` (if not done)
 
-**State 4 — GameDay** (`date is today AND !inPlay AND !completed`)
+**GameDay** (`date is today AND !inPlay AND !completed`)
 - Top anchor: "GameDay."
 - Bottom anchor: "Next: In play."
-- Between lane boundary: (empty/minimal)
+- Lane instruments: none
 
-**State 5 — In play** (`inPlay AND !completed`)
+**In play** (`inPlay AND !completed`)
 - Top anchor: "In play."
 - Bottom anchor: "Next: Completed."
-- Between lane boundary: empty
+- Lane instruments: none
 
-**State 6 — Completed** (`completed`)
+**Completed** (`completed`)
 - Top anchor: "Completed."
 - Bottom anchor: none
-- Between lane boundary: none
+- Lane instruments: none
 
 ### Sign-ups close as a Base Camp instrument
 
@@ -232,11 +267,16 @@ A single-line clickable item with label + chevron (host/admin only).
 - Clicking opens the instrument editor (inline or sheet)
 
 ### 4) Completed — In situ reward (while in current lane)
-When instrument.isDone === true BUT still in the same moment state:
-- Shows tick icon (left) + muted label text
-- Remains in the lane (does not disappear)
-- Still clickable to edit
+**Completed reward behaviour (frozen):**
+
+When instrument.isDone === true BUT still in the same lane (before anchor changes):
+- Remains visible in the lane (does not disappear)
+- Shows tick icon on the right side (subtle, muted)
+- Label text is muted (opacity-60)
+- Still clickable to edit (chevron remains if actionable, tick appears after chevron)
 - User feels "done", waiting for next anchor moment
+
+**Key rule:** Completed rows stay visible until the next anchor change (moment state change). Once the anchor changes, the instrument may move to "past" or disappear entirely.
 
 ### 5) Past (after moment state changes)
 Once we move past the relevant boundary:
@@ -279,32 +319,67 @@ v1 boundaries:
 
 ---
 
+## Lane instruments (Group Trips, by phase)
+
+Instruments are keyed to phases via `getLaneInstrumentIds(phase)`:
+
+### Scheduled phase
+- `trip_name`: "Add a trip name" → done: "Trip name set"
+
+### Sign-ups open phase
+- `meet_details`: "Where and when are the group meeting" → done: "Meet details set"
+  - Meet details appears only when Group meetup is true.
+- `travel_outline`: "Outline travel plan (so everyone can book)" → done: "Travel plan outlined" (placeholder copy — to revisit)
+
+### Locked phase
+- `travel_outline`: (only if not done)
+
+### GameDay / In play / Completed phases
+- No instruments (post-round completion gating handled separately)
+
 ## Current Instrument Set (Group Trips, v1)
 
-### 1) meet_details (Inline ephemeral)
+### 1) trip_name (Scheduled phase only)
+- **id**: `"trip_name"`
+- **Relevant**: always (group trips)
+- **Done when**: trip name is set (non-empty, trimmed)
+- **Phase**: `"scheduled"` only
+- **Outstanding**: 
+  - Label: "Add a trip name"
+  - Clickable row with chevron (host/admin only)
+  - Clicking opens inline name editor in Zone A chrome
+- **Completed** (while still in Scheduled lane):
+  - Label: "Trip name set"
+  - Shows tick icon + muted label text
+  - Still clickable to edit
+- **Note**: Only appears in Scheduled phase. Does not appear after sign-ups open.
+
+### 2) meet_details (Sign-ups open phase only)
 - **id**: `"meet_details"`
 - **Relevant**: always (group trips)
 - **Done when**: meet time OR meet place exists
-- **Boundary**: `"before_signups_open"` (if scheduled + not open) | `"before_signups_close"` (if open) | `"before_gameday"` (default)
+- **Phase**: `"signups_open"` only
+- **Label**: "Where and when are the group meeting"
+- **Note**: Does NOT appear in Scheduled phase. Only shown after sign-ups open.
 - **Outstanding**: 
   - Clickable row with chevron (host/admin only)
   - Clicking opens inline ephemeral editor in Base Camp
   - Includes "Not now" button (non-persistent, hides inline)
 - **Completed** (while still in current lane):
   - Remains IN SITU in the lane (does not disappear)
-  - Shows tick icon + muted label text
-  - Still clickable to edit
+  - Shows tick icon on the right + muted label text
+  - Still clickable to edit (chevron + tick both visible)
   - Compiled chrome: `Meet: {time} · {place}`
 - **Past** (after moment state changes):
   - No longer appears in active lane
   - Optional muted past line: "Meet details set" (if implemented)
 - **Note**: Full-size "Meet details" card must NOT render for group trips (only for hosted rounds)
 
-### 2) travel_outline (Sheet-based)
+### 4) travel_outline (Sign-ups open + Locked phases)
 - **id**: `"travel_outline"`
 - **Relevant**: when `travelInvolved === true`
 - **Done when**: travel outline (travel_note) string is non-empty (trimmed)
-- **Boundary**: `"before_gameday"` (travel planning is a "locked → gameday" concern)
+- **Phase**: `"signups_open"`, `"locked"` (if not done)
 - **Outstanding**: 
   - Clickable row with chevron (host/admin only)
   - Clicking opens bottom sheet with textarea input
@@ -319,23 +394,15 @@ v1 boundaries:
 - **Persistence**: Stored as `travel_note` in trips table
 - **Note**: Travel outline is separate from travel coordination fields (type, scope, booking)
 
-### 3) trip_name (Identity)
-- **id**: `"trip_name"`
-- **Relevant**: always
-- **Done**: always (treat as always done in v1)
-- **Boundary**: `"any"`
-- **Outstanding**: N/A (always done)
-- **Compiled**: none (it is the primary title in Zone A chrome)
-- **Edit**: Inline edit affordance exists in Zone A chrome (host/admin only)
 
 ## Language (Locked copy set)
 
 ### Scheduled (before sign-ups open)
-- "Set meet time and place" → done: "Meet details set"
-- "Outline travel plan (so everyone can book)" → done: "Travel plan outlined"
+- "Add a trip name" → done: "Trip name set"
 
 ### Sign-ups open
-- Same instrument language (no changes)
+- "Where and when are the group meeting" → done: "Meet details set"
+- "Outline travel plan (so everyone can book)" → done: "Travel plan outlined" (placeholder copy — to revisit)
 
 ### Locked (sign-ups closed → GameDay)
 - Travel plan continues if not done

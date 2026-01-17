@@ -21,11 +21,11 @@ export default async function LoginPage() {
         {/* Logo */}
         <div className="mb-8 flex justify-center">
           <Image
-            src="/logo.png"
+            src="/brand/logo-mark.png"
             alt="DayForeIt"
-            width={160}
-            height={80}
-            className="h-auto w-auto max-h-[80px] object-contain"
+            width={128}
+            height={64}
+            className="h-auto w-auto max-h-[64px] object-contain"
             style={{ width: "auto" }}
             priority
           />

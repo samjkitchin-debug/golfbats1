@@ -45,7 +45,8 @@ export default function MemberProfileCard({ member, onClose }: MemberProfileCard
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/40 z-40"
+        className="fixed inset-0 z-40"
+        style={{ backgroundColor: "var(--overlay-scrim)" }}
         onClick={onClose}
         aria-hidden="true"
       />

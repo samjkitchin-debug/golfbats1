@@ -23,7 +23,7 @@ export default async function MemberLayout({ children }: { children: React.React
   return (
     <div className="min-h-dvh app-background-theme">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-surface border-b border-border relative">
+      <header className="sticky top-0 z-20 bg-header border-b border-border relative">
         {/* Subtle vertical gradient overlay (sunrise warmth) */}
         <div 
           className="absolute inset-0 pointer-events-none header-warmth-gradient"
@@ -35,11 +35,11 @@ export default async function MemberLayout({ children }: { children: React.React
 
           <Link href="/" className="flex flex-1 justify-center">
             <Image
-              src="/logo.png"
+              src="/brand/logo-mark.png"
               alt="DayForeIt"
-              width={128}
-              height={64}
-              className="h-auto w-auto max-h-[64px] object-contain"
+              width={102}
+              height={51}
+              className="h-auto w-auto max-h-[51px] object-contain"
               style={{ width: "auto" }}
               priority
             />
@@ -49,7 +49,7 @@ export default async function MemberLayout({ children }: { children: React.React
         </div>
 
         {/* brand accent */}
-        <div className="h-0.5 w-full bg-action-blue" />
+        <div className="h-0.5 w-full bg-brand-green/20" />
       </header>
 
       {/* Content */}

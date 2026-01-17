@@ -11,6 +11,7 @@ import {
   leaveTrip,
   loadTrips,
   setMyHandicapForTrip,
+  updateTrip,
   type Trip,
 } from "../../../lib/tripActions";
 import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay";
@@ -21,14 +22,16 @@ import { perfMark, perfMeasure, perfLog } from "../../../lib/perf";
 import { checkMemberExportReadiness } from "../../../lib/memberExportReadiness";
 import { getGolfNoun } from "../../../lib/roundNounHelper";
 import { todayInSGT, computeSignupOpenAt } from "../../../lib/tripDates";
+import { TimePicker } from "../../components/TimePicker";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
 }
 
-// Helper to convert meetTime string to HH:MM format for time input
-function convertToTimeInputFormat(timeStr: string | undefined): string {
+// Helper to convert meetTime string to HH:MM format (for initial state only)
+// Note: TimePicker component handles all time selection; this helper is for parsing existing values
+function parseTimeToHHMM(timeStr: string | undefined): string {
   if (!timeStr) return "";
   
   // If already in HH:MM format, return as-is
@@ -50,7 +53,7 @@ function convertToTimeInputFormat(timeStr: string | undefined): string {
     return `${hours.toString().padStart(2, "0")}:${minutes}`;
   }
   
-  // If no match, return empty (user will need to re-enter)
+  // If no match, return empty
   return "";
 }
 
@@ -79,7 +82,7 @@ function MeetDetailsEditor({
   onUpdate: (updatedTrip: Trip) => void;
 }) {
   const rawMeetTime = (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime)?.trim() || "";
-  const [meetTime, setMeetTime] = useState(convertToTimeInputFormat(rawMeetTime));
+  const [meetTime, setMeetTime] = useState(parseTimeToHHMM(rawMeetTime));
   const [meetingPoint, setMeetingPoint] = useState(
     (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint)?.trim() || ""
   );
@@ -106,28 +109,33 @@ function MeetDetailsEditor({
         throw error;
       }
 
-      // Reload trips to get fresh data
+      // Update local trip state immediately (before reload) to ensure UI updates instantly
+      const trimmedMeetTime = meetTime.trim() || undefined;
+      const trimmedMeetingPoint = meetingPoint.trim() || undefined;
+      
+      // Update both decisionLogistics and logistics to match API normalization
+      const immediateUpdate: Trip = {
+        ...trip,
+        logistics: {
+          ...trip.logistics,
+          meetTime: trimmedMeetTime,
+          meetingPoint: trimmedMeetingPoint,
+        },
+        decisionLogistics: {
+          ...trip.decisionLogistics,
+          meetTime: trimmedMeetTime,
+          meetingPoint: trimmedMeetingPoint,
+        },
+      };
+      onUpdate(immediateUpdate);
+
+      // Reload trips to get fresh data from API (ensures consistency)
       const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
       const updatedTrip = freshTrips.find(t => t.id === trip.id);
       
       if (updatedTrip) {
+        // Update again with API-normalized data to ensure consistency
         onUpdate(updatedTrip);
-      } else {
-        // Fallback: update local state if reload didn't find the trip
-        const fallbackTrip: Trip = {
-          ...trip,
-          logistics: {
-            ...trip.logistics,
-            meetTime: meetTime.trim() || undefined,
-            meetingPoint: meetingPoint.trim() || undefined,
-          },
-          decisionLogistics: {
-            ...trip.decisionLogistics,
-            meetTime: meetTime.trim() || undefined,
-            meetingPoint: meetingPoint.trim() || undefined,
-          },
-        };
-        onUpdate(fallbackTrip);
       }
 
       setSaved(true);
@@ -146,15 +154,13 @@ function MeetDetailsEditor({
     <div className="space-y-3">
       <div>
         <div className="text-xs font-semibold mb-1">Meet time</div>
-        <input
-          type="time"
+        <TimePicker
           value={meetTime}
-          onChange={(e) => {
-            setMeetTime(e.target.value);
+          onChange={(value) => {
+            setMeetTime(value);
             setSaved(false);
           }}
           placeholder="e.g. 7:30am"
-          className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30"
         />
       </div>
       <div>
@@ -201,8 +207,8 @@ function HostedRoundMeetDetailsInstrument({
   onUpdate: (updatedTrip: Trip) => void;
 }) {
   const rawMeetTime = (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime)?.trim() || "";
-  const defaultTime = rawMeetTime ? convertToTimeInputFormat(rawMeetTime) : "07:00";
-  const [meetTime, setMeetTime] = useState(defaultTime);
+  const parsedTime = rawMeetTime ? parseTimeToHHMM(rawMeetTime) : "";
+  const [meetTime, setMeetTime] = useState(parsedTime);
   const [meetingPoint, setMeetingPoint] = useState(
     (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint)?.trim() || ""
   );
@@ -272,14 +278,13 @@ function HostedRoundMeetDetailsInstrument({
     <div className="space-y-3">
       <div>
         <div className="text-xs font-semibold mb-1">Meet time</div>
-        <input
-          type="time"
+        <TimePicker
           value={meetTime}
-          onChange={(e) => {
-            setMeetTime(e.target.value);
+          onChange={(value) => {
+            setMeetTime(value);
             setSaved(false);
           }}
-          className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30"
+          placeholder="Select time"
         />
       </div>
       <div>
@@ -333,12 +338,14 @@ function TravelInstrument({
   currentUserId,
   supabase,
   activeGroupId,
+  canEdit: canEditProp,
   onUpdate,
 }: {
   trip: Trip;
   currentUserId: string | null;
   supabase: ReturnType<typeof createBrowserClient>;
   activeGroupId: string | null;
+  canEdit: boolean;
   onUpdate: (updatedTrip: Trip) => void;
 }) {
   // Extract travel info from trip fields
@@ -368,7 +375,6 @@ function TravelInstrument({
     }
   }, [trip.travelType, trip.travelScope, trip.bookingApproach, trip.bookingProviderName, trip.travelNote, editing]);
 
-  const canEdit = trip.createdByMemberId === currentUserId;
   const hasTravelDetails = travelTypeDetail || travelScope || bookingApproach || travelNote.trim();
 
   async function handleSave() {
@@ -440,7 +446,7 @@ function TravelInstrument({
   if (!editing) {
     // Read-only view
     if (!hasTravelDetails) {
-      if (!canEdit) {
+      if (!canEditProp) {
         return (
           <section className="rounded-xl border bg-surface p-5 shadow-sm">
             <div className="text-sm font-medium text-foreground mb-1">Travel</div>
@@ -496,7 +502,7 @@ function TravelInstrument({
             </div>
           )}
         </div>
-        {canEdit && (
+        {canEditProp && (
           <button
             onClick={() => setEditing(true)}
             className="mt-4 rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
@@ -649,6 +655,10 @@ export default function TripDetailPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string; role?: string }>>([]);
+  const [tripGroupName, setTripGroupName] = useState<string | null>(null);
+  const [tripGroupId, setTripGroupId] = useState<string | null>(null);
+  const [isTripGroupAdmin, setIsTripGroupAdmin] = useState(false);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [profileHandicap, setProfileHandicap] = useState<number | null>(null);
   const [editingMeetDetails, setEditingMeetDetails] = useState(false);
@@ -657,21 +667,34 @@ export default function TripDetailPage() {
   const [tripNameValue, setTripNameValue] = useState<string>("");
   const [showTravelNote, setShowTravelNote] = useState(false);
   // Local phase override state (for manual control, not persisted)
-  const [phaseOverride, setPhaseOverride] = useState<BaseCampMomentState | null>(null);
+  // CanonicalPhase for group trips (consolidates all phase/moment/state branching)
+  type CanonicalPhase =
+    | "scheduled"
+    | "signups_open"
+    | "locked"
+    | "gameday"
+    | "in_play"
+    | "completed";
+  
   const [showTopAnchorSheet, setShowTopAnchorSheet] = useState(false);
   const [showBottomAnchorSheet, setShowBottomAnchorSheet] = useState(false);
-  const [showRevertConfirm, setShowRevertConfirm] = useState(false);
-  const [showCloseSignupsConfirm, setShowCloseSignupsConfirm] = useState(false);
-  const [showReopenSignupsConfirm, setShowReopenSignupsConfirm] = useState(false);
+  // Pending anchor action (for confirmation modal)
+  type PendingAction =
+    | { kind: "open_signups_now" }
+    | { kind: "revert_to_scheduled" }
+    | { kind: "close_signups_now" }
+    | { kind: "reopen_signups" }
+    | { kind: "set_signups_close_date"; dateIso: string };
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [signupsCloseDateValue, setSignupsCloseDateValue] = useState<string>("");
   const [showTravelOutlineSheet, setShowTravelOutlineSheet] = useState(false);
   const [travelOutlineValue, setTravelOutlineValue] = useState<string>("");
+  const [showTripNameSheet, setShowTripNameSheet] = useState(false);
+  const [showZoneAOverflowSheet, setShowZoneAOverflowSheet] = useState(false);
   
   // v2.1.1: Control Zone C visibility for group trips (A+B only when false)
   const SHOW_ZONE_C_GROUP_TRIPS = false;
   
-  // DEV ONLY: v2.32 Preview second Base Camp job for spacing validation
-  const PREVIEW_EXTRA_JOB = true;
   const [scoringStarted, setScoringStarted] = useState(false);
   const [showLaterSteps, setShowLaterSteps] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
@@ -719,6 +742,7 @@ export default function TripDetailPage() {
         setCurrentUserId(bootstrap.userId);
         setCurrentUserName(bootstrap.member?.display_name || bootstrap.member?.full_name || null);
         setActiveGroupId(bootstrap.activeGroupId);
+        setApprovedGroups(bootstrap.approvedGroups || []);
         
         const duration = perfMeasure("bootstrap", start);
         perfLog("bootstrap: success", {
@@ -835,6 +859,76 @@ export default function TripDetailPage() {
     return trips.find((t) => t.id === tripId);
   }, [trips, tripId]);
 
+
+  // Load group name and admin status for the trip (for group trips) - must be after trip is defined
+  useEffect(() => {
+    if (!tripId || !trip || !currentUserId) return;
+    if (!isGroupTrip(trip)) return;
+
+    async function loadTripGroupInfo() {
+      try {
+        // Get trip's group_id from database
+        const { data: tripData, error } = await supabase
+          .from("trips")
+          .select("group_id")
+          .eq("legacy_id", tripId)
+          .maybeSingle();
+
+        if (error || !tripData?.group_id) {
+          // Fallback: use activeGroupId if trip group_id not found
+          const group = approvedGroups.find(g => g.id === activeGroupId);
+          setTripGroupName(group?.name || "the group");
+          setTripGroupId(activeGroupId);
+          setIsTripGroupAdmin(false);
+          return;
+        }
+
+        const groupId = tripData.group_id;
+        setTripGroupId(groupId);
+
+        // Check if user is admin of this group
+        const groupMembership = approvedGroups.find(g => g.id === groupId);
+        const isAdmin = groupMembership?.role === 'admin';
+
+        // Also verify via direct query to ensure accuracy
+        const { data: membershipData, error: membershipError } = await supabase
+          .from("group_members")
+          .select("role, status")
+          .eq("group_id", groupId)
+          .eq("user_id", currentUserId)
+          .maybeSingle();
+
+        const verifiedIsAdmin = !membershipError && 
+          membershipData?.role === 'admin' && 
+          membershipData?.status === 'approved';
+
+        setIsTripGroupAdmin(isAdmin || verifiedIsAdmin);
+
+        // Fetch group name from groups table
+        const { data: groupData, error: groupError } = await supabase
+          .from("groups")
+          .select("name")
+          .eq("id", groupId)
+          .maybeSingle();
+
+        if (groupError || !groupData) {
+          // Fallback: use approvedGroups if direct query fails
+          const group = approvedGroups.find(g => g.id === groupId);
+          setTripGroupName(group?.name || "the group");
+          return;
+        }
+
+        setTripGroupName(groupData.name);
+      } catch (error) {
+        console.error("Failed to load trip group info:", error);
+        setTripGroupName("the group");
+        setIsTripGroupAdmin(false);
+      }
+    }
+
+    loadTripGroupInfo();
+  }, [tripId, trip, currentUserId, activeGroupId, approvedGroups, supabase]);
+
   // Phase inference for group trips (must be before early returns)
   type TripPhase = "created" | "forming" | "locked" | "playing_today" | "in_progress" | "afterglow";
   const currentPhase = useMemo<TripPhase>(() => {
@@ -895,7 +989,7 @@ export default function TripDetailPage() {
     | "any";
 
   type BaseCampInstrument = {
-    id: "trip_name" | "meet_details" | "travel_outline" | "preview_travel"; // preview_travel is DEV ONLY
+    id: "trip_name" | "meet_details" | "travel_outline";
     boundary: BaseCampBoundary;
     label: string;
     isRelevant: boolean;
@@ -909,7 +1003,10 @@ export default function TripDetailPage() {
   // Convert simple derived values from useMemo to plain const (reduce hooks)
   const isHostedRoundTrip = trip ? isHostedRound(trip) : false;
   const isGroupTripPage = trip ? isGroupTrip(trip) : false;
-  const canEdit = trip?.createdByMemberId === currentUserId;
+  // Permissions: Group trips use group admin status; hosted rounds use creator check
+  const canEdit = isGroupTripPage 
+    ? isTripGroupAdmin 
+    : (trip?.createdByMemberId === currentUserId);
 
   // Helper: Convert YYYY-MM-DD to cutoff_at ISO at 23:59 SGT
   const toCutoffAtIsoFromYmd = (ymd: string): string => {
@@ -940,19 +1037,21 @@ export default function TripDetailPage() {
     const todaySGT = todayInSGT(); // YYYY-MM-DD in SGT
     const isTripToday = trip.date === todaySGT;
 
-    // Compute open moment using tripDates helper (returns UTC ISO)
-    const openMomentIso = computeSignupOpenAt(trip.date);
-    const openMomentTime = new Date(openMomentIso).getTime();
+    // Compute open moment: use persisted signups_opened_at if exists, else derive from trip_date - 30
+    const persistedOpenMomentIso = trip.signupsOpenedAt;
+    const derivedOpenMomentIso = computeSignupOpenAt(trip.date);
+    const effectiveOpenMomentIso = persistedOpenMomentIso || derivedOpenMomentIso;
+    const effectiveOpenMomentTime = new Date(effectiveOpenMomentIso).getTime();
     const nowTime = Date.now();
 
-    // Scheduled state: before open moment
-    const isScheduledValue = nowTime < openMomentTime;
+    // Scheduled state: before effective open moment
+    const isScheduledValue = nowTime < effectiveOpenMomentTime;
 
-    // Signups open state: after open moment and before close moment
-    const signupsOpenNow = nowTime >= openMomentTime;
+    // Signups open state: after effective open moment and before close moment
+    const signupsOpenNow = nowTime >= effectiveOpenMomentTime;
 
-    // Extract signup open date YMD for display
-    const openMomentDate = new Date(openMomentIso);
+    // Extract signup open date YMD for display (use effective open moment)
+    const openMomentDate = new Date(effectiveOpenMomentIso);
     const openYear = openMomentDate.getUTCFullYear();
     const openMonth = String(openMomentDate.getUTCMonth() + 1).padStart(2, '0');
     const openDay = String(openMomentDate.getUTCDate()).padStart(2, '0');
@@ -1026,11 +1125,18 @@ export default function TripDetailPage() {
     };
     const signupsCloseDateFormatted = formatCloseDate(effectiveCloseYmd);
 
+    // Group meetup: prefer trip-level field if exists, else default to true for group trips (matches creation default)
+    // Note: groupMeetup field may not exist on trip object yet (no schema change), so use safe fallback
+    const groupMeetupValue = (trip as any).groupMeetup !== undefined 
+      ? Boolean((trip as any).groupMeetup)
+      : true; // Default true for group trips (matches creation default)
+
     return {
       isScheduled: isScheduledValue,
       signupsOpenNow,
       signupOpenDateYmd,
       isTripToday,
+      tripName: trip.tripName || null,
       hasMeetDetails: hasMeetDetailsValue,
       meetTimeVal,
       meetingPointVal,
@@ -1042,67 +1148,120 @@ export default function TripDetailPage() {
       travelOutline: trip.travelNote?.trim() || null,
       signupsCloseDateYmd: effectiveCloseYmd,
       signupsCloseDateFormatted,
-      openMomentTime,
+      openMomentTime: effectiveOpenMomentTime,
       effectiveCloseMomentTime,
       effectiveCloseMomentIso,
+      groupMeetup: groupMeetupValue,
     };
   }, [trip, isGroupTripPage]);
 
-  // Compute Base Camp moment state (group trips only) - canonical moments drive anchor switching
-  type BaseCampMomentState =
-    | "before_signups_open"
-    | "signups_open"
-    | "signups_closed"
-    | "gameday"
-    | "in_play"
-    | "completed";
-
-  const baseCampMomentState = useMemo<BaseCampMomentState | null>(() => {
-    if (!trip || !isGroupTripPage || !signals) return null;
-
-    // If there's a manual phase override, use it
-    if (phaseOverride) {
-      return phaseOverride;
-    }
-
-    const nowTime = Date.now();
-    const todaySGT = todayInSGT();
-    
-    // Completed moment
-    const completed = trip.result || trip.coordinationStatus === "completed";
-    if (completed) {
+  // Derive canonical phase from canonical moments (group trips only)
+  function deriveCanonicalPhase(args: {
+    resultsPublished: boolean;
+    scoringStarted: boolean;
+    isGameDay: boolean;
+    signupCloseAtEffective: number | null;
+    signupOpenAt: number | null;
+    nowTime: number;
+    todaySGT: string;
+    tripDate: string;
+  }): CanonicalPhase {
+    // Completed always wins (irreversible)
+    if (args.resultsPublished) {
       return "completed";
     }
 
-    // In-play moment
-    if (scoringStarted) {
+    // In-play always wins (irreversible)
+    if (args.scoringStarted) {
       return "in_play";
     }
 
-    // GameDay moment (trip.date is today in SGT)
-    if (trip.date === todaySGT) {
+    // GameDay (trip.date is today in SGT)
+    if (args.isGameDay) {
       return "gameday";
     }
 
-    // Sign-ups closed (now >= effectiveCloseMoment AND today < trip.date)
-    if (signals.effectiveCloseMomentTime && nowTime >= signals.effectiveCloseMomentTime && todaySGT < trip.date) {
-      return "signups_closed";
+    // Locked (now >= effectiveCloseMoment AND today < trip.date)
+    if (args.signupCloseAtEffective && args.nowTime >= args.signupCloseAtEffective && args.todaySGT < args.tripDate) {
+      return "locked";
     }
 
     // Sign-ups open (openMoment <= now < effectiveCloseMoment)
-    if (signals.openMomentTime && nowTime >= signals.openMomentTime) {
-      if (!signals.effectiveCloseMomentTime || nowTime < signals.effectiveCloseMomentTime) {
+    if (args.signupOpenAt && args.nowTime >= args.signupOpenAt) {
+      if (!args.signupCloseAtEffective || args.nowTime < args.signupCloseAtEffective) {
         return "signups_open";
       }
     }
 
-    // Before sign-ups open (default)
-    return "before_signups_open";
-  }, [trip, isGroupTripPage, signals, scoringStarted, phaseOverride]);
+    // Scheduled (default - before sign-ups open)
+    return "scheduled";
+  }
+
+  const canonicalPhase = useMemo<CanonicalPhase | null>(() => {
+    if (!trip || !isGroupTripPage || !signals) return null;
+
+    const nowTime = Date.now();
+    const todaySGT = todayInSGT();
+    
+    // Canonical moments
+    const resultsPublished = Boolean(trip.result || trip.coordinationStatus === "completed");
+    const isGameDay = trip.date === todaySGT;
+    
+    // Derive phase from canonical moments
+    const derived = deriveCanonicalPhase({
+      resultsPublished,
+      scoringStarted,
+      isGameDay,
+      signupCloseAtEffective: signals.effectiveCloseMomentTime,
+      signupOpenAt: signals.openMomentTime,
+      nowTime,
+      todaySGT,
+      tripDate: trip.date,
+    });
+
+    // Irreversible truths win first (completed/in_play always override)
+    if (resultsPublished) return "completed";
+    if (scoringStarted) return "in_play";
+
+    // Derive from canonical moments (uses persisted gates: signups_opened_at and cutoff_at)
+    return derived;
+  }, [trip, isGroupTripPage, signals, scoringStarted]);
+
+  // Helper: Get lane instrument IDs for a given phase
+  function getLaneInstrumentIds(phase: CanonicalPhase): string[] {
+    switch (phase) {
+      case "scheduled":
+        return ["trip_name"];
+      case "signups_open":
+        return ["meet_details", "travel_outline"];
+      case "locked":
+        return ["travel_outline"]; // Only if not done (filtered by registry)
+      case "gameday":
+      case "in_play":
+      case "completed":
+        return []; // No instruments in these phases
+      default:
+        return [];
+    }
+  }
+
+  // Helper: Get next phase for preview
+  function getNextPhase(phase: CanonicalPhase): CanonicalPhase | null {
+    switch (phase) {
+      case "scheduled":
+        return "signups_open";
+      case "signups_open":
+        return "locked";
+      case "locked":
+        return "gameday";
+      default:
+        return null;
+    }
+  }
 
   // Build instrument registry (group trips only) - must be before early returns
   const instruments: BaseCampInstrument[] = useMemo(() => {
-    if (!signals || !baseCampMomentState) return [];
+    if (!signals || !canonicalPhase || !trip) return [];
     
     // canEdit is defined at component level, accessible here
     
@@ -1110,32 +1269,34 @@ export default function TripDetailPage() {
     const signupsCloseDateYmd = signals.signupsCloseDateYmd;
     const signupsCloseDateFormatted = signals.signupsCloseDateFormatted;
 
-    // 1) trip_name instrument
+    // 1) trip_name instrument (Scheduled lane only)
+    // Strict completion: typeof trip.trip_name === "string" && trip.trip_name.trim().length > 0
+    const tripNameIsDone = typeof trip.tripName === "string" && trip.tripName.trim().length > 0;
     const tripNameInstrument: BaseCampInstrument = {
       id: "trip_name",
-      boundary: "any",
-      label: "Trip name confirmed",
+      boundary: "before_signups_open",
+      label: tripNameIsDone ? "Trip name set" : "Add a trip name",
       isRelevant: true,
-      isDone: true,
+      isDone: tripNameIsDone,
       chromeLine: null,
       renderInline: null,
       renderLink: null,
     };
 
-    // 2) meet_details instrument
-    // Boundary determined by Base Camp moment state
+
+    // 3) meet_details instrument
+    // Boundary: only shown when sign-ups are open (NOT in Scheduled lane)
+    // Lane filtering is handled by getLaneInstrumentIds, but boundary kept for registry structure
     const meetDetailsBoundary: BaseCampBoundary =
-      baseCampMomentState === "before_signups_open"
-        ? "before_signups_open"
-        : baseCampMomentState === "signups_open"
-          ? "before_signups_close"
-          : "before_gameday";
+      canonicalPhase === "signups_open"
+        ? "before_signups_close"
+        : "before_gameday";
 
     const meetDetailsInstrument: BaseCampInstrument = {
       id: "meet_details",
       boundary: meetDetailsBoundary,
-      label: "Set meet time and place",
-      isRelevant: true,
+      label: "Where and when are the group meeting",
+      isRelevant: signals.groupMeetup === true, // Only relevant when group meetup is true
       isDone: signals.hasMeetDetails,
       chromeLine: signals.meetSummaryLine || null,
       pastLine: signals.hasMeetDetails ? "Meet details set" : null,
@@ -1187,28 +1348,13 @@ export default function TripDetailPage() {
       renderLink: null, // Handled in rendering (row is clickable)
     };
 
-    // Build base instruments array (ordered: meet_details, travel_outline)
+    // Build base instruments array (ordered: trip_name, confirm_details, meet_details, travel_outline)
     // Note: signups_close instrument removed - control now lives on anchors
     const baseInstruments: BaseCampInstrument[] = [tripNameInstrument, meetDetailsInstrument, travelInstrument];
     
-    // DEV ONLY: v2.32 Add preview instrument for spacing validation (group trips only)
-    if (PREVIEW_EXTRA_JOB && isGroupTripPage) {
-      const previewInstrument: BaseCampInstrument = {
-        id: "preview_travel",
-        boundary: meetDetailsBoundary, // Same boundary as meet_details so they stack
-        label: "Outline travel plan (so everyone can book)",
-        isRelevant: true, // Always relevant when flag is true
-        isDone: false, // Always outstanding for preview
-        chromeLine: null, // Never compiles to chrome
-        renderInline: null, // No inline editor
-        renderLink: null, // No click handler
-        pastLine: null, // No past line
-      };
-      baseInstruments.push(previewInstrument);
-    }
     
     return baseInstruments;
-  }, [signals, trip, currentUserId, hideMeetInstrument, supabase, activeGroupId, isGroupTripPage, baseCampMomentState, canEdit]);
+  }, [signals, trip, currentUserId, hideMeetInstrument, supabase, activeGroupId, isGroupTripPage, canonicalPhase, canEdit]);
 
   // Sync hideMeetInstrument when meet details are added
   useEffect(() => {
@@ -1916,31 +2062,19 @@ export default function TripDetailPage() {
                         onClick={async () => {
                           if (!currentUserId || !activeGroupId) return;
                           try {
-                            const { error } = await supabase
-                              .from("trips")
-                              .update({
-                                trip_name: tripNameValue.trim() || null,
-                              })
-                              .eq("legacy_id", trip.id);
-
-                            if (error) {
-                              throw error;
-                            }
-
-                            const freshTrips = await loadTrips(activeGroupId, true);
-                            const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                            // Update via API (consistent with other trip updates)
+                            const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                              tripName: tripNameValue.trim() || undefined,
+                            });
                             
-                            if (updatedTrip) {
-                              setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-                            }
-                            
+                            setTrips(updatedTrips);
                             setEditingTripName(false);
                           } catch (error) {
                             console.error("Failed to save trip name:", error);
                             alert(`Failed to save trip name: ${error instanceof Error ? error.message : String(error)}`);
                           }
                         }}
-                        className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                        className="rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
                       >
                         Save
                       </button>
@@ -1949,26 +2083,28 @@ export default function TripDetailPage() {
                           setEditingTripName(false);
                           setTripNameValue(trip.tripName || trip.name || "");
                         }}
-                        className="rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
+                        className="rounded-lg bg-transparent text-ink-600 px-4 py-2 text-sm font-medium hover:text-ink-900 hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/10"
                       >
                         Cancel
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="text-xl font-semibold text-foreground">
                       {trip.tripName || trip.name || (getGolfNoun(trip) === "trip" ? "Trip" : "Round")}
                     </div>
                     {trip.createdByMemberId === currentUserId && (
                       <button
                         onClick={() => {
-                          setEditingTripName(true);
-                          setTripNameValue(trip.tripName || trip.name || "");
+                          setShowZoneAOverflowSheet(true);
                         }}
-                        className="text-xs text-muted hover:text-foreground underline"
+                        className="text-muted hover:text-foreground p-1"
+                        aria-label="Edit trip"
                       >
-                        Edit name
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
                       </button>
                     )}
                   </div>
@@ -2000,11 +2136,17 @@ export default function TripDetailPage() {
                 ))}
 
               {/* Host indication */}
-              {trip.createdByMemberName && (
+              {isGroupTripPage ? (
+                tripGroupName ? (
+                  <div className="text-sm text-secondary">
+                    Hosted by {tripGroupName}
+                  </div>
+                ) : null
+              ) : trip.createdByMemberName ? (
                 <div className="text-sm text-secondary">
                   {trip.createdByMemberId === currentUserId ? "Hosted by you" : `Hosted by ${trip.createdByMemberName.split(" ")[0]}`}
                 </div>
-              )}
+              ) : null}
             </section>
 
             {/* Zone B: Base Camp (Narrative Spine) */}
@@ -2015,15 +2157,15 @@ export default function TripDetailPage() {
               {/* Left cell: Current phase node + tick (spine starts here, no spine above) */}
               <div className="relative flex items-start">
                 <div className="relative z-10 flex items-center pt-[0.375rem]">
-                  <div className="h-2.5 w-2.5 rounded-full bg-foreground ring-2 ring-foreground/20 -translate-x-1/2" />
+                  <div className="h-2.5 w-2.5 rounded-full bg-ink-700 ring-2 ring-ink-700/20 -translate-x-1/2" />
                   <div className="absolute left-0 w-3 h-px bg-border translate-x-1/2" style={{ top: "6px" }} />
                 </div>
                 {/* Spine segment from top node down (connects to Row 2) */}
                 <div className="absolute left-0 top-[1.125rem] bottom-0 w-px bg-border" />
               </div>
               {/* Right cell: Top anchor (system-owned statement, may be actionable) */}
-              <div className="pt-[0.375rem]">
-                {baseCampMomentState && (() => {
+              <div id="base-camp-top-anchor" className="pt-[0.375rem]">
+                {canonicalPhase && (() => {
                   // Format date helper for anchors
                   const formatDateForAnchor = (ymd: string): string => {
                     const [year, month, day] = ymd.split('-').map(Number);
@@ -2035,25 +2177,31 @@ export default function TripDetailPage() {
                   };
 
                   // Compute anchor actionability (host/admin only)
+                  // Scheduled phase: top anchor not actionable (no up chevron)
                   const topAnchorIsActionable =
-                    canEdit && (baseCampMomentState === "signups_open" || baseCampMomentState === "signups_closed");
+                    canEdit && canonicalPhase !== "scheduled" && (canonicalPhase === "signups_open" || canonicalPhase === "locked");
 
+                  // Top anchor text mapping
                   let topAnchorText: string | null = null;
-                  
-                  if (baseCampMomentState === "before_signups_open") {
-                    topAnchorText = signals?.signupOpenDateYmd 
-                      ? `Sign-ups open on ${formatDateForAnchor(signals.signupOpenDateYmd)}.`
-                      : "Sign-ups will open.";
-                  } else if (baseCampMomentState === "signups_open") {
-                    topAnchorText = "Sign-ups are open now.";
-                  } else if (baseCampMomentState === "signups_closed") {
-                    topAnchorText = "Sign-ups are closed.";
-                  } else if (baseCampMomentState === "gameday") {
-                    topAnchorText = "GameDay.";
-                  } else if (baseCampMomentState === "in_play") {
-                    topAnchorText = "In play.";
-                  } else if (baseCampMomentState === "completed") {
-                    topAnchorText = "Completed.";
+                  switch (canonicalPhase) {
+                    case "scheduled":
+                      topAnchorText = "Scheduled.";
+                      break;
+                    case "signups_open":
+                      topAnchorText = "Sign-ups are open now.";
+                      break;
+                    case "locked":
+                      topAnchorText = "Sign-ups are closed.";
+                      break;
+                    case "gameday":
+                      topAnchorText = "GameDay.";
+                      break;
+                    case "in_play":
+                      topAnchorText = "In play.";
+                      break;
+                    case "completed":
+                      topAnchorText = "Completed.";
+                      break;
                   }
 
                   if (!topAnchorText) return null;
@@ -2098,29 +2246,15 @@ export default function TripDetailPage() {
               </div>
               {/* Right cell: Between-anchor content (instrument slots) - extra horizontal padding for breathing room */}
               <div className="mt-10 pb-10 pl-6">
-                {baseCampMomentState && baseCampMomentState !== "gameday" && baseCampMomentState !== "in_play" && baseCampMomentState !== "completed" && (() => {
-                  // Determine which boundary instruments to show based on moment state
-                  // Keep both outstanding AND done instruments in the lane (completed state shows in situ)
-                  let activeInstruments: BaseCampInstrument[] = [];
-                  if (baseCampMomentState === "before_signups_open") {
-                    // Include both done and outstanding instruments
-                    const beforeOpenAll = instruments.filter(i => i.isRelevant && i.boundary === "before_signups_open");
-                    const beforeGamedayAll = instruments.filter(i => i.isRelevant && i.boundary === "before_gameday");
-                    const anyBoundaryAll = instruments.filter(i => i.isRelevant && i.boundary === "any");
-                    activeInstruments = [...beforeOpenAll, ...beforeGamedayAll, ...anyBoundaryAll];
-                  } else if (baseCampMomentState === "signups_open") {
-                    const beforeCloseAll = instruments.filter(i => i.isRelevant && i.boundary === "before_signups_close");
-                    const beforeGamedayAll = instruments.filter(i => i.isRelevant && i.boundary === "before_gameday");
-                    const anyBoundaryAll = instruments.filter(i => i.isRelevant && i.boundary === "any");
-                    activeInstruments = [...beforeCloseAll, ...beforeGamedayAll, ...anyBoundaryAll];
-                  } else if (baseCampMomentState === "signups_closed") {
-                    const beforeGamedayAll = instruments.filter(i => i.isRelevant && i.boundary === "before_gameday");
-                    const anyBoundaryAll = instruments.filter(i => i.isRelevant && i.boundary === "any");
-                    activeInstruments = [...beforeGamedayAll, ...anyBoundaryAll];
-                  } else {
-                    // gameday/in_play/completed: no instruments (or minimal if specified)
-                    activeInstruments = [];
-                  }
+                {canonicalPhase && canonicalPhase !== "gameday" && canonicalPhase !== "in_play" && canonicalPhase !== "completed" && (() => {
+                  // Get lane instrument IDs for current phase
+                  const laneInstrumentIds = getLaneInstrumentIds(canonicalPhase);
+                  
+                  // Filter registry by phase lane (keep both outstanding AND done instruments in lane)
+                  const activeInstruments = instruments.filter(i => 
+                    i.isRelevant && 
+                    laneInstrumentIds.includes(i.id)
+                  );
 
                   // Guardrail: Only one inline instrument visible at a time (v1 constraint)
                   // Select the first instrument (stable order) that is eligible for inline rendering
@@ -2148,7 +2282,60 @@ export default function TripDetailPage() {
                     <div className="space-y-6">
                         {activeInstruments.slice(0, 3).map((instrument) => {
                           // Compute if row is actionable (can edit and not done, or done but can still edit)
-                          const isActionable = canEdit && (instrument.id === "meet_details" || instrument.id === "travel_outline");
+                          const isActionable = canEdit && (
+                            instrument.id === "trip_name" || 
+                            instrument.id === "meet_details" || 
+                            instrument.id === "travel_outline"
+                          );
+                          
+                          // trip_name: clickable row (!isDone) or completed row (isDone)
+                          if (instrument.id === "trip_name") {
+                            // If done: show tick only, not clickable
+                            if (instrument.isDone) {
+                              return (
+                                <div key={instrument.id}>
+                                  <div className="text-sm flex items-center justify-between gap-3 text-muted opacity-60">
+                                    <span>{instrument.label}</span>
+                                    <div className="shrink-0">
+                                      <svg className="h-4 w-4 text-muted opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            // If not done: clickable with chevron, opens bottom sheet
+                            if (isActionable) {
+                              return (
+                                <div key={instrument.id}>
+                                  <div
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => {
+                                      setShowTripNameSheet(true);
+                                      setTripNameValue(trip.tripName || "");
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if ((e.key === "Enter" || e.key === " ") && isActionable) {
+                                        e.preventDefault();
+                                        setShowTripNameSheet(true);
+                                        setTripNameValue(trip.tripName || "");
+                                      }
+                                    }}
+                                    className="text-sm flex items-center justify-between gap-3 hover:opacity-80 cursor-pointer text-foreground"
+                                  >
+                                    <span>{instrument.label}</span>
+                                    <div className="shrink-0 opacity-60">
+                                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                      </svg>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+                          }
                           
                           // meet_details: opens inline editor when clicked
                           if (instrument.id === "meet_details" && instrument.renderInline && instrument.id === activeInlineInstrumentId) {
@@ -2180,21 +2367,19 @@ export default function TripDetailPage() {
                                     instrument.isDone ? "text-muted opacity-60" : "text-foreground"
                                   }`}
                                 >
-                                  <div className="flex items-center gap-2">
+                                  <span>{instrument.label}</span>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {isActionable && (
+                                      <svg className="h-4 w-4 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                      </svg>
+                                    )}
                                     {instrument.isDone && (
-                                      <svg className="h-4 w-4 text-muted opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <svg className="h-4 w-4 text-muted opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                       </svg>
                                     )}
-                                    <span>{instrument.label}</span>
                                   </div>
-                                  {isActionable && (
-                                    <div className="shrink-0 opacity-60">
-                                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                      </svg>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             );
@@ -2222,32 +2407,38 @@ export default function TripDetailPage() {
                                     instrument.isDone ? "text-muted opacity-60" : "text-foreground"
                                   }`}
                                 >
-                                  <div className="flex items-center gap-2">
+                                  <span>{instrument.label}</span>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {isActionable && (
+                                      <svg className="h-4 w-4 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                      </svg>
+                                    )}
                                     {instrument.isDone && (
-                                      <svg className="h-4 w-4 text-muted opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <svg className="h-4 w-4 text-muted opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                       </svg>
                                     )}
-                                    <span>{instrument.label}</span>
                                   </div>
-                                  {isActionable && (
-                                    <div className="shrink-0 opacity-60">
-                                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                      </svg>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             );
                           }
                           
-                          // Fallback: non-actionable instruments (should not happen for meet_details/travel_outline)
+                          // Fallback: non-actionable instruments (should not happen in normal flow)
+                          // Consistency: if done, show tick; if not done and not actionable, still show (read-only)
                           return (
                             <div key={instrument.id}>
                               <div className={`text-sm ${instrument.isDone ? "text-muted opacity-60" : "text-foreground"} flex items-center justify-between gap-2`}>
                                 <span>{instrument.label}</span>
-                                {instrument.renderLink && instrument.renderLink()}
+                                {instrument.isDone && (
+                                  <div className="shrink-0">
+                                    <svg className="h-4 w-4 text-muted opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </div>
+                                )}
+                                {!instrument.isDone && instrument.renderLink && instrument.renderLink()}
                               </div>
                             </div>
                           );
@@ -2259,8 +2450,8 @@ export default function TripDetailPage() {
                 })()}
               </div>
 
-              {/* Row 3: Bottom anchor (next moment) - only render if baseCampMomentState is not completed */}
-              {baseCampMomentState && baseCampMomentState !== "completed" && (
+              {/* Row 3: Bottom anchor (next moment) - only render if canonicalPhase is not completed */}
+              {canonicalPhase && canonicalPhase !== "completed" && (
                 <>
                   {/* Left cell: Next moment node + tick (spine from Row 2 connects here, stops at node) */}
                   <div className="relative flex items-start">
@@ -2274,8 +2465,8 @@ export default function TripDetailPage() {
                     {/* Spine stops at bottom node (no continuation below) */}
                   </div>
                   {/* Right cell: Bottom anchor (next moment statement, may be actionable) */}
-                  <div className="pt-[0.375rem]">
-                    {baseCampMomentState && (() => {
+                  <div id="base-camp-bottom-anchor" className="pt-[0.375rem]">
+                    {canonicalPhase && (() => {
                       // Format date helper for anchors
                       const formatDateForAnchor = (ymd: string): string => {
                         const [year, month, day] = ymd.split('-').map(Number);
@@ -2287,28 +2478,34 @@ export default function TripDetailPage() {
                       };
 
                       // Compute anchor actionability (host/admin only)
+                      // Scheduled phase: bottom anchor actionable (down chevron for "Open sign-ups now")
                       const bottomAnchorIsActionable =
-                        canEdit && (baseCampMomentState === "signups_open");
+                        canEdit && (canonicalPhase === "scheduled" || canonicalPhase === "signups_open");
 
+                      // Bottom anchor text mapping
                       let bottomAnchorText: string | null = null;
-                      
-                      if (baseCampMomentState === "before_signups_open") {
-                        bottomAnchorText = signals?.signupsCloseDateFormatted
-                          ? `Sign-ups close on ${signals.signupsCloseDateFormatted}.`
-                          : null;
-                      } else if (baseCampMomentState === "signups_open") {
-                        bottomAnchorText = signals?.signupsCloseDateFormatted
-                          ? `Sign-ups close on ${signals.signupsCloseDateFormatted}.`
-                          : null;
-                      } else if (baseCampMomentState === "signups_closed") {
-                        bottomAnchorText = `Next: GameDay on ${formatDateForAnchor(trip.date)}.`;
-                      } else if (baseCampMomentState === "gameday") {
-                        bottomAnchorText = "Next: In play.";
-                      } else if (baseCampMomentState === "in_play") {
-                        bottomAnchorText = "Next: Completed.";
-                      } else if (baseCampMomentState === "completed") {
-                        // No bottom anchor for completed
-                        return null;
+                      switch (canonicalPhase) {
+                        case "scheduled":
+                          bottomAnchorText = signals?.signupOpenDateYmd 
+                            ? `Sign-ups open on ${formatDateForAnchor(signals.signupOpenDateYmd)}.`
+                            : "Sign-ups will open.";
+                          break;
+                        case "signups_open":
+                          bottomAnchorText = signals?.signupsCloseDateFormatted
+                            ? `Sign-ups close on ${signals.signupsCloseDateFormatted}.`
+                            : null;
+                          break;
+                        case "locked":
+                          bottomAnchorText = `GameDay on ${formatDateForAnchor(trip.date)}.`;
+                          break;
+                        case "gameday":
+                          bottomAnchorText = "Next: In play.";
+                          break;
+                        case "in_play":
+                          bottomAnchorText = "Next: Completed.";
+                          break;
+                        default:
+                          bottomAnchorText = null;
                       }
 
                       if (!bottomAnchorText) return null;
@@ -2350,50 +2547,22 @@ export default function TripDetailPage() {
                   
                   {/* Row 4: Next lane preview (non-interactive tease) */}
                   {(() => {
-                    // Type assertion needed because TypeScript narrows baseCampMomentState from earlier checks
-                    const state = baseCampMomentState as BaseCampMomentState | null;
-                    if (!state || state === "gameday" || state === "in_play" || state === "completed") {
+                    if (!canonicalPhase || canonicalPhase === "gameday" || canonicalPhase === "in_play") {
                       return null;
                     }
                     
-                    // Helper: Determine next lane boundary
-                    const getNextLaneBoundary = (s: BaseCampMomentState): BaseCampBoundary | null => {
-                      if (state === "before_signups_open") return "before_signups_close";
-                      if (state === "signups_open") return "before_gameday";
-                      if (state === "signups_closed") return "before_gameday";
-                      // gameday/in_play/completed: no preview
-                      return null;
-                    };
+                    // Get next phase
+                    const nextPhase = getNextPhase(canonicalPhase);
+                    if (!nextPhase) return null;
                     
-                    // Helper: Determine second-next lane boundary (fallback only)
-                    const getSecondNextLaneBoundary = (state: BaseCampMomentState): BaseCampBoundary | null => {
-                      if (state === "before_signups_open") return "before_gameday"; // Look ahead one more step
-                      // signups_open -> next is before_gameday, no second step
-                      // signups_closed -> already before_gameday, no second step
-                      // else: no preview
-                      return null;
-                    };
+                    // Get lane instrument IDs for next phase
+                    const nextLaneInstrumentIds = getLaneInstrumentIds(nextPhase);
                     
-                    const primaryBoundary = getNextLaneBoundary(state);
-                    if (!primaryBoundary) return null;
-                    
-                    // Select preview instruments: try primary boundary first, fallback to second-next if empty
-                    const filterInstruments = (boundary: BaseCampBoundary) => 
-                      instruments.filter(i => 
-                        i.isRelevant &&
-                        i.id !== "trip_name" &&
-                        (i.boundary === boundary || i.boundary === "any")
-                      );
-                    
-                    let previewInstruments = filterInstruments(primaryBoundary);
-                    
-                    // Fallback: if primary boundary has no instruments, try second-next boundary
-                    if (previewInstruments.length === 0) {
-                      const fallbackBoundary = getSecondNextLaneBoundary(state);
-                      if (fallbackBoundary) {
-                        previewInstruments = filterInstruments(fallbackBoundary);
-                      }
-                    }
+                    // Filter registry by next phase lane (preview only, non-interactive)
+                    let previewInstruments = instruments.filter(i => 
+                      i.isRelevant &&
+                      nextLaneInstrumentIds.includes(i.id)
+                    );
                     
                     // Cap to 2 items
                     previewInstruments = previewInstruments.slice(0, 2);
@@ -2406,7 +2575,6 @@ export default function TripDetailPage() {
                     const previewLabelById: Record<string, string> = {
                       meet_details: "Meet details",
                       travel_outline: "Travel plan",
-                      preview_travel: "Travel plan", // DEV only
                     };
                     
                     const getPreviewLabel = (instrument: BaseCampInstrument): string => {
@@ -2426,13 +2594,63 @@ export default function TripDetailPage() {
                       <>
                         {/* Left cell: empty (no rail extension) */}
                         <div />
-                        {/* Right cell: preview items */}
-                        <div className="mt-3 pl-6 space-y-2 opacity-50">
-                          {previewInstruments.map((instrument) => (
-                            <div key={instrument.id} className="text-xs text-muted truncate">
-                              {getPreviewLabel(instrument)}
+                        {/* Right cell: preview items + escape hatches */}
+                        <div className="mt-3 pl-6 space-y-2">
+                          {/* Escape hatches (group admins only, non-mutating) */}
+                          {canEdit && isGroupTripPage && (
+                            <div className="mb-3 rounded-lg bg-surface p-3 space-y-2">
+                              <div className="text-xs uppercase tracking-wide text-ink-500">Preview</div>
+                              <div className="text-xs text-ink-500">These do not change the trip.</div>
+                              <div className="space-y-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Scroll to top anchor
+                                    const topAnchor = document.getElementById('base-camp-top-anchor');
+                                    if (topAnchor) {
+                                      topAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }
+                                  }}
+                                  className="text-xs text-ink-600 hover:text-ink-700 hover:underline block"
+                                >
+                                  View previous phase
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Scroll to bottom anchor
+                                    const bottomAnchor = document.getElementById('base-camp-bottom-anchor');
+                                    if (bottomAnchor) {
+                                      bottomAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }
+                                  }}
+                                  className="text-xs text-ink-600 hover:text-ink-700 hover:underline block"
+                                >
+                                  View next phase
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Navigate to GameDay preview (read-only)
+                                    if (trip) {
+                                      window.location.href = `/gameday/${trip.id}`;
+                                    }
+                                  }}
+                                  className="text-xs text-ink-600 hover:text-ink-700 hover:underline block"
+                                >
+                                  Preview GameDay
+                                </button>
+                              </div>
                             </div>
-                          ))}
+                          )}
+                          {/* Preview instruments */}
+                          <div className="opacity-50">
+                            {previewInstruments.map((instrument) => (
+                              <div key={instrument.id} className="text-xs text-muted truncate">
+                                {getPreviewLabel(instrument)}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </>
                     );
@@ -2547,6 +2765,7 @@ export default function TripDetailPage() {
                 currentUserId={currentUserId}
                 supabase={supabase}
                 activeGroupId={activeGroupId}
+                canEdit={canEdit}
                 onUpdate={(updatedTrip) => {
                   setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
                 }}
@@ -2888,11 +3107,17 @@ export default function TripDetailPage() {
           )}
 
           {/* 4) Host indication (calm, secondary) */}
-          {trip.createdByMemberName && (
+          {isGroupTripPage ? (
+            tripGroupName ? (
+              <div className="mt-2 text-sm text-secondary">
+                Hosted by {tripGroupName}
+              </div>
+            ) : null
+          ) : trip.createdByMemberName ? (
             <div className="mt-2 text-sm text-secondary">
               {trip.createdByMemberId === currentUserId ? "Hosted by you" : `Hosted by ${trip.createdByMemberName}`}
             </div>
-          )}
+          ) : null}
 
           {/* 5) Trip state block (muted) */}
           {tripStateText && (
@@ -3295,7 +3520,7 @@ export default function TripDetailPage() {
       />
 
       {/* Top anchor action sheet */}
-      {showTopAnchorSheet && baseCampMomentState && (
+      {showTopAnchorSheet && canonicalPhase && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
             <div className="mb-4 flex items-center justify-between">
@@ -3312,25 +3537,25 @@ export default function TripDetailPage() {
             </div>
 
             <div className="space-y-4">
-              {baseCampMomentState === "signups_open" ? (
+              {canonicalPhase === "signups_open" ? (
                 <button
                   type="button"
                   onClick={() => {
                     setShowTopAnchorSheet(false);
-                    setShowRevertConfirm(true);
+                    setPendingAction({ kind: "revert_to_scheduled" });
                   }}
                   className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
                 >
-                  Revert to scheduled (before sign-ups open)
+                  Revert to scheduled
                 </button>
-              ) : baseCampMomentState === "signups_closed" ? (
+              ) : canonicalPhase === "locked" ? (
                 <button
                   type="button"
                   onClick={() => {
                     setShowTopAnchorSheet(false);
-                    setShowReopenSignupsConfirm(true);
+                    setPendingAction({ kind: "reopen_signups" });
                   }}
-                  className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
+                  className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
                 >
                   Re-open sign-ups
                 </button>
@@ -3340,8 +3565,52 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      {/* Bottom anchor action sheet */}
-      {showBottomAnchorSheet && baseCampMomentState === "signups_open" && (
+      {/* Bottom anchor action sheet - scheduled phase (Open sign-ups now) */}
+      {showBottomAnchorSheet && canonicalPhase === "scheduled" && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-foreground">Sign-ups</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBottomAnchorSheet(false);
+                }}
+                className="text-muted hover:text-foreground"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBottomAnchorSheet(false);
+                  setPendingAction({ kind: "open_signups_now" });
+                }}
+                className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
+              >
+                Open sign-ups now
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBottomAnchorSheet(false);
+                }}
+                className="w-full rounded-lg bg-transparent text-ink-600 px-4 py-2 text-sm font-medium hover:text-ink-900 hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/10"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom anchor action sheet - signups_open phase */}
+      {showBottomAnchorSheet && canonicalPhase === "signups_open" && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
             <div className="mb-4 flex items-center justify-between">
@@ -3379,49 +3648,18 @@ export default function TripDetailPage() {
                       setShowBottomAnchorSheet(false);
                       setSignupsCloseDateValue(signals?.signupsCloseDateYmd || "");
                     }}
-                    className="flex-1 rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
+                    className="flex-1 rounded-lg bg-transparent text-ink-600 px-4 py-2 text-sm font-medium hover:text-ink-900 hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/10"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    onClick={async () => {
-                      if (!currentUserId || !activeGroupId || !trip) return;
-                      try {
-                        // Persist cutoff_at as 23:59 SGT on the selected YYYY-MM-DD
-                        const cutoffAtValue = signupsCloseDateValue 
-                          ? new Date(`${signupsCloseDateValue}T23:59:59+08:00`).toISOString()
-                          : null;
-                        
-                        // Persist to database (cutoff_at field)
-                        const { error } = await supabase
-                          .from("trips")
-                          .update({
-                            cutoff_at: cutoffAtValue,
-                          })
-                          .eq("legacy_id", trip.id);
-
-                        if (error) {
-                          throw error;
-                        }
-
-                        // Reload trips to get fresh data
-                        const freshTrips = await loadTrips(activeGroupId, true);
-                        const updatedTrip = freshTrips.find(t => t.id === trip.id);
-                        
-                        if (updatedTrip) {
-                          setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-                        }
-                        
-                        // Clear phase override to resume automation (state will change via cutoff_at)
-                        setPhaseOverride(null);
-                        setShowBottomAnchorSheet(false);
-                      } catch (error) {
-                        console.error("Failed to save signups close date:", error);
-                        alert(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
-                      }
+                    onClick={() => {
+                      if (!signupsCloseDateValue) return;
+                      setShowBottomAnchorSheet(false);
+                      setPendingAction({ kind: "set_signups_close_date", dateIso: signupsCloseDateValue });
                     }}
-                    className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    className="flex-1 rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
                   >
                     Save
                   </button>
@@ -3434,9 +3672,9 @@ export default function TripDetailPage() {
                   type="button"
                   onClick={() => {
                     setShowBottomAnchorSheet(false);
-                    setShowCloseSignupsConfirm(true);
+                    setPendingAction({ kind: "close_signups_now" });
                   }}
-                  className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
+                  className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
                 >
                   Close sign-ups now
                 </button>
@@ -3446,129 +3684,170 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      {/* Revert to scheduled confirm dialog */}
+      {/* Anchor action confirm modal (single modal for all phase-changing actions) */}
       <ConfirmModal
-        isOpen={showRevertConfirm}
-        title="Revert to scheduled?"
-        message="Sign-ups will no longer be open."
-        confirmLabel="Revert"
+        isOpen={pendingAction !== null}
+        title={
+          pendingAction?.kind === "open_signups_now" ? "Open sign-ups now?" :
+          pendingAction?.kind === "revert_to_scheduled" ? "Revert to scheduled?" :
+          pendingAction?.kind === "close_signups_now" ? "Close sign-ups now?" :
+          pendingAction?.kind === "reopen_signups" ? "Re-open sign-ups?" :
+          pendingAction?.kind === "set_signups_close_date" ? "Set sign-ups close date?" :
+          ""
+        }
+        message={
+          pendingAction?.kind === "open_signups_now" ? "Sign-ups will be open immediately." :
+          pendingAction?.kind === "revert_to_scheduled" ? "Sign-ups will no longer be open." :
+          pendingAction?.kind === "close_signups_now" ? "This will stop new joiners immediately." :
+          pendingAction?.kind === "reopen_signups" ? "This will allow new players to join again." :
+          pendingAction?.kind === "set_signups_close_date" ? "Sign-ups will close on the selected date." :
+          ""
+        }
+        confirmLabel={
+          pendingAction?.kind === "open_signups_now" ? "Open" :
+          pendingAction?.kind === "revert_to_scheduled" ? "Revert" :
+          pendingAction?.kind === "close_signups_now" ? "Close" :
+          pendingAction?.kind === "reopen_signups" ? "Re-open" :
+          pendingAction?.kind === "set_signups_close_date" ? "Set" :
+          ""
+        }
         cancelLabel="Cancel"
-        confirmVariant="primary"
+        confirmVariant={
+          pendingAction?.kind === "close_signups_now" ? "danger" : "primary"
+        }
         onConfirm={async () => {
-          // Set phase override to force "before_signups_open" state
-          // This is a local override (not persisted) - automation resumes when override is cleared
-          setPhaseOverride("before_signups_open");
-          setShowRevertConfirm(false);
-          // Note: This is a local state override. To persist, we'd need a DB field (phaseOverride or statusOverride)
-        }}
-        onCancel={() => {
-          setShowRevertConfirm(false);
-        }}
-      />
+          if (!pendingAction || !currentUserId || !activeGroupId || !trip) {
+            setPendingAction(null);
+            return;
+          }
 
-      {/* Close sign-ups confirm dialog */}
-      <ConfirmModal
-        isOpen={showCloseSignupsConfirm}
-        title="Close sign-ups now?"
-        message="This will stop new joiners immediately."
-        confirmLabel="Close now"
-        cancelLabel="Cancel"
-        confirmVariant="danger"
-        onConfirm={async () => {
-          if (!currentUserId || !activeGroupId || !trip) return;
           try {
-            // Set cutoff_at to now (immediate close)
-            const cutoffAtValue = new Date().toISOString();
-            
-            // Persist to database
-            const { error } = await supabase
-              .from("trips")
-              .update({
-                cutoff_at: cutoffAtValue,
-              })
-              .eq("legacy_id", trip.id);
-
-            if (error) {
-              throw error;
+            switch (pendingAction.kind) {
+              case "open_signups_now": {
+                // Set signupsOpenedAt = now ISO
+                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                  signupsOpenedAt: new Date().toISOString(),
+                });
+                
+                // Optimistic UI update
+                setTrips(updatedTrips);
+                
+                // Reload trips to get fresh data
+                const freshTrips = await loadTrips(activeGroupId, true);
+                const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                
+                if (updatedTrip) {
+                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                }
+                break;
+              }
+              case "revert_to_scheduled": {
+                // Clear signupsOpenedAt (set to null) to revert to scheduled
+                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                  signupsOpenedAt: undefined,
+                });
+                
+                // Optimistic UI update
+                setTrips(updatedTrips);
+                
+                // Reload trips to get fresh data
+                const freshTrips = await loadTrips(activeGroupId, true);
+                const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                
+                if (updatedTrip) {
+                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                }
+                break;
+              }
+              case "close_signups_now": {
+                // Set cutoffAt = now ISO
+                const cutoffAtValue = new Date().toISOString();
+                
+                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                  cutoffAt: cutoffAtValue,
+                });
+                
+                // Optimistic UI update
+                setTrips(updatedTrips);
+                
+                // Reload trips to get fresh data
+                const freshTrips = await loadTrips(activeGroupId, true);
+                const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                
+                if (updatedTrip) {
+                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                }
+                break;
+              }
+              case "reopen_signups": {
+                // Compute default close moment: trip_date - 4 days at 23:59 Asia/Singapore
+                const defaultCloseYmd = trip.date ? (() => {
+                  const [year, month, day] = trip.date.split('-').map(Number);
+                  const tripDateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+                  tripDateObj.setUTCDate(tripDateObj.getUTCDate() - 4);
+                  const closeYear = tripDateObj.getUTCFullYear();
+                  const closeMonth = String(tripDateObj.getUTCMonth() + 1).padStart(2, '0');
+                  const closeDay = String(tripDateObj.getUTCDate()).padStart(2, '0');
+                  return `${closeYear}-${closeMonth}-${closeDay}`;
+                })() : null;
+                
+                const cutoffAtValue = defaultCloseYmd 
+                  ? new Date(`${defaultCloseYmd}T23:59:59+08:00`).toISOString()
+                  : null;
+                
+                // Ensure signups_opened_at is set (if null, set it to now ISO)
+                const signupsOpenedAtValue = trip.signupsOpenedAt || new Date().toISOString();
+                
+                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                  cutoffAt: cutoffAtValue || undefined,
+                  signupsOpenedAt: signupsOpenedAtValue,
+                });
+                
+                // Optimistic UI update
+                setTrips(updatedTrips);
+                
+                // Reload trips to get fresh data
+                const freshTrips = await loadTrips(activeGroupId, true);
+                const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                
+                if (updatedTrip) {
+                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                }
+                break;
+              }
+              case "set_signups_close_date": {
+                // Persist cutoff_at as 23:59 SGT on the selected YYYY-MM-DD
+                const cutoffAtValue = pendingAction.dateIso
+                  ? new Date(`${pendingAction.dateIso}T23:59:59+08:00`).toISOString()
+                  : null;
+                
+                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                  cutoffAt: cutoffAtValue || undefined,
+                });
+                
+                // Optimistic UI update
+                setTrips(updatedTrips);
+                
+                // Reload trips to get fresh data
+                const freshTrips = await loadTrips(activeGroupId, true);
+                const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                
+                if (updatedTrip) {
+                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                }
+                break;
+              }
             }
 
-            // Reload trips to get fresh data
-            const freshTrips = await loadTrips(activeGroupId, true);
-            const updatedTrip = freshTrips.find(t => t.id === trip.id);
-            
-            if (updatedTrip) {
-              setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-            }
-            
-            // Clear phase override to resume automation (state will change via cutoff_at)
-            setPhaseOverride(null);
-            setShowCloseSignupsConfirm(false);
+            setPendingAction(null);
           } catch (error) {
-            console.error("Failed to close sign-ups:", error);
-            alert(`Failed to close sign-ups: ${error instanceof Error ? error.message : String(error)}`);
+            console.error(`Failed to execute action ${pendingAction.kind}:`, error);
+            alert(`Failed: ${error instanceof Error ? error.message : String(error)}`);
+            setPendingAction(null);
           }
         }}
         onCancel={() => {
-          setShowCloseSignupsConfirm(false);
-        }}
-      />
-
-      {/* Re-open sign-ups confirm dialog */}
-      <ConfirmModal
-        isOpen={showReopenSignupsConfirm}
-        title="Re-open sign-ups?"
-        message="This will allow new players to join again."
-        confirmLabel="Re-open"
-        cancelLabel="Cancel"
-        confirmVariant="primary"
-        onConfirm={async () => {
-          if (!currentUserId || !activeGroupId || !trip) return;
-          try {
-            // Set cutoff_at to future date (default: trip.date - 4 days, 23:59 SGT)
-            const defaultCloseYmd = trip.date ? (() => {
-              const [year, month, day] = trip.date.split('-').map(Number);
-              const tripDateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-              tripDateObj.setUTCDate(tripDateObj.getUTCDate() - 4);
-              const closeYear = tripDateObj.getUTCFullYear();
-              const closeMonth = String(tripDateObj.getUTCMonth() + 1).padStart(2, '0');
-              const closeDay = String(tripDateObj.getUTCDate()).padStart(2, '0');
-              return `${closeYear}-${closeMonth}-${closeDay}`;
-            })() : null;
-            
-            const cutoffAtValue = defaultCloseYmd 
-              ? new Date(`${defaultCloseYmd}T23:59:59+08:00`).toISOString()
-              : null;
-            
-            // Persist to database
-            const { error } = await supabase
-              .from("trips")
-              .update({
-                cutoff_at: cutoffAtValue,
-              })
-              .eq("legacy_id", trip.id);
-
-            if (error) {
-              throw error;
-            }
-
-            // Reload trips to get fresh data
-            const freshTrips = await loadTrips(activeGroupId, true);
-            const updatedTrip = freshTrips.find(t => t.id === trip.id);
-            
-            if (updatedTrip) {
-              setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-            }
-            
-            // Clear phase override to resume automation
-            setPhaseOverride(null);
-            setShowReopenSignupsConfirm(false);
-          } catch (error) {
-            console.error("Failed to re-open sign-ups:", error);
-            alert(`Failed to re-open sign-ups: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }}
-        onCancel={() => {
-          setShowReopenSignupsConfirm(false);
+          setPendingAction(null);
         }}
       />
 
@@ -3647,6 +3926,128 @@ export default function TripDetailPage() {
                     Save
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Zone A overflow action sheet */}
+      {showZoneAOverflowSheet && trip && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-foreground">Edit trip</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowZoneAOverflowSheet(false);
+                }}
+                className="text-muted hover:text-foreground"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowZoneAOverflowSheet(false);
+                  setShowTripNameSheet(true);
+                  setTripNameValue(trip.tripName || "");
+                }}
+                className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface text-left"
+              >
+                Edit trip name
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowZoneAOverflowSheet(false);
+                  router.push(`/host?editTripId=${trip.id}`);
+                }}
+                className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface text-left"
+              >
+                Edit trip details
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowZoneAOverflowSheet(false);
+                }}
+                className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface text-left mt-4"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trip name sheet */}
+      {showTripNameSheet && trip && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-foreground">Trip name</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTripNameSheet(false);
+                  setTripNameValue(trip.tripName || "");
+                }}
+                className="text-muted hover:text-foreground"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <input
+                type="text"
+                value={tripNameValue}
+                onChange={(e) => setTripNameValue(e.target.value)}
+                placeholder="Trip name"
+                className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTripNameSheet(false);
+                    setTripNameValue(trip.tripName || "");
+                  }}
+                  className="flex-1 rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!currentUserId || !activeGroupId) return;
+                    try {
+                      // Update via API (consistent with other trip updates)
+                      const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                        tripName: tripNameValue.trim() || undefined,
+                      });
+                      
+                      setTrips(updatedTrips);
+                      setShowTripNameSheet(false);
+                    } catch (error) {
+                      console.error("Failed to save trip name:", error);
+                      alert(`Failed to save trip name: ${error instanceof Error ? error.message : String(error)}`);
+                    }
+                  }}
+                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                >
+                  Save
+                </button>
               </div>
             </div>
           </div>

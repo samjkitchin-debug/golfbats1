@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { loadCourseLookup, type CourseLookup } from "../../lib/courseActions";
-import { createTrip } from "../../lib/tripActions";
+import { createTrip, loadTrips, type Trip } from "../../lib/tripActions";
 import { todayInSGT } from "../../lib/tripDates";
 import { InlineScrollableCalendar } from "../components/InlineScrollableCalendar";
 
@@ -52,9 +52,27 @@ export default function HostPage() {
   // Q5: Duration (conditional)
   const [isMultiDay, setIsMultiDay] = useState<boolean | null>(null);
   
+  // Summary view state
+  const [showDetails, setShowDetails] = useState(false);
+  
+  // Group selection for group trips (when admin of multiple groups)
+  const [selectedGroupIdForTrip, setSelectedGroupIdForTrip] = useState<string | null>(null);
+  
+  // Edit mode state
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  
   // Submission
   const [submitting, setSubmitting] = useState(false);
   const [createdTripId, setCreatedTripId] = useState<number | null>(null);
+
+  // Helper to return to trip details page in edit mode
+  const returnToTrip = () => {
+    const editTripId = searchParams.get("editTripId");
+    if (editTripId) {
+      router.push(`/trips/${editTripId}`);
+    }
+  };
 
 
   useEffect(() => {
@@ -113,6 +131,15 @@ export default function HostPage() {
         const hasAdminRole = (bootstrap.approvedGroups || []).some((g: { role?: string }) => g.role === 'admin');
         setIsGroupAdmin(hasAdminRole);
         
+        // Auto-select group for group trips if admin of only one group
+        const adminGroups = (bootstrap.approvedGroups || []).filter((g: { role?: string }) => g.role === 'admin');
+        if (adminGroups.length === 1) {
+          setSelectedGroupIdForTrip(adminGroups[0].id);
+        } else if (adminGroups.length > 1 && !selectedGroupIdForTrip) {
+          // Default to first admin group if multiple
+          setSelectedGroupIdForTrip(adminGroups[0].id);
+        }
+        
         // If mode=group_trip and admin, preselect but still show chooser
         if (searchParams.get("mode") === "group_trip" && hasAdminRole) {
           setTripIntent("group_trip");
@@ -140,6 +167,51 @@ export default function HostPage() {
     }
     loadCoursesData();
   }, []);
+
+  // Handle editTripId query param: deep-link into edit flow with pre-filled data
+  useEffect(() => {
+    async function loadTripForEdit() {
+      const editTripId = searchParams.get("editTripId");
+      if (!editTripId || !activeGroupId || loading) return;
+
+      setEditLoading(true);
+      setEditError(null);
+
+      try {
+        const trips = await loadTrips(activeGroupId, false);
+        const tripToEdit = trips.find(t => t.id === Number(editTripId));
+        
+        if (!tripToEdit || tripToEdit.tripOrigin !== "group") {
+          // If trip not found or not a group trip, redirect to trip details
+          returnToTrip();
+          return;
+        }
+
+        // Prefill form state from trip
+        setTripIntent("group_trip");
+        setTripDate(tripToEdit.date || "");
+        setSelectedCourseId(tripToEdit.courseId || null);
+        setTravelInvolved(tripToEdit.travelInvolved ?? false);
+        setTravelTypeDetail(tripToEdit.travelType || null);
+        setTravelScope(tripToEdit.travelScope || null);
+        setBookingApproach(tripToEdit.bookingApproach || null);
+        setBookingProviderName(tripToEdit.bookingProviderName || "");
+        // Infer groupMeetup from meet details (meetingPoint or meetTime exist)
+        const hasMeetDetails = !!(tripToEdit.decisionLogistics?.meetingPoint || tripToEdit.decisionLogistics?.meetTime || tripToEdit.logistics?.meetingPoint || tripToEdit.logistics?.meetTime);
+        setGroupMeetup(hasMeetDetails);
+        // Note: isMultiDay would require a schema field we don't have, so skip for now
+        
+        // Skip chooser step, go directly to first editable step (q1_when_where)
+        setCurrentStep("q1_when_where");
+        setEditLoading(false);
+      } catch (error) {
+        console.error("Failed to load trip for edit:", error);
+        setEditError(error instanceof Error ? error.message : "Failed to load trip");
+        setEditLoading(false);
+      }
+    }
+    loadTripForEdit();
+  }, [searchParams, activeGroupId, loading, router]);
 
 
 
@@ -201,7 +273,10 @@ export default function HostPage() {
   }
 
   async function handleCreateGroupTrip() {
-    if (!activeGroupId || !tripDate || !selectedCourseId) {
+    // Use selectedGroupIdForTrip if set, otherwise fallback to activeGroupId
+    const targetGroupId = selectedGroupIdForTrip || activeGroupId;
+    
+    if (!targetGroupId || !tripDate || !selectedCourseId) {
       alert("Please complete all required fields.");
       return;
     }
@@ -209,11 +284,11 @@ export default function HostPage() {
     setSubmitting(true);
 
     try {
-      const course = courses.find((c) => c.id === selectedCourseId);
-      const tripName = course ? `${course.name} trip` : "Group trip";
-
-      const result = await createTrip([], activeGroupId, {
-        name: tripName,
+      const result = await createTrip([], targetGroupId, {
+        // For group trips: do NOT set trip_name at creation (allow Base Camp to show "Add a trip name")
+        // name field is still required by schema, but trip_name can be null
+        name: "Group trip", // Minimal placeholder for schema compliance
+        tripName: undefined, // Explicitly do not set trip_name for group trips
         date: tripDate,
         format: "Stableford",
         status: "open",
@@ -294,6 +369,38 @@ export default function HostPage() {
     );
   }
 
+  // Edit mode detection (must be after loading check)
+  const editTripId = searchParams.get("editTripId");
+
+  // Edit mode loading/error states (only check if editTripId is present)
+  if (editTripId) {
+    if (editLoading) {
+      return (
+        <div className="container mx-auto max-w-2xl px-4 py-8">
+          <div className="text-center text-muted">Loading...</div>
+        </div>
+      );
+    }
+    if (editError) {
+      return (
+        <div className="container mx-auto max-w-2xl px-4 py-8">
+          <div className="mb-6">
+            <h1 className="text-2xl font-semibold text-foreground">Error loading trip</h1>
+          </div>
+          <div className="rounded-xl border border-border bg-surface p-6 mb-6">
+            <div className="text-sm text-muted mb-4">{editError}</div>
+            <button
+              onClick={returnToTrip}
+              className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              Back to trip
+            </button>
+          </div>
+        </div>
+      );
+    }
+  }
+
   if (!activeGroupId) {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-8">
@@ -305,7 +412,8 @@ export default function HostPage() {
   }
 
   // Step 1: CHOOSER (first, always)
-  if (currentStep === "chooser") {
+  // Skip chooser if editing an existing trip
+  if (currentStep === "chooser" && !editTripId) {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
@@ -363,7 +471,13 @@ export default function HostPage() {
 
         <div className="mt-6">
           <button
-            onClick={() => router.back()}
+            onClick={() => {
+              if (editTripId) {
+                returnToTrip();
+              } else {
+                router.back();
+              }
+            }}
             className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
           >
             Cancel
@@ -404,7 +518,7 @@ export default function HostPage() {
             <select
               value={selectedCourseId || ""}
               onChange={(e) => setSelectedCourseId(e.target.value || null)}
-              className="w-full rounded-lg bg-white shadow-sm active:scale-[0.985] active:shadow-none transition-all cursor-pointer text-base font-medium text-foreground appearance-none border-0 outline-none pt-8 pb-4 px-4"
+              className="w-full rounded-lg bg-surface active:scale-[0.985] active:shadow-none transition-all cursor-pointer text-base font-medium text-foreground appearance-none border-0 outline-none pt-8 pb-4 px-4"
             >
               <option value="">Select a course</option>
               {courses.map((course) => (
@@ -421,8 +535,12 @@ export default function HostPage() {
           <div className="flex gap-3">
             <button
               onClick={() => {
-                setCurrentStep("chooser");
-                setTripIntent(null);
+                if (editTripId) {
+                  returnToTrip();
+                } else {
+                  setCurrentStep("chooser");
+                  setTripIntent(null);
+                }
               }}
               className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
             >
@@ -581,7 +699,7 @@ export default function HostPage() {
                 <div className={`w-10 h-6 rounded-full transition-colors ${
                   groupMeetup ? "bg-brand-green" : "bg-muted"
                 }`}>
-                  <div className={`w-5 h-5 rounded-full bg-white mt-0.5 transition-transform ${
+                  <div className={`w-5 h-5 rounded-full bg-surface mt-0.5 transition-transform ${
                     groupMeetup ? "translate-x-4" : "translate-x-0.5"
                   }`} />
                 </div>
@@ -606,7 +724,7 @@ export default function HostPage() {
                 <div className={`w-10 h-6 rounded-full transition-colors ${
                   isMultiDay ? "bg-brand-green" : "bg-muted"
                 }`}>
-                  <div className={`w-5 h-5 rounded-full bg-white mt-0.5 transition-transform ${
+                  <div className={`w-5 h-5 rounded-full bg-surface mt-0.5 transition-transform ${
                     isMultiDay ? "translate-x-4" : "translate-x-0.5"
                   }`} />
                 </div>
@@ -619,7 +737,13 @@ export default function HostPage() {
         <div className="sticky bottom-0 z-10 bg-surface border-t border-border mt-6 -mx-4 px-4 py-3 pb-4">
           <div className="flex gap-3">
             <button
-              onClick={() => setCurrentStep("q1_when_where")}
+              onClick={() => {
+                if (editTripId) {
+                  returnToTrip();
+                } else {
+                  setCurrentStep("q1_when_where");
+                }
+              }}
               className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
             >
               Back
@@ -766,7 +890,13 @@ export default function HostPage() {
 
         <div className="mt-6">
           <button
-            onClick={() => setCurrentStep("q3_organisation")}
+            onClick={() => {
+              if (editTripId) {
+                returnToTrip();
+              } else {
+                setCurrentStep("q3_organisation");
+              }
+            }}
             className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
           >
             Back
@@ -808,7 +938,13 @@ export default function HostPage() {
 
         <div className="mt-6">
           <button
-            onClick={() => setCurrentStep("q4_meetup")}
+            onClick={() => {
+              if (editTripId) {
+                returnToTrip();
+              } else {
+                setCurrentStep("q4_meetup");
+              }
+            }}
             className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
           >
             Back
@@ -824,6 +960,7 @@ export default function HostPage() {
     const courseName = course?.name || "Selected course";
     const date = tripDate ? new Date(tripDate + "T00:00:00") : null;
     const dateFormatted = date ? date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }) : "";
+    const dateShort = date ? date.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "";
 
     // Use new trip shape variables, fallback to old ones for backward compatibility
     const travelInvolvedValue = travelInvolved !== null && travelInvolved !== undefined ? travelInvolved : (travelType === "travel");
@@ -836,28 +973,219 @@ export default function HostPage() {
 
     const orgLevel = organisationLevel === "group_trip" ? "group trip" : "hosted round";
 
+    // Get admin groups for selection
+    const adminGroups = approvedGroups.filter((g: GroupRow & { role?: string }) => g.role === 'admin');
+    const targetGroupId = selectedGroupIdForTrip || activeGroupId;
+    const selectedGroup = approvedGroups.find((g: GroupRow) => g.id === targetGroupId);
+
+    // Build hero sentence
+    const heroSentenceParts: string[] = [];
+    heroSentenceParts.push("a group trip");
+    if (courseName) {
+      heroSentenceParts.push(`at ${courseName}`);
+    }
+    if (dateShort) {
+      heroSentenceParts.push(`on ${dateShort}`);
+    }
+    if (course?.location) {
+      heroSentenceParts.push(`(${course.location})`);
+    }
+    
+    // Build modifiers list (only meaningful ones)
+    const modifiers: string[] = [];
+    if (travelInvolvedValue) {
+      modifiers.push("with travel involved");
+      if (travelScope === "international") {
+        modifiers.push("international");
+      }
+      if (bookingApproach === "centralised") {
+        modifiers.push("centralised booking");
+      }
+    }
+    if (meetupValue) {
+      modifiers.push("group meetup");
+    }
+    
+    // Join modifiers with commas, use "and" before the last item if multiple
+    if (modifiers.length > 0) {
+      if (modifiers.length === 1) {
+        heroSentenceParts.push(modifiers[0]);
+      } else {
+        const lastModifier = modifiers.pop();
+        heroSentenceParts.push(`${modifiers.join(", ")} and ${lastModifier}`);
+      }
+    }
+    
+    const heroSentence = heroSentenceParts.join(" ") + ".";
+    const hostedByText = selectedGroup ? `Hosted by ${selectedGroup.name}.` : null;
+
     return (
       <div className="container mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-foreground">Confirm trip</h1>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface p-6 space-y-4 mb-6">
-          <p className="text-base text-foreground">
-            A <strong>{orgLevel}</strong> at <strong>{courseName}</strong> on <strong>{dateFormatted}</strong>, {travelPhrase}{meetupPhrase}{durationPhrase}.
-          </p>
-          <p className="text-sm text-muted">We'll set this up as a group trip.</p>
+        <div className="rounded-xl border border-border bg-surface p-6 mb-6">
+          {/* Hero sentence */}
+          <div className="text-base text-foreground mb-3">
+            {heroSentence}
+          </div>
+          {hostedByText && (
+            <div className="text-sm text-muted mb-3">
+              {hostedByText}
+            </div>
+          )}
+          {!hostedByText && (
+            <div className="text-sm text-muted">
+              We'll set this up as a group trip.
+            </div>
+          )}
+        </div>
+
+        {/* Group selection (only when admin of multiple groups) */}
+        {adminGroups.length > 1 && (
+          <div className="mb-6">
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              For which group?
+            </label>
+            <select
+              value={selectedGroupIdForTrip || ""}
+              onChange={(e) => setSelectedGroupIdForTrip(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
+            >
+              {adminGroups.map((group: GroupRow) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Details disclosure */}
+        <div className="mb-6">
+          <button
+            onClick={() => setShowDetails(!showDetails)}
+            className="w-full flex items-center justify-between rounded-lg border border-border bg-surface p-4 text-left hover:bg-background transition-colors"
+          >
+            <span className="text-sm font-medium text-foreground">View details</span>
+            <svg 
+              className={`h-4 w-4 text-muted transition-transform ${showDetails ? 'rotate-180' : ''}`}
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showDetails && (
+            <div className="rounded-xl border border-border bg-surface p-6 mt-2">
+              <div className="space-y-4">
+                {/* Trip type */}
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-sm text-muted">Trip type</span>
+                  <span className="text-sm text-foreground font-medium text-right">Group trip</span>
+                </div>
+
+                {/* Date */}
+                {dateFormatted && (
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-muted">Date</span>
+                    <span className="text-sm text-foreground font-medium text-right">{dateFormatted}</span>
+                  </div>
+                )}
+
+                {/* Course */}
+                {courseName && (
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-muted">Course</span>
+                    <span className="text-sm text-foreground font-medium text-right">{courseName}</span>
+                  </div>
+                )}
+
+                {/* Location */}
+                {course?.location && (
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-muted">Location</span>
+                    <span className="text-sm text-foreground font-medium text-right">{course.location}</span>
+                  </div>
+                )}
+
+                {/* Travel involved */}
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-sm text-muted">Travel involved</span>
+                  <span className="text-sm text-foreground font-medium text-right">{travelInvolvedValue ? "Yes" : "No"}</span>
+                </div>
+
+                {/* Travel mode (only if travel involved) */}
+                {travelInvolvedValue && travelTypeDetail && (
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-muted">Travel mode</span>
+                    <span className="text-sm text-foreground font-medium text-right capitalize">{travelTypeDetail}</span>
+                  </div>
+                )}
+
+                {/* International (only if travel involved) */}
+                {travelInvolvedValue && travelScope && (
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-muted">International</span>
+                    <span className="text-sm text-foreground font-medium text-right">{travelScope === "international" ? "Yes" : "No"}</span>
+                  </div>
+                )}
+
+                {/* Centralised booking (only if travel involved) */}
+                {travelInvolvedValue && bookingApproach && (
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-muted">Centralised booking</span>
+                    <span className="text-sm text-foreground font-medium text-right">{bookingApproach === "centralised" ? "Yes" : "No"}</span>
+                  </div>
+                )}
+
+                {/* Travel agent (only if centralised booking) */}
+                {travelInvolvedValue && bookingApproach === "centralised" && bookingProviderName.trim() && (
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-muted">Travel agent</span>
+                    <span className="text-sm text-foreground font-medium text-right">{bookingProviderName}</span>
+                  </div>
+                )}
+
+                {/* Group meetup */}
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-sm text-muted">Group meetup</span>
+                  <span className="text-sm text-foreground font-medium text-right">{meetupValue ? "Yes" : "No"}</span>
+                </div>
+
+                {/* More than one day */}
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-sm text-muted">More than one day</span>
+                  <span className="text-sm text-foreground font-medium text-right">{multiDayValue ? "Yes" : "No"}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3">
           <button
-            onClick={() => setCurrentStep("q1_when_where")}
+            onClick={() => {
+              if (editTripId) {
+                returnToTrip();
+              } else {
+                setCurrentStep("q1_when_where");
+              }
+            }}
             className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
           >
             Change details
           </button>
           <button
-            onClick={handleCreateGroupTrip}
+            onClick={async () => {
+              await handleCreateGroupTrip();
+              if (editTripId) {
+                returnToTrip();
+              }
+            }}
             disabled={submitting}
             className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
           >

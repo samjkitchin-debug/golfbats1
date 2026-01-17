@@ -1,7 +1,11 @@
 import { ImageResponse } from 'next/og';
 
 // Generate 192x192 square icon for PWA
-export async function GET() {
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const baseUrl = `${url.protocol}//${url.host}`;
+  const iconUrl = `${baseUrl}/brand/logo-mark.png`;
+
   return new ImageResponse(
     (
       <div
@@ -14,19 +18,15 @@ export async function GET() {
           background: '#FAF7F0',
         }}
       >
-        <div
+        <img
+          src={iconUrl}
+          alt="DayForeIt"
           style={{
-            width: '90%',
-            height: '90%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 150,
-            color: '#0B1220',
+            width: '76%',
+            height: '76%',
+            objectFit: 'contain',
           }}
-        >
-          ⛳
-        </div>
+        />
       </div>
     ),
     {

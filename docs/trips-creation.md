@@ -4,6 +4,15 @@ This document tracks the **authoritative design decisions, copy, and interaction
 
 It is intentionally **design-first**. Implementation details should follow this, not precede it.
 
+## Editing Group Trip Details
+
+Organisers can edit group trip details after creation via the "Edit details" link in Zone A (Trip Details page, top chrome area). Clicking this link deep-links into the creation flow at the first editable step (`q1_when_where`), skipping the chooser step and pre-filling all existing trip data (date, course, travel flags, meetup, booking provider). Trip type selection is not re-requested (deep-link assumes group trip context).
+
+**Group trip ownership and permissions:**
+- Group trips are created on behalf of a group. Ownership and administration are shared by all group admins.
+- Any group admin may edit trip details, Base Camp instruments, and phase controls.
+- The trip creator has no special privileges beyond their admin status.
+
 ---
 
 ## Language Mapping (Locked)
@@ -670,6 +679,21 @@ This document contains the authoritative specification for:
 For phase definitions and entry conditions, see the [Trip Phases — Temporal Framework](#trip-phases--temporal-framework-locked) section below.
 
 **Note:** Sign-ups close defaults to 4 days before trip date, editable from Base Camp (not asked during creation).
+
+**Default sign-ups behaviour:** Sign-ups open automatically 30 days before trip_date unless opened early via Base Camp anchor action. Sign-ups close automatically 4 days before trip_date at 23:59 Asia/Singapore unless `cutoff_at` is set earlier.
+
+**Confirm trip screen (group trips):**
+- Shows a natural-language hero sentence summarising trip details
+- Shows "Hosted by {group name}" line (indicates which group will host the trip)
+- Shows group selection dropdown only when user is admin of multiple groups (asks "For which group?")
+- When user is admin of only one group, group is auto-selected silently
+- Details disclosure provides full structured summary (date, course, location, travel involved, travel mode, international, centralised booking, travel agent, group meetup, multi-day)
+- For group trips only: `trip_name` is NOT auto-set at creation (allows Base Camp to show "Add a trip name" in Scheduled phase)
+
+**Post-create landing behaviour:**
+- If sign-ups are not yet open (trip is >30 days in the future): trip lands in **Scheduled** phase
+- Base Camp shows **"Scheduled."** as the top anchor, with **"Sign-ups open on {date}"** as the bottom anchor
+- Base Camp shows Scheduled lane instruments: "Add a trip name" + "Confirm trip details"
 
 ---
 

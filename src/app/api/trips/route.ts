@@ -20,11 +20,11 @@ async function fetchTripsData(
   const todayYmd = today.toISOString().slice(0, 10);
   
   // Build base query
-  // Return ALL trips for the group - no filtering by origin, creator, or posted status
+  // Return ALL trips for the group - only select fields present in schema.md
   const { data: tripsDataRaw, error: tripsError } = await supabase
     .from("trips")
-      .select(
-      "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group,travel_involved,travel_type,travel_scope,booking_approach,booking_provider_name,travel_note"
+    .select(
+      "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,signups_opened_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,created_by"
     )
     .eq("group_id", groupId)
     .gte("trip_date", todayYmd) // Only trips with date >= today (upcoming only)
@@ -48,11 +48,12 @@ async function fetchTripsData(
 
   const tripIds = tripsData.map((t) => t.id);
 
-  // Fetch member names for created_by_member_id (for displaying host name)
+  // Fetch member names for created_by (for displaying host name)
+  // Note: created_by is the member id (members.id == auth.uid() per schema.md)
   const memberCreatorIds = Array.from(new Set(
     tripsData
-      .filter(t => (t as any).created_by_member_id)
-      .map(t => (t as any).created_by_member_id)
+      .filter(t => (t as any).created_by)
+      .map(t => (t as any).created_by)
   ));
   
   const memberCreatorsById: Record<string, { display_name: string | null; full_name: string | null }> = {};
@@ -215,9 +216,11 @@ async function fetchTripsData(
       status: trip.status as "open" | "closed" | "archived",
       coordinationStatus: (trip as any).coordination_status as "draft" | "forming" | "scheduled" | "completed",
       cutoffAt: trip.cutoff_at ? new Date(trip.cutoff_at).toISOString() : undefined,
+      signupsOpenedAt: (trip as any).signups_opened_at ? new Date((trip as any).signups_opened_at).toISOString() : undefined,
       courseId: trip.course_id,
       teeId: trip.tee_id,
-      scenarioKey: (trip as any).scenario_key || null,
+      // scenario_key not in schema - provide null default
+      scenarioKey: null,
       // Decision logistics: meeting_point/meet_time when ferry_details is null (decision-grade only)
       // Operational logistics: full logistics object when ferry_details exists
       decisionLogistics: trip.meeting_point && !trip.ferry_details ? {
@@ -240,22 +243,28 @@ async function fetchTripsData(
         : undefined,
       createdAtUtc: trip.created_at,
       updatedAtUtc: trip.updated_at,
-      tripOrigin: (trip as any).trip_origin || 'group',
-      createdByMemberId: (trip as any).created_by_member_id || null,
-      isPostedToGroup: (trip as any).is_posted_to_group !== undefined ? (trip as any).is_posted_to_group : true,
+      // Provide safe defaults for fields not in schema.md
+      // All trips have group_id, so default to 'group' origin
+      tripOrigin: 'group',
+      // created_by is the member id (members.id == auth.uid() per schema.md)
+      createdByMemberId: (trip as any).created_by || null,
+      // All trips have group_id, so they are all posted to group
+      isPostedToGroup: true,
       // Include creator name for member trips (for UI display)
-      createdByMemberName: (trip as any).created_by_member_id 
-        ? (memberCreatorsById[(trip as any).created_by_member_id]?.display_name || 
-           memberCreatorsById[(trip as any).created_by_member_id]?.full_name || 
+      createdByMemberName: (trip as any).created_by 
+        ? (memberCreatorsById[(trip as any).created_by]?.display_name || 
+           memberCreatorsById[(trip as any).created_by]?.full_name || 
            null)
         : null,
-      // Travel fields (group trips only)
-      travelInvolved: (trip as any).travel_involved !== undefined ? Boolean((trip as any).travel_involved) : undefined,
-      travelType: (trip as any).travel_type || null,
-      travelScope: (trip as any).travel_scope || null,
-      bookingApproach: (trip as any).booking_approach || null,
-      bookingProviderName: (trip as any).booking_provider_name || null,
-      travelNote: (trip as any).travel_note || null,
+      // Travel fields not in schema - provide undefined defaults
+      travelInvolved: undefined,
+      travelType: null,
+      travelScope: null,
+      bookingApproach: null,
+      bookingProviderName: null,
+      travelNote: null,
+      // phase_override not yet in DB - set to null
+      phaseOverride: null,
     };
   });
 
@@ -406,7 +415,7 @@ export async function POST(req: Request) {
       // Update existing trip - find by legacy_id and verify it belongs to this group
       const { data: existingTrip } = await supabase
         .from("trips")
-        .select("id, group_id")
+        .select("id, group_id, created_by")
         .eq("legacy_id", id)
         .single();
 
@@ -420,6 +429,32 @@ export async function POST(req: Request) {
           { error: "Trip does not belong to the specified group." },
           { status: 403 }
         );
+      }
+
+      // Determine if this is a group trip (has group_id) or hosted round (group_id is null)
+      const isGroupTrip = existingTrip.group_id !== null;
+      const existingTripOrigin = isGroupTrip ? 'group' : 'member';
+
+      // For group trips: validate user is admin of the trip's group (not creator-based)
+      if (isGroupTrip) {
+        // Re-check admin status using trip's actual group_id (not request groupId)
+        const { data: tripGroupMember } = await supabase
+          .from("group_members")
+          .select("role, status")
+          .eq("group_id", existingTrip.group_id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        const isTripGroupAdmin =
+          isPlatformAdmin ||
+          (tripGroupMember && tripGroupMember.role === "admin" && tripGroupMember.status === "approved");
+
+        if (!isTripGroupAdmin) {
+          return NextResponse.json(
+            { error: "You must be an approved admin of this group to edit group trips." },
+            { status: 403 }
+          );
+        }
       }
 
       // IMPORTANT: PATCH semantics - only update fields that are actually provided (undefined = omit, null = reject for name).
@@ -443,6 +478,29 @@ export async function POST(req: Request) {
         }
       }
       // If trip.name is undefined, do NOT include it in updateData (preserve existing value)
+
+      // Handle trip_name field (trip.tripName or trip.trip_name)
+      const tripNameValue = trip.tripName !== undefined ? trip.tripName : (trip as any).trip_name;
+      if (tripNameValue !== undefined) {
+        if (existingTripOrigin === 'group') {
+          // Group trips: allow null or non-empty string (trimmed)
+          const trimmed = typeof tripNameValue === 'string' ? tripNameValue.trim() : '';
+          updateData.trip_name = trimmed || null;
+        } else {
+          // Hosted rounds: require non-empty (optional validation)
+          try {
+            const validatedName = optionalNonEmptyString(tripNameValue);
+            if (validatedName !== undefined) {
+              updateData.trip_name = validatedName;
+            }
+          } catch (err) {
+            return NextResponse.json(
+              { error: err instanceof Error ? err.message : "Trip name cannot be null or empty for hosted rounds" },
+              { status: 400 }
+            );
+          }
+        }
+      }
 
       // Handle trip_date (if provided, update it)
       if (trip.date !== undefined) {
@@ -468,8 +526,62 @@ export async function POST(req: Request) {
       if (trip.status !== undefined) {
         updateData.status = trip.status;
       }
+      // Handle signups gates (group trips only)
+      // Validate ISO parsing and check permissions
+      if ((trip as any).signupsOpenedAt !== undefined || (trip as any).signups_opened_at !== undefined) {
+        if (!isGroupTrip) {
+          return NextResponse.json(
+            { error: "signupsOpenedAt is not allowed for hosted rounds" },
+            { status: 400 }
+          );
+        }
+        // Validate ISO parsing
+        const signupsOpenedAtValue = (trip as any).signupsOpenedAt !== undefined ? (trip as any).signupsOpenedAt : (trip as any).signups_opened_at;
+        if (signupsOpenedAtValue !== null && signupsOpenedAtValue !== undefined) {
+          const parsed = new Date(signupsOpenedAtValue);
+          if (isNaN(parsed.getTime())) {
+            return NextResponse.json(
+              { error: "signupsOpenedAt must be a valid ISO timestamp" },
+              { status: 400 }
+            );
+          }
+          updateData.signups_opened_at = parsed.toISOString();
+        } else {
+          updateData.signups_opened_at = null;
+        }
+      }
+      
       if (trip.cutoffAt !== undefined) {
-        updateData.cutoff_at = trip.cutoffAt ? new Date(trip.cutoffAt).toISOString() : null;
+        if (!isGroupTrip) {
+          // For hosted rounds, we allow cutoffAt but it's not used for phase derivation
+          // Still validate ISO parsing
+          if (trip.cutoffAt !== null && trip.cutoffAt !== undefined) {
+            const parsed = new Date(trip.cutoffAt);
+            if (isNaN(parsed.getTime())) {
+              return NextResponse.json(
+                { error: "cutoffAt must be a valid ISO timestamp" },
+                { status: 400 }
+              );
+            }
+            updateData.cutoff_at = parsed.toISOString();
+          } else {
+            updateData.cutoff_at = null;
+          }
+        } else {
+          // For group trips, validate ISO parsing
+          if (trip.cutoffAt !== null && trip.cutoffAt !== undefined) {
+            const parsed = new Date(trip.cutoffAt);
+            if (isNaN(parsed.getTime())) {
+              return NextResponse.json(
+                { error: "cutoffAt must be a valid ISO timestamp" },
+                { status: 400 }
+              );
+            }
+            updateData.cutoff_at = parsed.toISOString();
+          } else {
+            updateData.cutoff_at = null;
+          }
+        }
       }
       if (trip.courseId !== undefined) {
         updateData.course_id = trip.courseId || null;
@@ -477,20 +589,7 @@ export async function POST(req: Request) {
       if (trip.teeId !== undefined) {
         updateData.tee_id = trip.teeId || null;
       }
-      if (trip.scenarioKey !== undefined) {
-        // Validate scenario_key if provided
-        const allowedScenarioKeys = ['local_round', 'away_day', 'overnight_trip', 'organiser_booking', 'cross_border_agent'];
-        if (trip.scenarioKey === null || trip.scenarioKey === '') {
-          updateData.scenario_key = null;
-        } else if (typeof trip.scenarioKey === 'string' && allowedScenarioKeys.includes(trip.scenarioKey)) {
-          updateData.scenario_key = trip.scenarioKey;
-        } else {
-          return NextResponse.json(
-            { error: `scenarioKey must be one of: ${allowedScenarioKeys.join(', ')}, or null` },
-            { status: 400 }
-          );
-        }
-      }
+      // scenario_key not in schema.md - ignore if provided
       // Handle decision logistics (stored in meeting_point/meet_time when no ferry_details)
       if (trip.decisionLogistics !== undefined) {
         updateData.meeting_point = trip.decisionLogistics?.meetingPoint || null;
@@ -509,25 +608,49 @@ export async function POST(req: Request) {
         updateData.notes = trip.logistics?.notes || null;
       }
 
-      // Handle travel fields (group trips only)
-      if (trip.travelInvolved !== undefined) {
-        updateData.travel_involved = Boolean(trip.travelInvolved);
+      // Handle travel fields (group trips only - ignore for hosted rounds)
+      if (existingTripOrigin === 'group') {
+        // Only apply travel field updates for group trips
+        if (trip.travelInvolved !== undefined) {
+          updateData.travel_involved = Boolean(trip.travelInvolved);
+        }
+        if (trip.travelType !== undefined) {
+          updateData.travel_type = trip.travelType || null;
+        }
+        if (trip.travelScope !== undefined) {
+          updateData.travel_scope = trip.travelScope || null;
+        }
+        if (trip.bookingApproach !== undefined) {
+          updateData.booking_approach = trip.bookingApproach || null;
+        }
+        if (trip.bookingProviderName !== undefined) {
+          updateData.booking_provider_name = trip.bookingProviderName || null;
+        }
+        if (trip.travelNote !== undefined) {
+          updateData.travel_note = trip.travelNote || null;
+        }
       }
-      if (trip.travelType !== undefined) {
-        updateData.travel_type = trip.travelType || null;
+      // For hosted rounds (existingTripOrigin === 'member'): ignore travel field inputs (do not write them)
+
+      // Handle phase_override (group trips only)
+      if (existingTripOrigin === 'group') {
+        if (trip.phaseOverride !== undefined || (trip as any).phase_override !== undefined) {
+          const phaseOverrideValue = trip.phaseOverride !== undefined ? trip.phaseOverride : (trip as any).phase_override;
+          // Validate allowed values
+          const allowedValues = ['scheduled', 'signups_open', 'locked'];
+          if (phaseOverrideValue === null || phaseOverrideValue === '') {
+            updateData.phase_override = null;
+          } else if (typeof phaseOverrideValue === 'string' && allowedValues.includes(phaseOverrideValue)) {
+            updateData.phase_override = phaseOverrideValue;
+          } else {
+            return NextResponse.json(
+              { error: `phaseOverride must be one of: ${allowedValues.join(', ')}, or null` },
+              { status: 400 }
+            );
+          }
+        }
       }
-      if (trip.travelScope !== undefined) {
-        updateData.travel_scope = trip.travelScope || null;
-      }
-      if (trip.bookingApproach !== undefined) {
-        updateData.booking_approach = trip.bookingApproach || null;
-      }
-      if (trip.bookingProviderName !== undefined) {
-        updateData.booking_provider_name = trip.bookingProviderName || null;
-      }
-      if (trip.travelNote !== undefined) {
-        updateData.travel_note = trip.travelNote || null;
-      }
+      // For hosted rounds: ignore phase_override (do not write it)
 
       const { error: updateError } = await supabase
         .from("trips")
@@ -611,72 +734,60 @@ export async function POST(req: Request) {
 
       validatedDate = trip.date;
 
-      // Validate scenario_key if provided
-      const allowedScenarioKeys = ['local_round', 'carpool_round', 'away_day', 'overnight_trip', 'organiser_booking', 'cross_border_agent', 'casual_round'];
-      let validatedScenarioKey: string | null = null;
-      if (trip.scenarioKey !== undefined) {
-        if (trip.scenarioKey === null || trip.scenarioKey === '') {
-          validatedScenarioKey = null;
-        } else if (typeof trip.scenarioKey === 'string' && allowedScenarioKeys.includes(trip.scenarioKey)) {
-          validatedScenarioKey = trip.scenarioKey;
-        } else {
-          return NextResponse.json(
-            { error: `scenarioKey must be one of: ${allowedScenarioKeys.join(', ')}, or null` },
-            { status: 400 }
-          );
-        }
-      }
-
       // Determine trip origin and member creator
       // trip.tripOrigin must be explicitly provided - admin flow = 'group', member flow = 'member'
       const tripOrigin = trip.tripOrigin === 'member' ? 'member' : 'group';
       
-      // For member trips, get member ID from user
-      let createdByMemberId: string | null = null;
-      if (tripOrigin === 'member') {
-        // Get member ID - in canonical schema: members.id == auth.user.id
-        const { data: memberData } = await supabase
-          .from("members")
-          .select("id,email,display_name,status")
-          .eq("id", user.id)
-          .maybeSingle();
-        
-        if (!memberData) {
-          return NextResponse.json(
-            { error: "Member record not found. Please complete onboarding first." },
-            { status: 409 }
-          );
-        }
-        createdByMemberId = memberData.id;
+      // For both group and member trips, get member ID from user
+      // Get member ID - in canonical schema: members.id == auth.user.id
+      const { data: memberData } = await supabase
+        .from("members")
+        .select("id,email,display_name,status")
+        .eq("id", user.id)
+        .maybeSingle();
+      
+      if (!memberData) {
+        return NextResponse.json(
+          { error: "Member record not found. Please complete onboarding first." },
+          { status: 409 }
+        );
       }
+      const createdByMemberId = memberData.id;
       
       // Determine is_posted_to_group
       // Group trips: always true
       // Member trips: always true (hosted rounds in a group are visible to the entire group immediately)
       const isPostedToGroup = true;
 
-      // Derive default trip_name: "{CourseName} · {Dow} {D Mon}" if user did not provide one
+      // For group trips: do NOT auto-derive trip_name (allow Base Camp to show "Add a trip name")
+      // For hosted rounds: derive default trip_name if not provided
       let tripName: string | null = null;
-      if (!trip.tripName && trip.courseId) {
-        // Fetch course name
-        const { data: courseData } = await supabase
-          .from("courses")
-          .select("name")
-          .eq("id", trip.courseId)
-          .maybeSingle();
-        
-        const courseName = courseData?.name || null;
-        if (courseName) {
-          // Format date as "{Dow} {D Mon}"
-          const dateObj = new Date(validatedDate + "T00:00:00");
-          const dow = dateObj.toLocaleDateString("en-GB", { weekday: "short" });
-          const day = dateObj.getDate();
-          const mon = dateObj.toLocaleDateString("en-GB", { month: "short" });
-          tripName = `${courseName} · ${dow} ${day} ${mon}`;
+      if (tripOrigin === 'group') {
+        // Group trips: only use trip_name if explicitly provided (otherwise null, Base Camp handles it)
+        tripName = trip.tripName || null;
+      } else {
+        // Hosted rounds: derive default trip_name if not provided
+        if (!trip.tripName && trip.courseId) {
+          // Fetch course name
+          const { data: courseData } = await supabase
+            .from("courses")
+            .select("name")
+            .eq("id", trip.courseId)
+            .maybeSingle();
+          
+          const courseName = courseData?.name || null;
+          if (courseName) {
+            // Format date as "{Dow} {D Mon}"
+            const dateObj = new Date(validatedDate + "T00:00:00");
+            const dow = dateObj.toLocaleDateString("en-GB", { weekday: "short" });
+            const day = dateObj.getDate();
+            const mon = dateObj.toLocaleDateString("en-GB", { month: "short" });
+            tripName = `${courseName} · ${dow} ${day} ${mon}`;
+          }
+        } else if (trip.tripName) {
+          // Use provided trip_name if user provided one
+          tripName = trip.tripName;
         }
-      } else if (trip.tripName) {
-        // Use provided trip_name if user provided one
-        tripName = trip.tripName;
       }
 
       // Build INSERT payload with validated fields
@@ -698,21 +809,12 @@ export async function POST(req: Request) {
         cutoff_at: trip.cutoffAt ? new Date(trip.cutoffAt).toISOString() : null,
         course_id: trip.courseId || null,
         tee_id: trip.teeId || null,
-        scenario_key: validatedScenarioKey,
+        // Only include fields present in schema.md
         meeting_point: trip.logistics?.meetingPoint || null,
         meet_time: trip.logistics?.meetTime || null,
         ferry_details: trip.logistics?.ferryDetails || null,
         notes: trip.logistics?.notes || null,
-        trip_origin: tripOrigin,
-        created_by_member_id: createdByMemberId,
-        is_posted_to_group: isPostedToGroup,
-        // Travel fields (only set for group trips)
-        travel_involved: tripOrigin === 'group' ? (trip.travelInvolved ? true : false) : false,
-        travel_type: tripOrigin === 'group' ? (trip.travelType || null) : null,
-        travel_scope: tripOrigin === 'group' ? (trip.travelScope || null) : null,
-        booking_approach: tripOrigin === 'group' ? (trip.bookingApproach || null) : null,
-        booking_provider_name: tripOrigin === 'group' ? (trip.bookingProviderName || null) : null,
-        travel_note: tripOrigin === 'group' ? (trip.travelNote || null) : null,
+        created_by: createdByMemberId, // created_by is in schema.md (members.id == auth.uid())
         created_at: now,
         updated_at: now,
       };

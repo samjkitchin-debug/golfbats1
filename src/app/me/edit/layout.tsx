@@ -28,11 +28,11 @@ export default async function MeEditLayout({
 
           <Link href="/" className="flex flex-1 justify-center">
             <Image
-              src="/logo.png"
+              src="/brand/logo-mark.png"
               alt="DayForeIt"
-              width={120}
-              height={60}
-              className="h-auto w-auto max-h-[60px] object-contain"
+              width={96}
+              height={48}
+              className="h-auto w-auto max-h-[48px] object-contain"
               style={{ width: "auto" }}
               priority
             />
@@ -44,7 +44,7 @@ export default async function MeEditLayout({
         </div>
 
         {/* brand accent */}
-        <div className="h-0.5 w-full bg-action-blue" />
+        <div className="h-0.5 w-full bg-brand-green/20" />
       </header>
 
       {/* Content */}
