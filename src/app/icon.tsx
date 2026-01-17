@@ -1,4 +1,6 @@
 import { ImageResponse } from 'next/og';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 // Generate a square icon to ensure proper aspect ratio
 export const size = {
@@ -9,12 +11,10 @@ export const size = {
 export const contentType = 'image/png';
 
 export default async function Icon() {
-  // Construct absolute URL for the icon asset
-  // For production, this will use the actual site URL; for local dev, use localhost
-  const baseUrl = process.env.VERCEL_URL 
-    ? `https://${process.env.VERCEL_URL}`
-    : process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-  const iconUrl = `${baseUrl}/brand/logo-mark.png`;
+  // Load the logo from the public directory during build
+  const logoPath = join(process.cwd(), 'public', 'brand', 'logo-mark.png');
+  const logoBuffer = await readFile(logoPath);
+  const logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
 
   return new ImageResponse(
     (
@@ -29,11 +29,11 @@ export default async function Icon() {
         }}
       >
         <img
-          src={iconUrl}
+          src={logoBase64}
           alt="DayForeIt"
+          width={389}
+          height={389}
           style={{
-            width: '76%',
-            height: '76%',
             objectFit: 'contain',
           }}
         />
