@@ -552,6 +552,14 @@ export default function MePage() {
                 )}
               </div>
             </div>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background"
+              >
+                Admin
+              </Link>
+            )}
           </div>
         </div>
 

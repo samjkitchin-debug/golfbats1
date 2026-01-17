@@ -13,13 +13,13 @@ export default function ClubhousePage() {
       {/* Group actions */}
       <div className="mb-6 flex items-center gap-2">
         <Link
-          href="/join-group"
+          href="/join"
           className="rounded-lg bg-transparent border border-ink-300 text-ink-700 px-4 py-2 text-sm font-medium hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/20 active:scale-[0.98] transition-transform"
         >
           Join group
         </Link>
         <Link
-          href="/create-group"
+          href="/groups/create"
           className="rounded-lg btn-anticipation px-4 py-2 text-sm font-medium active:scale-[0.98] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
         >
           Create group
