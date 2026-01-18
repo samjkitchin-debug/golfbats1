@@ -1,11 +1,7 @@
 export const COUNTRIES = [
   // Common nationalities for this club first
   "Australia",
-  "United Kingdom",
-  "Singapore",
-  "India",
   "Malaysia",
-  "New Zealand",
   // Full list follows alphabetically
   "Afghanistan",
   "Albania",

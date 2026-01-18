@@ -162,6 +162,86 @@ client_updated_at | timestamp with time zone | NO |
 updated_at | timestamp with time zone | NO | now()
 UNIQUE (trip_id, member_id, hole_number)
 
+### public.gameday_hole_commits
+
+Column | Type | Nullable | Default
+-------|------|----------|---------
+id | uuid | NO | gen_random_uuid() PRIMARY KEY
+trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
+flight_id | uuid | YES | REFERENCES trip_flights(id) ON DELETE CASCADE
+hole_number | integer | NO | CHECK (hole_number BETWEEN 1 AND 18)
+committed_by_member_id | uuid | YES | REFERENCES members(id)
+client_commit_id | uuid | NO | 
+committed_at | timestamptz | NO | now()
+scores_json | jsonb | NO | 
+UNIQUE (trip_id, flight_id, hole_number)
+UNIQUE (trip_id, client_commit_id)
+
+### public.gameday_flight_rounds
+
+Column | Type | Nullable | Default
+-------|------|----------|---------
+flight_id | uuid | NO | PRIMARY KEY REFERENCES trip_flights(id) ON DELETE CASCADE
+state | text | NO | 'not_started' CHECK (state IN ('not_started','in_progress','ready_to_close','closed','published'))
+current_hole_index | integer | NO | 0 CHECK (current_hole_index BETWEEN 0 AND 17)
+started_at | timestamptz | YES | 
+closed_at | timestamptz | YES | 
+published_at | timestamptz | YES | 
+created_at | timestamptz | NO | now()
+updated_at | timestamptz | NO | now()
+
+### public.gameday_round_participants
+
+Column | Type | Nullable | Default
+-------|------|----------|---------
+id | uuid | NO | gen_random_uuid() PRIMARY KEY
+trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
+member_id | uuid | NO | REFERENCES members(id) ON DELETE CASCADE
+handicap_snapshot | numeric | YES | 
+display_name | text | NO | 
+is_host | boolean | NO | false
+joined_at | timestamptz | NO | now()
+created_at | timestamptz | NO | now()
+updated_at | timestamptz | NO | now()
+UNIQUE (trip_id, member_id)
+
+### public.trip_flight_exports
+
+Column | Type | Nullable | Default
+-------|------|----------|---------
+id | uuid | NO | gen_random_uuid() PRIMARY KEY
+trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
+flight_id | uuid | YES | REFERENCES trip_flights(id) ON DELETE CASCADE
+export_type | text | NO | 
+export_data | jsonb | NO | 
+created_at | timestamptz | NO | now()
+updated_at | timestamptz | NO | now()
+
+### public.trip_flights
+
+Column | Type | Nullable | Default
+-------|------|----------|---------
+id | uuid | NO | gen_random_uuid() PRIMARY KEY
+trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
+flight_number | integer | NO | 
+is_unassigned | boolean | NO | false
+execution_status | USER-DEFINED | NO | 'not_started'::flight_execution_status
+start_hole | integer | NO | 1 CHECK (start_hole BETWEEN 1 AND 18)
+started_at | timestamptz | YES | 
+started_by_member_id | uuid | YES | REFERENCES members(id)
+finished_at | timestamptz | YES | 
+created_at | timestamptz | NO | now()
+updated_at | timestamptz | NO | now()
+
+### public.members
+
+Column | Type | Nullable | Default
+-------|------|----------|---------
+handicap_type | text | NO | 'declared_starter' CHECK (handicap_type IN ('declared_starter','declared_established','dayforeit_official'))
+declared_handicap | numeric | YES | 
+
+**Note:** `declared_handicap` remains the v1 numeric value source.
+
 ### public.member_handicap_index
 
 Column | Type | Nullable | Default

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Cropper from "react-easy-crop";
 import type { Area, Point } from "react-easy-crop";
 import { COUNTRIES } from "@/app/lib/countries";
+import { formatHandicap } from "@/app/lib/format";
 
 type MemberStatus = "pending" | "active" | string;
 
@@ -17,6 +18,7 @@ type MemberRow = {
   display_name: string | null;
   nationality: string | null;
   declared_handicap: number | null;
+  handicap_type: string | null;
   profile_photo_path: string | null;
   created_at: string;
   last_seen: string | null;
@@ -98,6 +100,13 @@ export default function MePage() {
   const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
 
+  // Handicap edit state
+  const [editingHandicap, setEditingHandicap] = useState(false);
+  const [handicapValue, setHandicapValue] = useState("");
+  const [handicapType, setHandicapType] = useState<"declared_starter" | "declared_established" | "dayforeit_official">("declared_starter");
+  const [savingHandicap, setSavingHandicap] = useState(false);
+  const [roundsToOfficial, setRoundsToOfficial] = useState<number | null>(null);
+
   // Data security modal state
   const [showDataSecurityModal, setShowDataSecurityModal] = useState(false);
 
@@ -164,7 +173,7 @@ export default function MePage() {
       const { data, error: memberErr } = await supabase
         .from("members")
         .select(
-          "id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen,status,is_admin"
+          "id,email,full_name,display_name,nationality,declared_handicap,handicap_type,profile_photo_path,created_at,last_seen,status,is_admin"
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -302,6 +311,22 @@ export default function MePage() {
       } else {
         setGroupMemberships([]);
         setLoadingGroups(false);
+      }
+
+      // Load handicap status
+      try {
+        const statusRes = await fetch("/api/me/handicap-status", {
+          credentials: "include",
+        });
+        if (!cancelled && statusRes.ok) {
+          const statusJson = await statusRes.json();
+          if (statusJson.ok && typeof statusJson.roundsToOfficial === "number") {
+            setRoundsToOfficial(statusJson.roundsToOfficial);
+          }
+        }
+      } catch (e) {
+        // Silent failure - handicap status is optional
+        console.error("Failed to load handicap status:", e);
       }
 
       setLoading(false);
@@ -575,7 +600,7 @@ export default function MePage() {
               )}
               {isAdmin && (
                 <Link
-                  href="/members"
+                  href="/members?mode=admin"
                   className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background"
                 >
                   Admin
@@ -609,29 +634,57 @@ export default function MePage() {
 
         {/* Handicap instrument */}
         {!loading && member && (
-          <div className="py-4">
+          <div className="py-4 relative">
+            <div className="absolute top-0 right-0">
+              {member.handicap_type === "dayforeit_official" ? (
+                <button
+                  onClick={() => {
+                    // Stub: no functionality yet
+                  }}
+                  className="text-xs text-muted hover:text-foreground underline"
+                >
+                  Add a past round
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setHandicapValue(
+                      member.declared_handicap === null || member.declared_handicap === undefined
+                        ? ""
+                        : String(member.declared_handicap)
+                    );
+                    setHandicapType((member.handicap_type || "declared_starter") as "declared_starter" | "declared_established" | "dayforeit_official");
+                    setEditingHandicap(true);
+                  }}
+                  className="text-xs text-muted hover:text-foreground underline"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
             {member.declared_handicap !== null && member.declared_handicap !== undefined ? (
               <>
                 <div className="text-3xl font-light text-primary">
-                  {member.declared_handicap}
+                  {formatHandicap(member.declared_handicap)}
                 </div>
                 <div className="mt-1 text-xs text-secondary">Your handicap</div>
+                {member.handicap_type && (
+                  <div className="mt-0.5 text-xs text-muted">
+                    {member.handicap_type === "declared_starter" ? "Starter" :
+                     member.handicap_type === "declared_established" ? "Established" :
+                     member.handicap_type === "dayforeit_official" ? "Official (Day Fore It)" : ""}
+                  </div>
+                )}
+                {member.handicap_type === "dayforeit_official" && (
+                  <div className="mt-1 text-xs text-muted">Official handicaps are maintained from rounds.</div>
+                )}
+                {member.handicap_type !== "dayforeit_official" && roundsToOfficial !== null && (
+                  <div className="mt-1 text-xs text-muted">{roundsToOfficial} rounds to Official</div>
+                )}
               </>
             ) : (
               <div>
                 <div className="text-sm text-secondary">Add your handicap</div>
-                <button
-                  onClick={() => {
-                    setEditingProfile(true);
-                    // Scroll to profile section after a brief delay
-                    setTimeout(() => {
-                      document.getElementById("profile-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                    }, 100);
-                  }}
-                  className="mt-2 text-xs text-secondary underline hover:text-foreground"
-                >
-                  Edit profile
-                </button>
               </div>
             )}
           </div>
@@ -654,11 +707,6 @@ export default function MePage() {
               setFullName(member?.full_name ?? "");
               setDisplayName(member?.display_name ?? "");
               setNationality(member?.nationality ?? "");
-              setDeclaredHandicap(
-                member?.declared_handicap === null || member?.declared_handicap === undefined
-                  ? ""
-                  : String(member.declared_handicap)
-              );
             }
           }}
           fullName={fullName}
@@ -676,12 +724,6 @@ export default function MePage() {
           nationality={nationality}
           setNationality={(v) => {
             setNationality(v);
-            // Reset saved state when user makes changes
-            if (profileSaved) setProfileSaved(false);
-          }}
-          declaredHandicap={declaredHandicap}
-          setDeclaredHandicap={(v) => {
-            setDeclaredHandicap(v);
             // Reset saved state when user makes changes
             if (profileSaved) setProfileSaved(false);
           }}
@@ -708,17 +750,6 @@ export default function MePage() {
             setError(null);
             setProfileSaveSuccess(false);
 
-            const handicapNum =
-              declaredHandicap.trim() === ""
-                ? null
-                : Number(declaredHandicap.trim());
-
-            if (handicapNum !== null && (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 36)) {
-              setError("Handicap must be a number between 0 and 36 (or blank).");
-              setSavingProfile(false);
-              return;
-            }
-
             try {
               const res = await fetch("/me/edit/save", {
                 method: "POST",
@@ -727,7 +758,6 @@ export default function MePage() {
                   full_name: fullName.trim(),
                   display_name: displayName.trim(),
                   nationality: nationality.trim(),
-                  declared_handicap: handicapNum,
                 }),
               });
 
@@ -748,7 +778,7 @@ export default function MePage() {
               if (user) {
                 const { data } = await supabase
                   .from("members")
-                  .select("id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen")
+                  .select("id,email,full_name,display_name,nationality,declared_handicap,handicap_type,profile_photo_path,created_at,last_seen,status,is_admin")
                   .eq("id", user.id)
                   .maybeSingle();
                 if (data) {
@@ -1255,6 +1285,16 @@ export default function MePage() {
               <span className="text-muted"> · </span>
               <span>Coming soon</span>
             </div>
+            {process.env.NEXT_PUBLIC_ENABLE_SANDBOX_LINKS === "true" && (
+              <div>
+                <Link
+                  href="/sandbox/gameday"
+                  className="text-muted hover:text-foreground hover:underline"
+                >
+                  Sandbox
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1469,6 +1509,142 @@ export default function MePage() {
           </div>
         </div>
       )}
+
+      {/* Handicap edit modal */}
+      {editingHandicap && (
+        <div className="fixed inset-0 z-50 flex items-end bg-foreground/50 p-4">
+          <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-5">
+            <h3 className="mb-4 text-lg font-semibold text-foreground">Edit handicap</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1">Handicap</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="36"
+                  step="0.1"
+                  value={handicapValue}
+                  onChange={(e) => setHandicapValue(e.target.value)}
+                  placeholder="e.g. 18"
+                  className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-2">Type</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="handicap_type"
+                      value="declared_starter"
+                      checked={handicapType === "declared_starter"}
+                      onChange={(e) => setHandicapType(e.target.value as "declared_starter")}
+                      className="text-primary"
+                    />
+                    <span className="text-sm text-foreground">Starter</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="handicap_type"
+                      value="declared_established"
+                      checked={handicapType === "declared_established"}
+                      onChange={(e) => setHandicapType(e.target.value as "declared_established")}
+                      className="text-primary"
+                    />
+                    <span className="text-sm text-foreground">Established</span>
+                  </label>
+                  <label className="flex items-center gap-2 opacity-50 cursor-not-allowed">
+                    <input
+                      type="radio"
+                      name="handicap_type"
+                      value="dayforeit_official"
+                      checked={handicapType === "dayforeit_official"}
+                      disabled
+                      className="text-primary"
+                    />
+                    <span className="text-sm text-foreground">Official (Day Fore It)</span>
+                  </label>
+                  <p className="text-xs text-muted ml-6">Coming later</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <button
+                onClick={() => setEditingHandicap(false)}
+                className="flex-1 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (savingHandicap) return;
+                  
+                  setSavingHandicap(true);
+                  setError(null);
+
+                  const handicapNum = handicapValue.trim() === "" 
+                    ? null 
+                    : Number(handicapValue.trim());
+
+                  if (handicapNum !== null && (Number.isNaN(handicapNum) || handicapNum < 0 || handicapNum > 36)) {
+                    setError("Handicap must be a number between 0 and 36 (or blank).");
+                    setSavingHandicap(false);
+                    return;
+                  }
+
+                  try {
+                    const res = await fetch("/me/edit/save", {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({
+                        full_name: member?.full_name || "",
+                        display_name: member?.display_name || "",
+                        nationality: member?.nationality || "",
+                        declared_handicap: handicapNum,
+                        handicap_type: handicapType,
+                      }),
+                    });
+
+                    const json = await res.json().catch(() => ({}));
+
+                    if (!res.ok) {
+                      throw new Error(json?.error || "Failed to save handicap.");
+                    }
+
+                    // Reload member data to reflect saved changes
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                      const { data } = await supabase
+                        .from("members")
+                        .select("id,email,full_name,display_name,nationality,declared_handicap,handicap_type,profile_photo_path,created_at,last_seen,status,is_admin")
+                        .eq("id", user.id)
+                        .maybeSingle();
+                      if (data) {
+                        setMember(data as MemberRow);
+                      }
+                    }
+
+                    setEditingHandicap(false);
+                    setError(null);
+                  } catch (e: any) {
+                    setError(e?.message || "Failed to save handicap.");
+                  } finally {
+                    setSavingHandicap(false);
+                  }
+                }}
+                disabled={savingHandicap}
+                className="flex-1 rounded-xl btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingHandicap ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1526,8 +1702,6 @@ function ProfileBlock({
   setDisplayName,
   nationality,
   setNationality,
-  declaredHandicap,
-  setDeclaredHandicap,
   profilePhotoPath,
   setProfilePhotoPath,
   uploadingProfilePhoto,
@@ -1557,8 +1731,6 @@ function ProfileBlock({
   setDisplayName: (v: string) => void;
   nationality: string;
   setNationality: (v: string) => void;
-  declaredHandicap: string;
-  setDeclaredHandicap: (v: string) => void;
   profilePhotoPath: string | null;
   setProfilePhotoPath: (v: string | null) => void;
   uploadingProfilePhoto: boolean;
@@ -1687,24 +1859,6 @@ function ProfileBlock({
                 </option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold">Handicap</div>
-            <input
-              className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
-                highlightedFields.includes("handicap")
-                      ? "border-warning ring-2 ring-warning/30"
-                  : "border-border"
-              }`}
-              value={declaredHandicap}
-              onChange={(e) => setDeclaredHandicap(e.target.value)}
-              inputMode="decimal"
-              placeholder="e.g. 18.2"
-            />
-            {highlightedFields.includes("handicap") && (
-              <p className="mt-1 text-xs text-warning">Required for agent export</p>
-            )}
           </div>
 
           {/* Profile Photo Crop Modal */}

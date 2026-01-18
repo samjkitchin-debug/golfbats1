@@ -227,6 +227,40 @@ export async function POST(
     if (!updates || updates.length === 0) {
       return NextResponse.json({ ok: true, applied: 0 });
     }
+
+    // Find caller's flight_id (flight-bounded scoring)
+    const { data: flightSlotData } = await supabase
+      .from("trip_flight_slots")
+      .select("flight_id")
+      .eq("member_id", user.id)
+      .maybeSingle();
+
+    const flightId = flightSlotData?.flight_id || null;
+
+    if (!flightId) {
+      return NextResponse.json(
+        { ok: false, error: "Member not assigned to a flight" },
+        { status: 400 }
+      );
+    }
+
+    // Get flight roster (members in caller's flight)
+    const { data: flightSlotsData } = await supabase
+      .from("trip_flight_slots")
+      .select("member_id")
+      .eq("flight_id", flightId);
+
+    const flightMemberIds = new Set((flightSlotsData || []).map((s: any) => s.member_id).filter(Boolean));
+
+    // Get committed holes for this flight (locked holes)
+    const { data: committedHolesData } = await supabase
+      .from("gameday_hole_commits")
+      .select("hole_number")
+      .eq("trip_id", tripData.id)
+      .eq("flight_id", flightId);
+
+    const lockedHoles = new Set((committedHolesData || []).map((c: any) => c.hole_number));
+
     const now = new Date().toISOString();
     const preparedUpdates: Array<{
       trip_id: string;
@@ -236,6 +270,7 @@ export async function POST(
       client_updated_at: string;
       updated_at: string;
     }> = [];
+    const rejectedMemberIds: string[] = [];
 
     for (const update of updates) {
       if (
@@ -272,6 +307,17 @@ export async function POST(
         );
       }
 
+      // Flight-bounded scoring: reject members not in caller's flight
+      if (!flightMemberIds.has(update.memberId)) {
+        rejectedMemberIds.push(update.memberId);
+        continue; // Skip this update
+      }
+
+      // Reject writes to committed holes (locked)
+      if (lockedHoles.has(update.holeNumber)) {
+        continue; // Skip this update (hole is committed)
+      }
+
       preparedUpdates.push({
         trip_id: tripData.id,
         member_id: update.memberId,
@@ -282,57 +328,90 @@ export async function POST(
       });
     }
 
-    // Use a SQL function for conditional upsert (only update if client_updated_at is newer)
-    // For simplicity, we'll use a loop with individual upserts and check client_updated_at
-    let supabaseWrite = supabase;
-    let applied = 0;
+    // Fast path: set-based upsert with LWW semantics
+    // Use SQL function via RPC for conditional upsert (only update if client_updated_at is newer)
+    // Supabase JS .upsert() doesn't support WHERE in DO UPDATE, so SQL function is preferred
+    const supabaseService = await createSupabaseServiceClient();
+    const updatesJson = JSON.stringify(preparedUpdates);
+    
+    // Call SQL function for set-based LWW upsert
+    // Function: upsert_gameday_scores_lww(update_data jsonb) -> integer
+    // Must be created via migration (see phase3_3_gameday_scores_lww_function.sql)
+    const { data: appliedCount, error: rpcError } = await supabaseService
+      .rpc('upsert_gameday_scores_lww', { update_data: updatesJson })
+      .single();
 
-    for (const update of preparedUpdates) {
-      // First, check existing score
-      const { data: existing } = await supabaseWrite
+    // If RPC function not available, use client-side LWW filtering with batch upsert
+    if (rpcError || appliedCount === null || typeof appliedCount !== 'number') {
+      // Fallback: Fetch existing scores in one query, filter by LWW, then batch upsert winners
+      const updateKeys = preparedUpdates.map(u => `${u.trip_id}:${u.member_id}:${u.hole_number}`);
+      
+      const { data: existingScores, error: fetchError } = await supabaseService
         .from("gameday_scores")
-        .select("client_updated_at")
-        .eq("trip_id", update.trip_id)
-        .eq("member_id", update.member_id)
-        .eq("hole_number", update.hole_number)
-        .maybeSingle();
+        .select("trip_id,member_id,hole_number,client_updated_at")
+        .eq("trip_id", tripData.id)
+        .in("member_id", [...new Set(preparedUpdates.map(u => u.member_id))])
+        .in("hole_number", [...new Set(preparedUpdates.map(u => u.hole_number))]);
 
-      // Only update if new client_updated_at is newer
-      if (existing && existing.client_updated_at) {
-        const existingTime = new Date(existing.client_updated_at).getTime();
-        const newTime = new Date(update.client_updated_at).getTime();
-        if (newTime <= existingTime) {
-          continue; // Skip this update (stale)
+      if (fetchError) {
+        console.error("[scorecard POST] Failed to fetch existing scores:", fetchError);
+        return NextResponse.json(
+          { ok: false, error: "Failed to check existing scores" },
+          { status: 500 }
+        );
+      }
+
+      // Build map of existing scores for fast lookup
+      const existingMap = new Map<string, string>();
+      for (const s of existingScores || []) {
+        const key = `${s.trip_id}:${s.member_id}:${s.hole_number}`;
+        existingMap.set(key, s.client_updated_at);
+      }
+
+      // Filter updates by LWW (only keep rows where new client_updated_at > existing)
+      const lwwUpdates = preparedUpdates.filter(update => {
+        const key = `${update.trip_id}:${update.member_id}:${update.hole_number}`;
+        const existingTime = existingMap.get(key);
+        
+        if (!existingTime) {
+          return true; // New row, include it
+        }
+
+        const existing = new Date(existingTime).getTime();
+        const incoming = new Date(update.client_updated_at).getTime();
+        return incoming > existing; // Only include if newer
+      });
+
+      // Batch upsert filtered updates
+      if (lwwUpdates.length > 0) {
+        const { error: upsertError } = await supabaseService
+          .from("gameday_scores")
+          .upsert(lwwUpdates, { onConflict: "trip_id,member_id,hole_number" });
+
+        if (upsertError) {
+          console.error("[scorecard POST] Batch upsert error:", upsertError);
+          return NextResponse.json(
+            { ok: false, error: upsertError.message || "Failed to upsert scores" },
+            { status: 500 }
+          );
         }
       }
 
-      // Upsert the score
-      const { error: upsertError } = await supabaseWrite
-        .from("gameday_scores")
-        .upsert(update, { onConflict: "trip_id,member_id,hole_number" });
-
-      if (upsertError) {
-        // If RLS blocks, try service client
-        if (upsertError.code === "42501") {
-          const supabaseService = await createSupabaseServiceClient();
-          const { error: serviceError } = await supabaseService
-            .from("gameday_scores")
-            .upsert(update, { onConflict: "trip_id,member_id,hole_number" });
-
-          if (serviceError) {
-            console.error("[scorecard POST] Service client upsert error:", serviceError);
-            continue; // Skip this update
-          }
-        } else {
-          console.error("[scorecard POST] Upsert error:", upsertError);
-          continue; // Skip this update
-        }
-      }
-
-      applied++;
+      return NextResponse.json({ 
+        ok: true, 
+        applied: lwwUpdates.length,
+        lockedHoles: Array.from(lockedHoles),
+        rejectedMemberIds: [...new Set(rejectedMemberIds)]
+      });
     }
 
-    return NextResponse.json({ ok: true, applied });
+    // Success with SQL function (fastest path)
+    return NextResponse.json({ 
+      ok: true, 
+      applied: appliedCount,
+      lockedHoles: Array.from(lockedHoles),
+      rejectedMemberIds: [...new Set(rejectedMemberIds)]
+    });
   } catch (error) {
     console.error("Post scorecard error:", error);
     return NextResponse.json(

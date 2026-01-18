@@ -35,6 +35,7 @@ export default function BottomNav() {
               <li key={item.href} className="flex-1 relative">
                 <Link
                   href={item.href}
+                  suppressHydrationWarning
                   className={`flex flex-col items-center justify-center px-2 py-3 text-center text-sm relative ${
                     active ? "font-semibold text-primary" : "text-muted hover:text-foreground"
                   }`}
@@ -42,6 +43,7 @@ export default function BottomNav() {
                   {item.label}
                 </Link>
                 <div
+                  suppressHydrationWarning
                   className={`mx-auto h-0.5 w-10 ${
                     active ? "bg-foreground opacity-20" : "bg-transparent"
                   }`}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { formatHandicap } from "@/app/lib/format";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import MemberProfileCard from "../components/MemberProfileCard";
@@ -582,7 +583,7 @@ export default function MembersPage() {
                         HCP
                       </span>
                       <span className="text-sm font-semibold text-primary leading-tight">
-                        {handicap}
+                        {formatHandicap(handicap)}
                       </span>
                     </div>
                   ) : null}

@@ -7,6 +7,7 @@ type Body = {
   display_name?: unknown;
   nationality?: unknown;
   declared_handicap?: unknown;
+  handicap_type?: unknown;
 };
 
 function asTrimmedString(v: unknown): string {
@@ -65,6 +66,12 @@ export async function POST(req: Request) {
     const full_name = asTrimmedString(json.full_name);
     const display_name = asTrimmedString(json.display_name);
     const nationality = asTrimmedString(json.nationality);
+    const handicap_type = typeof json.handicap_type === "string" && 
+      (json.handicap_type === "declared_starter" || 
+       json.handicap_type === "declared_established" || 
+       json.handicap_type === "dayforeit_official")
+      ? json.handicap_type
+      : "declared_starter";
 
     // Strict profile requirements:
     // - Full name required
@@ -91,38 +98,51 @@ export async function POST(req: Request) {
       );
     }
 
-    const declared_handicap = asNullableNumber(json.declared_handicap);
-    if (
-      declared_handicap === null ||
-      declared_handicap < 0 ||
-      declared_handicap > 36
-    ) {
-      return NextResponse.json(
-        { error: "Declared handicap must be a number between 0 and 36." },
-        { status: 400 }
-      );
-    }
-
-    // First check if member exists
+    // First check if member exists and load current handicap_type
     const { data: existingMember } = await supabase
       .from("members")
-      .select("id")
+      .select("id, handicap_type")
       .eq("id", user.id)
       .maybeSingle();
 
     const now = new Date().toISOString();
 
+    // If current handicap_type is 'dayforeit_official', lock handicap fields
+    const handicapLocked = existingMember?.handicap_type === "dayforeit_official";
+
+    const declared_handicap = asNullableNumber(json.declared_handicap);
+    
+    // Only validate handicap if not locked
+    if (!handicapLocked) {
+      if (
+        declared_handicap !== null &&
+        (declared_handicap < 0 || declared_handicap > 36)
+      ) {
+        return NextResponse.json(
+          { error: "Declared handicap must be a number between 0 and 36." },
+          { status: 400 }
+        );
+      }
+    }
+
     if (existingMember) {
       // Update existing member
+      const updatePayload: Record<string, unknown> = {
+        full_name,
+        display_name,
+        nationality,
+        last_seen: now,
+      };
+
+      // Only include handicap fields if not locked
+      if (!handicapLocked) {
+        updatePayload.declared_handicap = declared_handicap;
+        updatePayload.handicap_type = handicap_type;
+      }
+
       const { error: upErr } = await supabase
         .from("members")
-        .update({
-          full_name,
-          display_name,
-          nationality,
-          declared_handicap,
-          last_seen: now,
-        })
+        .update(updatePayload)
         .eq("id", user.id);
 
       if (upErr) {
@@ -139,6 +159,7 @@ export async function POST(req: Request) {
           display_name,
           nationality,
           declared_handicap,
+          handicap_type,
           last_seen: now,
           created_at: now,
           status: "pending",

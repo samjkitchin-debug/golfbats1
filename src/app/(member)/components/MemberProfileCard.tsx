@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { formatHandicap } from "@/app/lib/format";
 
 type Member = {
   id: string;
@@ -154,7 +155,7 @@ export default function MemberProfileCard({
                     HCP
                   </span>
                   <span className="text-sm font-semibold text-primary leading-tight">
-                    {member.declared_handicap}
+                    {formatHandicap(member.declared_handicap)}
                   </span>
                 </div>
               ) : (
