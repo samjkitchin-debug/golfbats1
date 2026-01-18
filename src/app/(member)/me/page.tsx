@@ -563,14 +563,25 @@ export default function MePage() {
                 )}
               </div>
             </div>
-            {isAdmin && (
-              <Link
-                href="/members"
-                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background"
-              >
-                Admin
-              </Link>
-            )}
+            <div className="flex items-center gap-2">
+              {/* TEMP: Sandbox access for GameDay prototype. Remove when integrated. */}
+              {process.env.NEXT_PUBLIC_ENABLE_SANDBOX_LINKS === "true" && (
+                <Link
+                  href="/sandbox/gameday"
+                  className="text-xs text-muted hover:text-foreground"
+                >
+                  Sandbox
+                </Link>
+              )}
+              {isAdmin && (
+                <Link
+                  href="/members"
+                  className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background"
+                >
+                  Admin
+                </Link>
+              )}
+            </div>
           </div>
         </div>
 
