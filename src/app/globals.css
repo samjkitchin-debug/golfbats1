@@ -21,104 +21,176 @@
 
 /* DayForeIt — Light mode only (persisted)
    Palette: Warm off-white base + Green (anticipation / brand warmth) + Amber (ceremonial) + Ink (commitment)
+   SINGLE SOURCE OF TRUTH: All UI colours must be defined here as CSS variables.
 */
 :root {
-  /* Core surfaces */
-  --background: rgb(var(--bg-default));     /* warm off-white "paper" */
-  --foreground: rgb(var(--ink-900));     /* deep ink (not pure black) */
-  --surface: rgb(var(--surface-rgb));        /* warm card surface */
-  --border: #E7E2D9;         /* warm border */
-  --muted: #6B7280;          /* neutral muted text */
-
+  /* ========================================
+     CORE SURFACES (semantic tokens)
+     ======================================== */
+  --bg: 253 251 246;              /* warm off-white "paper" (RGB space) */
+  --surface: 255 253 248;         /* warm card surface (RGB space) */
+  --surface-2: 255 253 250;       /* secondary surface (RGB space) */
+  --header-bg: 255 253 246;       /* header background (RGB space) */
+  
+  /* ========================================
+     TEXT (semantic tokens)
+     ======================================== */
+  --fg: 15 23 42;                  /* foreground / primary text (RGB space) */
+  --muted: 107 114 128;            /* muted text (RGB space) */
+  
+  /* ========================================
+     BORDERS & RINGS
+     ======================================== */
+  --border: 45 15% 88%;          /* warm border (HSL space) */
+  --ring: 43 33 25;                /* focus ring (warm ink) (RGB space) */
+  
+  /* ========================================
+     BRAND SEMANTICS (primary actions)
+     ======================================== */
+  --primary: 43 33 25;             /* primary action (warm ink) (RGB space) */
+  --primary-fg: 255 255 255;      /* primary foreground (white) (RGB space) */
+  
+  /* ========================================
+     ANTICIPATION (time-critical / green)
+     ======================================== */
+  --anticipation: 46 143 99;       /* anticipation / brand warmth (RGB space) */
+  --anticipation-fg: 255 255 255; /* anticipation foreground (white) (RGB space) */
+  
+  /* ========================================
+     DANGER (destructive actions)
+     ======================================== */
+  --danger: 220 38 38;             /* danger / destructive (RGB space) */
+  --danger-fg: 255 255 255;       /* danger foreground (white) (RGB space) */
+  
+  /* ========================================
+     WARNING (required markers / attention)
+     ======================================== */
+  --warning: 231 162 60;           /* warning / required markers (RGB space, maps to brand-amber) */
+  --warning-fg: 255 255 255;       /* warning foreground (white) (RGB space) */
+  
+  /* ========================================
+     LEGACY COMPATIBILITY (mapped to new tokens)
+     ======================================== */
+  --background: 45 30% 98%;
+  --foreground: rgb(var(--fg));
+  --bg-default: var(--bg);
+  --surface-rgb: var(--surface);
+  
   /* Semantic text (instrument support) */
-  --text-secondary: rgba(11, 18, 32, 0.62);     /* ink softened: metadata, subtitles */
-  --text-confirmation: rgba(11, 18, 32, 0.84);  /* ink, slightly stronger: confirmation lines */
+  --text-secondary: rgba(var(--fg), 0.62);
+  --text-confirmation: rgba(var(--fg), 0.84);
 
-  /* Brand */
-  --brand-ink: #0B1220;          /* authority / focus */
-  --brand-green: 46 143 99;      /* anticipation / primary brand warmth (RGB space for Tailwind) */
-  --brand-amber: #E7A23C;        /* ceremonial / earned moments only */
+  /* Brand (legacy names) */
+  --brand-ink: rgb(var(--primary));
+  --brand-green: var(--anticipation);
+  --brand-amber: 231 162 60;       /* ceremonial (RGB space) */
   
   /* Ink palette (RGB space for Tailwind) */
-  --ink-900: 15 23 42;
+  --ink-900: var(--fg);
   --ink-700: 30 41 59;
   --ink-600: 51 65 85;
   --ink-300: 203 213 225;
-  
-  /* Warm surfaces (RGB space for Tailwind) */
-  --bg-default: 253 251 246;
-  --surface-rgb: 255 253 248;
-  --header-bg: 255 253 246;
 
   /* Soft tints (derived from brand tokens) */
-  --green-soft: rgba(var(--brand-green), 0.12);
-  --green-softer: rgba(var(--brand-green), 0.06);
-  --green-strong: rgba(var(--brand-green), 0.32);
+  --green-soft: rgba(var(--anticipation), 0.12);
+  --green-softer: rgba(var(--anticipation), 0.06);
+  --green-strong: rgba(var(--anticipation), 0.32);
   --amber-soft: rgba(231, 162, 60, 0.12);
   --amber-softer: rgba(231, 162, 60, 0.06);
-  --ink-soft: rgba(11, 18, 32, 0.06);
+  --ink-soft: rgba(var(--fg), 0.06);
   
   /* Overlays and shadows (derived from ink-900) */
-  --overlay-scrim: rgba(var(--ink-900), 0.40);
-  --shadow-soft: 0 2px 6px rgba(var(--ink-900), 0.12);
-  --shadow-tight: 0 1px 3px rgba(var(--ink-900), 0.10);
+  --overlay-scrim: rgba(var(--fg), 0.40);
+  --shadow-soft: 0 2px 6px rgba(var(--fg), 0.12);
+  --shadow-tight: 0 1px 3px rgba(var(--fg), 0.10);
 
   /* Special */
-  --event-official-border: rgba(231, 162, 60, 0.55); /* subtle gilt */
-  --color-danger: #DC2626;
-  --color-danger-light: #FEE2E2;
+  --event-official-border: rgba(231, 162, 60, 0.55);
+  --color-danger: rgb(var(--danger));
+  --color-danger-light: 254 226 226;
 }
 
 /* Tailwind v4 theme tokens */
 @theme inline {
-  /* Core */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-border: var(--border);
-  --color-muted: var(--muted);
-
-  /* Semantic text */
+  /* ========================================
+     CORE SURFACES (semantic utilities)
+     ======================================== */
+  --color-bg-DEFAULT: rgb(var(--bg));
+  --color-surface-DEFAULT: rgb(var(--surface));
+  --color-surface-2-DEFAULT: rgb(var(--surface-2));
+  --color-header-DEFAULT: rgb(var(--header-bg));
+  
+  /* ========================================
+     TEXT (semantic utilities)
+     ======================================== */
+  --color-fg-DEFAULT: rgb(var(--fg));
+  --color-muted-DEFAULT: rgb(var(--muted));
+  
+  /* ========================================
+     BORDERS & RINGS
+     ======================================== */
+  --color-border-DEFAULT: hsl(var(--border));
+  --color-ring-DEFAULT: rgb(var(--ring));
+  
+  /* ========================================
+     BRAND SEMANTICS (primary actions)
+     ======================================== */
+  --color-primary-DEFAULT: rgb(var(--primary));
+  --color-primary-fg-DEFAULT: rgb(var(--primary-fg));
+  
+  /* ========================================
+     ANTICIPATION (time-critical / green)
+     ======================================== */
+  --color-anticipation-DEFAULT: rgb(var(--anticipation));
+  --color-anticipation-fg-DEFAULT: rgb(var(--anticipation-fg));
+  
+  /* ========================================
+     DANGER (destructive actions)
+     ======================================== */
+  --color-danger-DEFAULT: rgb(var(--danger));
+  --color-danger-fg-DEFAULT: rgb(var(--danger-fg));
+  
+  /* ========================================
+     WARNING (required markers / attention)
+     ======================================== */
+  --color-warning-DEFAULT: rgb(var(--warning));
+  --color-warning-fg-DEFAULT: rgb(var(--warning-fg));
+  
+  /* ========================================
+     LEGACY COMPATIBILITY
+     ======================================== */
+  --color-background: rgb(var(--bg));
+  --color-foreground: rgb(var(--fg));
+  --color-surface: rgb(var(--surface));
+  --color-border: hsl(var(--border));
+  --color-muted: rgb(var(--muted));
   --color-text-secondary: var(--text-secondary);
   --color-text-confirmation: var(--text-confirmation);
-
-  /* Brand */
-  --color-brand-ink: rgb(var(--ink-900));
-  --color-brand-green: rgb(var(--brand-green));
-  --color-brand-amber: var(--brand-amber);
-  
-  /* Ink palette */
-  --color-ink-900: rgb(var(--ink-900));
+  --color-brand-ink: rgb(var(--primary));
+  --color-brand-green: rgb(var(--anticipation));
+  --color-brand-amber: rgb(var(--brand-amber));
+  --color-ink-900: rgb(var(--fg));
   --color-ink-700: rgb(var(--ink-700));
   --color-ink-600: rgb(var(--ink-600));
   --color-ink-300: rgb(var(--ink-300));
-  
-  /* Warm surfaces */
-  --color-bg-DEFAULT: rgb(var(--bg-default));
-  --color-surface-DEFAULT: rgb(var(--surface-rgb));
-  --color-header-DEFAULT: rgb(var(--header-bg));
-
-  /* Tints */
   --color-brand-green-soft: var(--green-soft);
   --color-brand-green-softer: var(--green-softer);
   --color-brand-amber-soft: var(--amber-soft);
   --color-brand-amber-softer: var(--amber-softer);
   --color-brand-ink-soft: var(--ink-soft);
-
-  /* Event */
   --event-official-border: var(--event-official-border);
   --event-official-label: var(--color-muted);
-
-  /* Semantic buttons */
-  --color-btn-primary-bg: var(--color-brand-ink);
-  --color-btn-primary-text: #FFFFFF;
-  --color-btn-anticipation-bg: var(--color-brand-green);
-  --color-btn-anticipation-text: #FFFFFF;
-  --color-btn-ceremonial-bg: var(--color-brand-amber);
+  --color-btn-primary-bg: rgb(var(--primary));
+  --color-btn-primary-text: rgb(var(--primary-fg));
+  --color-btn-anticipation-bg: rgb(var(--anticipation));
+  --color-btn-anticipation-text: rgb(var(--anticipation-fg));
+  --color-btn-ceremonial-bg: rgb(var(--brand-amber));
   --color-btn-ceremonial-text: #FFFFFF;
-  --color-btn-secondary-bg: var(--color-surface);
-  --color-btn-secondary-text: var(--color-foreground);
-  --color-btn-border: var(--color-border);
+  --color-btn-secondary-bg: rgb(var(--surface));
+  --color-btn-secondary-text: rgb(var(--fg));
+  --color-btn-border: hsl(var(--border));
+  --color-danger: rgb(var(--danger));
+  --color-danger-light: rgb(var(--color-danger-light));
 
   /* Fonts */
   --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -130,7 +202,7 @@
   }
 
   body {
-    background: var(--background);
+    background: hsl(var(--background));
     color: var(--foreground);
     font-family: var(--font-sans) !important;
   }
@@ -202,7 +274,7 @@ button:disabled {
 
 /* App background */
 .app-background-theme {
-  background-color: var(--background);
+  background-color: hsl(var(--background));
 }
 
 /* Primary narrative panel */
@@ -228,15 +300,23 @@ button:disabled {
   pointer-events: none;
 }
 
-/* Semantic utility classes (instrument-first) */
+/* ========================================
+   SEMANTIC BUTTON CLASSES (100% token-backed)
+   ======================================== */
 .btn-primary {
-  background: var(--color-btn-primary-bg);
-  color: var(--color-btn-primary-text);
+  background: rgb(var(--primary));
+  color: rgb(var(--primary-fg));
+  border: none;
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(0.95);
 }
 
 .btn-anticipation {
-  background: var(--color-btn-anticipation-bg);
-  color: var(--color-btn-anticipation-text);
+  background: rgb(var(--anticipation));
+  color: rgb(var(--anticipation-fg));
+  border: none;
 }
 
 .btn-anticipation:hover:not(:disabled) {
@@ -244,14 +324,33 @@ button:disabled {
 }
 
 .btn-ceremonial {
-  background: var(--color-btn-ceremonial-bg);
-  color: var(--color-btn-ceremonial-text);
+  background: rgb(var(--brand-amber));
+  color: #FFFFFF;
+  border: none;
+}
+
+.btn-ceremonial:hover:not(:disabled) {
+  filter: brightness(0.95);
 }
 
 .btn-ghost {
   background: transparent;
-  color: var(--foreground);
-  border: 1px solid var(--border);
+  color: rgb(var(--fg));
+  border: 1px solid hsl(var(--border));
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(var(--fg), 0.05);
+}
+
+.btn-danger {
+  background: rgb(var(--danger));
+  color: rgb(var(--danger-fg));
+  border: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.95);
 }
 
 .chip-success {
@@ -307,7 +406,7 @@ button:disabled {
   height: 36px;
   padding: 0 10px;
   border-radius: 9999px;
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   background: rgba(11, 18, 32, 0.03);
   color: rgba(11, 18, 32, 0.78);
   font-weight: 600;
@@ -318,7 +417,7 @@ button:disabled {
 .member-chip-muted {
   background: transparent;
   color: var(--text-secondary);
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
 }
 
 .member-filter {
@@ -328,7 +427,7 @@ button:disabled {
   height: 30px;
   padding: 0 10px;
   border-radius: 9999px;
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   background: var(--surface);
   color: var(--text-secondary);
   font-weight: 600;

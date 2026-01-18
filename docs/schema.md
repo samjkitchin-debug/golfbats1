@@ -78,6 +78,8 @@ phase_override | text | YES |
 
 **Note:** `phase_override` (deprecated) - Not used by the app. Phase is derived from canonical moments only.
 
+**Note:** `public.group_members` RLS: Single canonical SELECT policy (`group members can read group members`) allows approved members or group admins to read membership rows. Recursive policy removed (see `docs/migrations/rebase_rls_group_members_select.sql`).
+
 **Note:** `signups_opened_at` (timestamptz, nullable) - For group trips only. One-way gate: can be set once during Scheduled phase, never cleared. When set, makes sign-ups considered open regardless of derived open date (trip_date - 30 days). Written by group admins via base camp "Open sign-ups now" action (Scheduled bottom anchor). Cannot be set if already set, cannot be set to null, cannot be set if trip is no longer in Scheduled phase. 
 
 ### public.trip_attendees

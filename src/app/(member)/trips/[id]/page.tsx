@@ -18,11 +18,13 @@ import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay"
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import { PromptModal } from "../../../components/PromptModal";
 import { TripRsvpActions } from "../../../components/TripRsvpActions";
+import { InlineNotice } from "../../../components/InlineNotice";
+import { canEditTrip, canEditMeetDetails } from "../../../lib/permissions";
 import { perfMark, perfMeasure, perfLog } from "../../../lib/perf";
 import { checkMemberExportReadiness } from "../../../lib/memberExportReadiness";
 import { getGolfNoun } from "../../../lib/roundNounHelper";
 import { todayInSGT, computeSignupOpenAt } from "../../../lib/tripDates";
-import { TimePicker } from "../../components/TimePicker";
+import { TimeDialPicker } from "../../../components/TimeDialPicker";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -154,13 +156,17 @@ function MeetDetailsEditor({
     <div className="space-y-3">
       <div>
         <div className="text-xs font-semibold mb-1">Meet time</div>
-        <TimePicker
+        <TimeDialPicker
           value={meetTime}
           onChange={(value) => {
             setMeetTime(value);
             setSaved(false);
           }}
-          placeholder="e.g. 7:30am"
+          onClear={() => {
+            setMeetTime("");
+            setSaved(false);
+          }}
+          placeholder="Select time"
         />
       </div>
       <div>
@@ -180,7 +186,7 @@ function MeetDetailsEditor({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="rounded-xl btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-xl btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? "Saving..." : saved ? "Saved" : "Save"}
         </button>
@@ -278,10 +284,14 @@ function HostedRoundMeetDetailsInstrument({
     <div className="space-y-3">
       <div>
         <div className="text-xs font-semibold mb-1">Meet time</div>
-        <TimePicker
+        <TimeDialPicker
           value={meetTime}
           onChange={(value) => {
             setMeetTime(value);
+            setSaved(false);
+          }}
+          onClear={() => {
+            setMeetTime("");
             setSaved(false);
           }}
           placeholder="Select time"
@@ -320,7 +330,7 @@ function HostedRoundMeetDetailsInstrument({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="rounded-xl btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-xl btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? "Saving..." : saved ? "Saved" : "Save"}
         </button>
@@ -460,7 +470,7 @@ function TravelInstrument({
           <p className="text-sm text-muted mb-3">Travel details haven't been added yet.</p>
           <button
             onClick={() => setEditing(true)}
-            className="rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            className="rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90"
           >
             Add travel details
           </button>
@@ -631,7 +641,7 @@ function TravelInstrument({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? "Saving..." : "Save"}
           </button>
@@ -663,6 +673,7 @@ export default function TripDetailPage() {
   const [profileHandicap, setProfileHandicap] = useState<number | null>(null);
   const [editingMeetDetails, setEditingMeetDetails] = useState(false);
   const [hideMeetInstrument, setHideMeetInstrument] = useState(false);
+  const [showMeetDetailsInfoNotice, setShowMeetDetailsInfoNotice] = useState(false);
   const [editingTripName, setEditingTripName] = useState(false);
   const [tripNameValue, setTripNameValue] = useState<string>("");
   const [showTravelNote, setShowTravelNote] = useState(false);
@@ -1002,10 +1013,8 @@ export default function TripDetailPage() {
   // Convert simple derived values from useMemo to plain const (reduce hooks)
   const isHostedRoundTrip = trip ? isHostedRound(trip) : false;
   const isGroupTripPage = trip ? isGroupTrip(trip) : false;
-  // Permissions: Group trips use group admin status; hosted rounds use creator check
-  const canEdit = isGroupTripPage 
-    ? isTripGroupAdmin 
-    : (trip?.createdByMemberId === currentUserId);
+  // Permissions: Use centralized permission helpers
+  const canEdit = canEditTrip(currentUserId, trip, isTripGroupAdmin);
 
   // Helper: Convert YYYY-MM-DD to cutoff_at ISO at 23:59 SGT
   const toCutoffAtIsoFromYmd = (ymd: string): string => {
@@ -1299,7 +1308,7 @@ export default function TripDetailPage() {
       isDone: signals.hasMeetDetails,
       chromeLine: signals.meetSummaryLine || null,
       pastLine: signals.hasMeetDetails ? "Meet details set" : null,
-      renderInline: !hideMeetInstrument && canEdit ? (() => {
+      renderInline: !hideMeetInstrument && canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin) ? (() => {
         // Inline editor shows when not hidden (allows editing even when done)
         return (
           <div className="mt-3 rounded-lg border border-border bg-surface p-4 space-y-3">
@@ -1353,7 +1362,7 @@ export default function TripDetailPage() {
     
     
     return baseInstruments;
-  }, [signals, trip, currentUserId, hideMeetInstrument, supabase, activeGroupId, isGroupTripPage, canonicalPhase, canEdit]);
+  }, [signals, trip, currentUserId, hideMeetInstrument, supabase, activeGroupId, isGroupTripPage, canonicalPhase, scoringStarted, isTripGroupAdmin]);
 
   // Sync hideMeetInstrument when meet details are added
   useEffect(() => {
@@ -1391,6 +1400,37 @@ export default function TripDetailPage() {
       }, 100);
     }
   }, [trip]);
+
+  // Handle ?edit=meet query param: open editor for hosts, show info notice for non-hosts
+  useEffect(() => {
+    if (!trip) return;
+    const editParam = searchParams?.get("edit");
+    if (editParam === "meet") {
+      const canEditMeet = canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin);
+      if (canEditMeet) {
+        // Host: open the inline editor
+        setHideMeetInstrument(false);
+        setShowMeetDetailsInfoNotice(false);
+        // Scroll to meet-details section
+        setTimeout(() => {
+          const element = document.getElementById('meet-details');
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      } else {
+        // Non-host: remove query param and show info notice
+        if (router && tripId) {
+          router.replace(`/trips/${tripId}`, { scroll: false });
+        }
+        setShowMeetDetailsInfoNotice(true);
+        setHideMeetInstrument(true); // Ensure editor is not shown
+      }
+    } else {
+      // Reset notice when edit param is not present
+      setShowMeetDetailsInfoNotice(false);
+    }
+  }, [trip, currentUserId, scoringStarted, isTripGroupAdmin, searchParams, router, tripId]);
 
   // Sync meet details edit state when trip changes
   useEffect(() => {
@@ -2073,7 +2113,7 @@ export default function TripDetailPage() {
                             alert(`Failed to save trip name: ${error instanceof Error ? error.message : String(error)}`);
                           }
                         }}
-                        className="rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
+                        className="rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
                       >
                         Save
                       </button>
@@ -2245,6 +2285,42 @@ export default function TripDetailPage() {
               </div>
               {/* Right cell: Between-anchor content (instrument slots) - extra horizontal padding for breathing room */}
               <div className="mt-10 pb-10 pl-6">
+                {/* Show info notice for non-hosts who tried to edit */}
+                {showMeetDetailsInfoNotice && !canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin) && (
+                  <div className="mb-6">
+                    <InlineNotice
+                      variant="info"
+                      title="Meet details being confirmed"
+                      body="Only the organiser can update meet details."
+                    />
+                  </div>
+                )}
+                {/* Render meet details if missing (host can edit until GameDay/scoring starts) */}
+                {!signals?.hasMeetDetails && canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin) && signals?.groupMeetup === true && (() => {
+                  const meetInstrument = instruments.find(i => i.id === "meet_details");
+                  if (!meetInstrument || !meetInstrument.renderInline) return null;
+                  return (
+                    <div className="mb-6 rounded-lg border border-border bg-surface p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-foreground">Meet details</div>
+                          <p className="mt-1 text-xs text-muted">Set the time and place so everyone's ready.</p>
+                        </div>
+                      </div>
+                      <MeetDetailsEditor
+                        trip={trip!}
+                        currentUserId={currentUserId}
+                        supabase={supabase}
+                        activeGroupId={activeGroupId}
+                        onUpdate={(updatedTrip) => {
+                          setTrips((prev) => prev.map((t) => (t.id === trip!.id ? updatedTrip : t)));
+                          setEditingMeetDetails(false);
+                          setHideMeetInstrument(false);
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
                 {canonicalPhase && canonicalPhase !== "gameday" && canonicalPhase !== "in_play" && canonicalPhase !== "completed" && (() => {
                   // Get lane instrument IDs for current phase
                   const laneInstrumentIds = getLaneInstrumentIds(canonicalPhase);
@@ -2341,6 +2417,19 @@ export default function TripDetailPage() {
                             return (
                               <div key={instrument.id}>
                                 {instrument.renderInline()}
+                              </div>
+                            );
+                          }
+                          
+                          // meet_details: show info notice for non-hosts who tried to edit
+                          if (instrument.id === "meet_details" && showMeetDetailsInfoNotice && !canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin)) {
+                            return (
+                              <div key={instrument.id} className="mb-6">
+                                <InlineNotice
+                                  variant="info"
+                                  title="Meet details being confirmed"
+                                  body="Only the organiser can update meet details."
+                                />
                               </div>
                             );
                           }
@@ -2629,11 +2718,23 @@ export default function TripDetailPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    // Navigate to GameDay preview (read-only)
-                                    if (trip) {
-                                      window.location.href = `/gameday/${trip.id}`;
+                                  onClick={async () => {
+                                    // Navigate to GameDay preview (read-only) - must resolve actual round ID
+                                    if (!trip) return;
+                                    try {
+                                      // Fetch coordination/active to get the correct route
+                                      const coordRes = await fetch("/api/coordination/active", { credentials: "include" });
+                                      if (coordRes.ok) {
+                                        const coordData = await coordRes.json();
+                                        if (coordData.active && coordData.active.tripId === String(trip.id) && coordData.active.resume?.route) {
+                                          router.push(coordData.active.resume.route);
+                                          return;
+                                        }
+                                      }
+                                    } catch (error) {
+                                      console.error("Failed to resolve GameDay route:", error);
                                     }
+                                    // If no active round found, stay on trip details
                                   }}
                                   className="text-xs text-ink-600 hover:text-ink-700 hover:underline block"
                                 >
@@ -2668,16 +2769,20 @@ export default function TripDetailPage() {
             {!isGroupTripPage && (
           <section id="meet-details" className="mt-6 rounded-xl border bg-surface shadow-sm p-5">
             {(() => {
-              const canEditMeetDetails = trip.createdByMemberId === currentUserId;
+              const canEditMeet = canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin);
               
               // Group trip: existing behavior
-              if (!canEditMeetDetails) {
+              if (!canEditMeet) {
                 // Non-host view: show read-only or empty state
                 if (!hasMeetDetails) {
                   return (
                     <div>
                       <div className="text-sm font-medium text-foreground mb-1">Meet details</div>
-                      <p className="text-xs text-muted">Meet details haven't been added yet.</p>
+                      <InlineNotice
+                        variant="info"
+                        title="Meet details being confirmed"
+                        body="Meet details haven't been added yet. Check back later."
+                      />
                     </div>
                   );
                 }
@@ -2790,8 +2895,8 @@ export default function TripDetailPage() {
                 onClick: () => void;
               }> = [];
 
-              // 1) Meet details - use instrument state
-              if (isGroupTrip && !signals?.hasMeetDetails) {
+              // 1) Meet details - use instrument state (only if user can edit)
+              if (isGroupTrip && !signals?.hasMeetDetails && canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin)) {
                 steps.push({
                   id: "meet_details",
                   intent: "Set the meetup time and place.",
@@ -3009,7 +3114,7 @@ export default function TripDetailPage() {
                       // Demote to tertiary if RSVP section has primary Join button
                       trip.status === "open" && !isScheduled && !myEntry
                         ? "border border-border bg-transparent text-foreground hover:bg-surface"
-                        : "btn-primary text-white"
+                        : "btn-primary"
                     }`}
                   >
                     Save
@@ -3151,17 +3256,21 @@ export default function TripDetailPage() {
           {/* Meet details - hosted rounds only */}
           <section id="meet-details" className="rounded-xl border bg-surface shadow-sm p-4">
             {(() => {
-              const canEditMeetDetails = trip.createdByMemberId === currentUserId;
+              const canEditMeet = canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin);
               
               // Hosted round instrument behavior
-              if (!canEditMeetDetails) {
+              if (!canEditMeet) {
                 // Non-host view: show read-only or empty state
                 const note = (trip.logistics?.notes)?.trim() || null;
                 if (!hasMeetDetails && !note) {
                   return (
                     <div>
                       <div className="text-sm font-medium text-foreground mb-1">Meet details</div>
-                      <p className="text-xs text-muted">Meet details haven't been added yet.</p>
+                      <InlineNotice
+                        variant="info"
+                        title="Meet details being confirmed"
+                        body="Meet details haven't been added yet. Check back later."
+                      />
                     </div>
                   );
                 }
@@ -3543,7 +3652,7 @@ export default function TripDetailPage() {
                     setShowTopAnchorSheet(false);
                     setPendingAction({ kind: "reopen_signups" });
                   }}
-                  className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
+                  className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
                 >
                   Re-open sign-ups
                 </button>
@@ -3579,7 +3688,7 @@ export default function TripDetailPage() {
                   setShowBottomAnchorSheet(false);
                   setPendingAction({ kind: "open_signups_now" });
                 }}
-                className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
+                className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
               >
                 Open sign-ups now
               </button>
@@ -3647,7 +3756,7 @@ export default function TripDetailPage() {
                       setShowBottomAnchorSheet(false);
                       setPendingAction({ kind: "set_signups_close_date", dateIso: signupsCloseDateValue });
                     }}
-                    className="flex-1 rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
+                    className="flex-1 rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
                   >
                     Save
                   </button>
@@ -3662,7 +3771,7 @@ export default function TripDetailPage() {
                     setShowBottomAnchorSheet(false);
                     setPendingAction({ kind: "close_signups_now" });
                   }}
-                  className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
+                  className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
                 >
                   Close sign-ups now
                 </button>
@@ -3873,7 +3982,7 @@ export default function TripDetailPage() {
                         alert(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
                       }
                     }}
-                    className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90"
                   >
                     Save
                   </button>
@@ -3996,7 +4105,7 @@ export default function TripDetailPage() {
                       alert(`Failed to save trip name: ${error instanceof Error ? error.message : String(error)}`);
                     }
                   }}
-                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90"
                 >
                   Save
                 </button>

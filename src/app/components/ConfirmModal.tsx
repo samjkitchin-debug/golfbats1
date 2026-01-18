@@ -40,7 +40,7 @@ export function ConfirmModal({
             className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium ${
               confirmVariant === "danger"
                 ? "bg-muted text-foreground hover:bg-muted/80"
-                : "btn-primary text-white hover:opacity-90"
+                : "btn-primary hover:opacity-90"
             }`}
           >
             {confirmLabel}

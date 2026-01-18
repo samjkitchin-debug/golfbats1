@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
+export const dynamic = "force-dynamic";
+
 /**
  * POST /api/me/active-group
  * Update the current user's last_active_group_id in the members table.
@@ -16,7 +18,10 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser();
 
     if (userErr || !user) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+      return NextResponse.json({ error: "Not authenticated." }, { 
+        status: 401,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     const body = await req.json();
@@ -25,7 +30,10 @@ export async function POST(req: Request) {
     if (!groupId || typeof groupId !== "string") {
       return NextResponse.json(
         { error: "groupId is required and must be a string." },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: { "Cache-Control": "no-store" },
+        }
       );
     }
 
@@ -40,7 +48,10 @@ export async function POST(req: Request) {
     if (!group) {
       return NextResponse.json(
         { error: "Group not found or inactive." },
-        { status: 404 }
+        { 
+          status: 404,
+          headers: { "Cache-Control": "no-store" },
+        }
       );
     }
 
@@ -75,7 +86,10 @@ export async function POST(req: Request) {
     if (!hasAccess) {
       return NextResponse.json(
         { error: "You do not have admin access to this group." },
-        { status: 403 }
+        { 
+          status: 403,
+          headers: { "Cache-Control": "no-store" },
+        }
       );
     }
 
@@ -92,23 +106,35 @@ export async function POST(req: Request) {
         console.error("last_active_group_id column missing - migration needed:", updateError);
         return NextResponse.json(
           { error: "Database schema update required. Please contact support." },
-          { status: 500 }
+          { 
+            status: 500,
+            headers: { "Cache-Control": "no-store" },
+          }
         );
       }
 
       console.error("Failed to update last_active_group_id:", updateError);
       return NextResponse.json(
         { error: "Failed to update active group." },
-        { status: 500 }
+        { 
+          status: 500,
+          headers: { "Cache-Control": "no-store" },
+        }
       );
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (e: unknown) {
     console.error("Update active group error:", e);
     return NextResponse.json(
       { error: "An error occurred while updating active group." },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: { "Cache-Control": "no-store" },
+      }
     );
   }
 }

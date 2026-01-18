@@ -4,6 +4,8 @@ import { getEffectiveCoordinationStatus, type TripEffectiveCoordinationStatus } 
 import { todayInSGT } from "@/app/lib/tripDates";
 import { requireAuthedUser } from "@/app/lib/serverAuth";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/coordination/active
  * Returns the single active trip based on effective coordination status
@@ -33,7 +35,10 @@ export async function GET(req: Request) {
       const authResult = await requireAuthedUser();
       userId = authResult.userId;
     } catch (error) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { 
+        status: 401,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     // Get current member ID - in canonical schema: members.id == auth.user.id
@@ -44,7 +49,10 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (!memberData) {
-      return NextResponse.json({ active: null });
+      return NextResponse.json({ active: null }, {
+        status: 200,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     const memberId = memberData.id;
@@ -100,7 +108,10 @@ export async function GET(req: Request) {
     const uniqueTripIds = [...new Set(candidateTripIds)];
 
     if (uniqueTripIds.length === 0) {
-      return NextResponse.json({ active: null });
+      return NextResponse.json({ active: null }, {
+        status: 200,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     // Fetch trips data
@@ -110,7 +121,10 @@ export async function GET(req: Request) {
       .in("id", uniqueTripIds);
 
     if (tripsError || !tripsData || tripsData.length === 0) {
-      return NextResponse.json({ active: null });
+      return NextResponse.json({ active: null }, {
+        status: 200,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     // Fetch gameday_rounds data for all candidate trips
@@ -167,7 +181,10 @@ export async function GET(req: Request) {
     );
 
     if (activeCandidates.length === 0) {
-      return NextResponse.json({ active: null });
+      return NextResponse.json({ active: null }, {
+        status: 200,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     // Choose the single active item:
@@ -234,9 +251,15 @@ export async function GET(req: Request) {
         },
         updatedAt,
       },
+    }, {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
     console.error("[coordination/active] Error:", error);
-    return NextResponse.json({ active: null });
+    return NextResponse.json({ active: null }, {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+    });
   }
 }

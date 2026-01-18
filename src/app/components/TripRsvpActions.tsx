@@ -30,9 +30,9 @@ export function TripRsvpActions({
     return (
       <div className={className}>
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 rounded-full bg-brand-green/10 border border-brand-green/30 px-3 py-1.5">
+          <div className="flex items-center gap-1.5 rounded-full bg-anticipation/10 border border-anticipation/30 px-3 py-1.5">
             <svg
-              className="h-4 w-4 text-brand-green"
+              className="h-4 w-4 text-anticipation"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -44,7 +44,7 @@ export function TripRsvpActions({
                 d="M5 13l4 4L19 7"
               />
             </svg>
-            <span className="text-sm font-medium text-brand-green">Confirmed</span>
+            <span className="text-sm font-medium text-anticipation">Confirmed</span>
           </div>
           {onLeave && (
             <button
@@ -55,7 +55,7 @@ export function TripRsvpActions({
                   ? "border-border bg-background text-muted cursor-not-allowed"
                   : neutralLeaveButton
                   ? "border-border bg-transparent text-foreground hover:bg-surface"
-                  : "border-brand-green bg-surface text-brand-green hover:bg-brand-green/5"
+                  : "border-anticipation bg-surface text-anticipation hover:bg-anticipation/5"
               }`}
             >
               Can't make it
@@ -79,7 +79,7 @@ export function TripRsvpActions({
       <button
         onClick={onJoin}
         disabled={joinDisabled}
-        className={`w-full rounded px-4 py-2 text-sm font-medium text-white ${
+        className={`w-full rounded px-4 py-2 text-sm font-medium ${
           joinDisabled
             ? "bg-border text-muted cursor-not-allowed"
             : "btn-primary hover:opacity-90"

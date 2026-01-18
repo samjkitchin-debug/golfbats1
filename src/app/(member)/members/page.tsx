@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import MemberProfileCard from "../components/MemberProfileCard";
 
@@ -38,6 +39,9 @@ function getFlagForNationality(nationality: string | null): string | null {
 }
 
 export default function MembersPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const adminMode = searchParams?.get("mode") === "admin";
   const supabase = useMemo(() => {
     return createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -52,11 +56,21 @@ export default function MembersPage() {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [approvedGroups, setApprovedGroups] = useState<Array<{ id: string; name: string; slug: string; role?: string }>>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null); // Can be "all" or a group ID
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [selectedMember, setSelectedMember] = useState<MemberRow | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [memberships, setMemberships] = useState<Array<{ userId: string; status: string; role: string }>>([]);
+  const [pendingMembers, setPendingMembers] = useState<MemberRow[]>([]);
+  const [changingRole, setChangingRole] = useState<string | null>(null);
+  const [processingAction, setProcessingAction] = useState<{ userId: string; action: string } | null>(null);
+  const [removeMemberModal, setRemoveMemberModal] = useState<{ isOpen: boolean; member: MemberRow | null }>({
+    isOpen: false,
+    member: null,
+  });
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [membershipActionError, setMembershipActionError] = useState<string | null>(null);
 
   // Load user's approved groups first
   useEffect(() => {
@@ -65,7 +79,13 @@ export default function MembersPage() {
         const res = await fetch("/api/me/bootstrap", { credentials: "include" });
         if (res.ok) {
           const bootstrap = await res.json();
-          const groups = bootstrap.approvedGroups || [];
+          setCurrentUserId(bootstrap.userId || null);
+          const groups = (bootstrap.approvedGroups || []).map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            slug: g.slug,
+            role: g.role,
+          }));
           setApprovedGroups(groups);
           
           // Set default selected group: use localStorage if available, then activeGroupId, then first group
@@ -152,18 +172,20 @@ export default function MembersPage() {
           });
           userIds = Array.from(uniqueUserIds);
         } else {
-          // Load members from selected group only
+          // Load members from selected group only - include both approved and pending
           const { data: groupMembersData, error: groupMembersError } = await supabase
             .from("group_members")
-            .select("user_id")
+            .select("user_id, status, role")
             .eq("group_id", selectedGroupId)
-            .eq("status", "approved");
+            .in("status", ["approved", "pending"]);
 
           // Only treat as error if it has meaningful properties
           if (isMeaningfulError(groupMembersError)) {
             console.error("Failed to load group members:", groupMembersError);
             setLoadError("Couldn't load members.");
             setMembers([]);
+            setPendingMembers([]);
+            setMemberships([]);
             setLoading(false);
             return;
           } else if (groupMembersError) {
@@ -171,21 +193,44 @@ export default function MembersPage() {
             console.warn("Ignoring empty group_members error object");
           }
 
-          // If no data, treat as empty (not an error)
-          if (groupMembersData === null || groupMembersData === undefined) {
-            setMembers([]);
-            setLoading(false);
-            return;
-          }
+          // Store memberships
+          const membershipData = (groupMembersData || []).map((gm: any) => ({
+            userId: gm.user_id,
+            status: gm.status,
+            role: gm.role || "member",
+          }));
+          setMemberships(membershipData);
 
-          // Empty array is valid - just means no members in this group
-          if (groupMembersData.length === 0) {
-            setMembers([]);
-            setLoading(false);
-            return;
-          }
+          // Separate approved and pending user IDs
+          const approvedUserIds = (groupMembersData || [])
+            .filter((gm: any) => gm.status === "approved")
+            .map((gm: any) => gm.user_id)
+            .filter(Boolean);
+          const pendingUserIds = (groupMembersData || [])
+            .filter((gm: any) => gm.status === "pending")
+            .map((gm: any) => gm.user_id)
+            .filter(Boolean);
 
-          userIds = groupMembersData.map((gm) => gm.user_id).filter(Boolean);
+          // Start with approved members
+          userIds = approvedUserIds;
+
+          // If there are pending members and we're an admin in adminMode, load their details too
+          if (pendingUserIds.length > 0 && adminMode) {
+            const selectedGroup = approvedGroups.find((g) => g.id === selectedGroupId);
+            if (selectedGroup?.role === "admin") {
+              // Load pending member details
+              const { data: pendingMembersData } = await supabase
+                .from("members")
+                .select("id,email,full_name,display_name,nationality,declared_handicap,profile_photo_path,created_at,last_seen")
+                .in("id", pendingUserIds);
+
+              setPendingMembers(pendingMembersData || []);
+            } else {
+              setPendingMembers([]);
+            }
+          } else {
+            setPendingMembers([]);
+          }
         }
 
         // Fetch member details for all user IDs
@@ -251,20 +296,55 @@ export default function MembersPage() {
     });
   }, [members, searchQuery]);
 
+  // Check if user is admin of selected group
+  const isAdminOfSelectedGroup = useMemo(() => {
+    if (selectedGroupId === "all" || !selectedGroupId) return false;
+    const selectedGroup = approvedGroups.find((g) => g.id === selectedGroupId);
+    return selectedGroup?.role === "admin";
+  }, [selectedGroupId, approvedGroups]);
+
+  // Handle membership actions
+  const handleMembershipAction = async (userId: string, action: "approve" | "reject" | "setRole" | "remove", role?: "admin" | "member") => {
+    if (!selectedGroupId || selectedGroupId === "all") return;
+
+    setProcessingAction({ userId, action });
+    setMembershipActionError(null);
+
+    try {
+      const res = await fetch("/api/groups/memberships", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ groupId: selectedGroupId, userId, action, role }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setMembershipActionError(json.error || "Failed to update membership");
+        setProcessingAction(null);
+        return;
+      }
+
+      // Close remove modal if action was remove
+      if (action === "remove") {
+        setRemoveMemberModal({ isOpen: false, member: null });
+      }
+
+      // Reload members after action
+      await loadMembers();
+    } catch (error) {
+      console.error("Failed to update membership:", error);
+      setMembershipActionError("Failed to update membership. Please try again.");
+    } finally {
+      setProcessingAction(null);
+    }
+  };
+
   return (
     <div className="pb-24">
       <div className="mb-4">
         <h1 className="text-xl font-semibold text-foreground">Members</h1>
         <p className="mt-1 text-xs text-muted">Everyone in this group</p>
-      </div>
-      
-      <div className="mb-4">
-        <Link
-          href="/join?from=/members"
-          className="text-sm text-muted hover:text-foreground underline"
-        >
-          Join a group
-        </Link>
       </div>
       
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -277,6 +357,7 @@ export default function MembersPage() {
               const groupId = value === "all" ? "all" : value;
               setSelectedGroupId(groupId);
               setSearchQuery(""); // Clear search when switching groups
+              setPendingMembers([]); // Clear pending when switching
               // Persist to localStorage
               if (typeof window !== "undefined") {
                 localStorage.setItem("dayforeit:members:last_group", groupId);
@@ -294,6 +375,39 @@ export default function MembersPage() {
             ))}
           </select>
         )}
+        {isAdminOfSelectedGroup && selectedGroupId !== "all" && (
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className="text-xs text-foreground">Admin mode</span>
+            <div className="relative inline-block h-6 w-10 focus-within:ring-2 focus-within:ring-anticipation/40 focus-within:rounded-full">
+              <input
+                type="checkbox"
+                checked={adminMode}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    router.push("/members?mode=admin");
+                  } else {
+                    router.push("/members");
+                  }
+                }}
+                className="sr-only peer focus-visible:outline-none"
+              />
+              <span
+                className={`absolute inset-0 rounded-full transition-colors border ${
+                  adminMode 
+                    ? "bg-anticipation/30 border-anticipation" 
+                    : "bg-surface-2 border-border"
+                }`}
+              />
+              <span
+                className={`absolute left-[1px] top-[1px] h-5 w-5 rounded-full transition-transform ${
+                  adminMode 
+                    ? "bg-anticipation translate-x-4" 
+                    : "bg-surface translate-x-0"
+                }`}
+              />
+            </div>
+          </label>
+        )}
       </div>
 
       {/* Search */}
@@ -307,6 +421,13 @@ export default function MembersPage() {
         />
       </div>
 
+      {/* Membership action error */}
+      {membershipActionError && (
+        <div className="mb-4 rounded-lg border border-border bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="polite">
+          {membershipActionError}
+        </div>
+      )}
+
       {/* Error message with retry */}
       {loadError && !loading && (
         <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-3 flex items-center justify-between">
@@ -317,6 +438,79 @@ export default function MembersPage() {
           >
             Retry
           </button>
+        </div>
+      )}
+
+      {/* Admin Tools View Gate */}
+      {adminMode && !isAdminOfSelectedGroup && selectedGroupId !== "all" && (
+        <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-3">
+          <p className="text-sm text-muted">
+            You don't have access to admin tools for this group.
+          </p>
+        </div>
+      )}
+
+      {/* Admin Tools: Pending Section */}
+      {adminMode && isAdminOfSelectedGroup && selectedGroupId !== "all" && pendingMembers.length > 0 && (
+        <div className="mb-6">
+          <div className="mb-3">
+            <h2 className="text-sm font-medium text-foreground">Pending</h2>
+            <p className="mt-1 text-xs text-muted">Approve or reject membership requests</p>
+          </div>
+          <div className="space-y-2">
+            {pendingMembers.map((member) => {
+              const displayName = member.display_name || member.full_name || member.email || "—";
+              const photoUrl = member.profile_photo_path
+                ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${member.profile_photo_path}`
+                : null;
+              const isProcessing = processingAction?.userId === member.id;
+
+              return (
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {photoUrl ? (
+                      <img
+                        src={photoUrl}
+                        alt={displayName}
+                        className="h-10 w-10 flex-shrink-0 rounded-full object-cover border border-border"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-xs font-medium text-muted">
+                        {displayName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-foreground truncate">
+                        {displayName}
+                      </div>
+                      {member.email && (
+                        <div className="text-xs text-muted truncate">{member.email}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleMembershipAction(member.id, "approve")}
+                      disabled={isProcessing}
+                      className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleMembershipAction(member.id, "reject")}
+                      disabled={isProcessing}
+                      className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -346,10 +540,11 @@ export default function MembersPage() {
             const flag = getFlagForNationality(member.nationality);
 
             return (
-              <div
+              <button
                 key={member.id}
+                type="button"
                 onClick={() => setSelectedMember(member)}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 cursor-pointer hover:bg-surface/80 transition-colors"
+                className="w-full flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 text-left cursor-pointer hover:bg-surface/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-anticipation/40"
               >
                 {/* Left: Photo + Name + Flag */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -379,8 +574,8 @@ export default function MembersPage() {
                   </div>
                 </div>
 
-                {/* Right: Handicap chip */}
-                <div className="flex-shrink-0">
+                {/* Right: Handicap chip + Chevron */}
+                <div className="flex items-center gap-2 flex-shrink-0">
                   {handicap !== null && handicap !== undefined ? (
                     <div className="member-chip flex flex-col items-center justify-center">
                       <span className="text-[10px] font-medium text-secondary uppercase tracking-wide leading-tight">
@@ -390,13 +585,10 @@ export default function MembersPage() {
                         {handicap}
                       </span>
                     </div>
-                  ) : (
-                    <div className="member-chip member-chip-muted">
-                      —
-                    </div>
-                  )}
+                  ) : null}
+                  <span className="text-muted" aria-hidden="true">›</span>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -406,7 +598,51 @@ export default function MembersPage() {
       <MemberProfileCard
         member={selectedMember}
         onClose={() => setSelectedMember(null)}
+        adminMode={adminMode}
+        isAdminOfSelectedGroup={isAdminOfSelectedGroup}
+        selectedGroupId={selectedGroupId}
+        memberships={memberships}
+        changingRole={changingRole}
+        processingAction={processingAction}
+        currentUserId={currentUserId}
+        onSetRole={(userId: string, role: "admin" | "member") => {
+          setChangingRole(userId);
+          handleMembershipAction(userId, "setRole", role).finally(() => {
+            setChangingRole(null);
+          });
+        }}
+        onRemoveMember={(member: MemberRow) => {
+          setRemoveMemberModal({ isOpen: true, member });
+        }}
       />
+
+      {/* Remove Member Confirmation Modal */}
+      {removeMemberModal.isOpen && removeMemberModal.member && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-surface border border-border p-6">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">Remove member?</h3>
+            <p className="mb-4 text-sm text-muted">
+              They'll lose access to this group. You can invite them again later.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setRemoveMemberModal({ isOpen: false, member: null })}
+                disabled={processingAction?.userId === removeMemberModal.member.id}
+                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleMembershipAction(removeMemberModal.member!.id, "remove")}
+                disabled={processingAction?.userId === removeMemberModal.member.id}
+                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {processingAction?.userId === removeMemberModal.member.id ? "Removing..." : "Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

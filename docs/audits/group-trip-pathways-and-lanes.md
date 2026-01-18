@@ -7,8 +7,7 @@ This document audits the group trip creation pathway and Base Camp lane logic as
 - `src/app/(member)/host/page.tsx`
 - `src/app/(member)/trips/[id]/page.tsx`
 - `src/app/api/trips/route.ts`
-- `docs/trips-creation.md`
-- `docs/trips/base-camp.md`
+- `docs/v1.md` (see Trip Lifecycle section)
 
 ---
 

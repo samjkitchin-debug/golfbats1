@@ -23,7 +23,7 @@ export default function HostPage() {
   const [isProfileComplete, setIsProfileComplete] = useState<boolean | null>(null);
   const [courses, setCourses] = useState<CourseLookup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentStep, setCurrentStep] = useState<"chooser" | "q1_when_where" | "q2_travel" | "q2_trip_shape" | "q3_organisation" | "q4_meetup" | "q5_duration" | "summary" | "confirm_hosted" | "confirm">("chooser");
+  const [currentStep, setCurrentStep] = useState<"chooser" | "q1_when_where" | "q2_travel" | "q2_trip_shape" | "q3_organisation" | "q4_meetup" | "q5_duration" | "summary" | "confirm_hosted">("chooser");
   
   // Chooser - intent selection
   const [tripIntent, setTripIntent] = useState<"hosted_round" | "group_trip" | null>(null);
@@ -64,7 +64,7 @@ export default function HostPage() {
   
   // Submission
   const [submitting, setSubmitting] = useState(false);
-  const [createdTripId, setCreatedTripId] = useState<number | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Helper to return to trip details page in edit mode
   const returnToTrip = () => {
@@ -277,11 +277,12 @@ export default function HostPage() {
     const targetGroupId = selectedGroupIdForTrip || activeGroupId;
     
     if (!targetGroupId || !tripDate || !selectedCourseId) {
-      alert("Please complete all required fields.");
+      setSubmitError("Please complete all required fields.");
       return;
     }
 
     setSubmitting(true);
+    setSubmitError(null);
 
     try {
       const result = await createTrip([], targetGroupId, {
@@ -310,24 +311,30 @@ export default function HostPage() {
 
       if (result.newTripId) {
         // Redirect directly to trip details page for group trips
-        router.push(`/trips/${result.newTripId}`);
+        router.replace(`/trips/${result.newTripId}`);
       } else {
         throw new Error("Trip created but no ID returned");
       }
     } catch (error) {
       console.error("Failed to create group trip:", error);
-      alert(`Failed to create trip: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.toLowerCase().includes("row-level security") || errorMessage.toLowerCase().includes("violates row-level security")) {
+        setSubmitError("Couldn't create this round. You don't have permission to do that.");
+      } else {
+        setSubmitError("Couldn't create this round. Please try again.");
+      }
       setSubmitting(false);
     }
   }
 
   async function handleCreateHostedRound() {
     if (!activeGroupId || !tripDate || !selectedCourseId) {
-      alert("Please complete all required fields.");
+      setSubmitError("Please complete all required fields.");
       return;
     }
 
     setSubmitting(true);
+    setSubmitError(null);
 
     try {
       const tripName = generateDefaultName();
@@ -347,14 +354,19 @@ export default function HostPage() {
       });
 
       if (result.newTripId) {
-        setCreatedTripId(result.newTripId);
-        setCurrentStep("confirm");
+        // Redirect directly to trip details page for hosted rounds
+        router.replace(`/trips/${result.newTripId}`);
       } else {
         throw new Error("Round created but no ID returned");
       }
     } catch (error) {
       console.error("Failed to create hosted round:", error);
-      alert(`Failed to create round: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.toLowerCase().includes("row-level security") || errorMessage.toLowerCase().includes("violates row-level security")) {
+        setSubmitError("Couldn't create this round. You don't have permission to do that.");
+      } else {
+        setSubmitError("Couldn't create this round. Please try again.");
+      }
       setSubmitting(false);
     }
   }
@@ -391,7 +403,7 @@ export default function HostPage() {
             <div className="text-sm text-muted mb-4">{editError}</div>
             <button
               onClick={returnToTrip}
-              className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90"
             >
               Back to trip
             </button>
@@ -503,10 +515,13 @@ export default function HostPage() {
             <div className="text-xs text-muted mb-1.5">Date</div>
             <div className="rounded-lg border border-border bg-surface p-3">
               <InlineScrollableCalendar
-                value={tripDate || null}
-                onChange={setTripDate}
-                todayYYYYMMDD={todaySGT}
-              />
+              value={tripDate || null}
+              onChange={(value) => {
+                setTripDate(value || "");
+                setSubmitError(null);
+              }}
+              todayYYYYMMDD={todaySGT}
+            />
             </div>
           </div>
 
@@ -517,7 +532,10 @@ export default function HostPage() {
             </div>
             <select
               value={selectedCourseId || ""}
-              onChange={(e) => setSelectedCourseId(e.target.value || null)}
+              onChange={(e) => {
+                setSelectedCourseId(e.target.value || null);
+                setSubmitError(null);
+              }}
               className="w-full rounded-lg bg-surface active:scale-[0.985] active:shadow-none transition-all cursor-pointer text-base font-medium text-foreground appearance-none border-0 outline-none pt-8 pb-4 px-4"
             >
               <option value="">Select a course</option>
@@ -555,7 +573,9 @@ export default function HostPage() {
                 }
               }}
               disabled={!tripDate || !selectedCourseId || submitting}
-              className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
+              className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform ${
+                tripIntent === "hosted_round" ? "btn-anticipation" : "btn-primary"
+              }`}
             >
               {submitting && tripIntent === "hosted_round" ? "Creating…" : tripIntent === "hosted_round" ? "Create hosted round" : "Continue"}
             </button>
@@ -697,7 +717,7 @@ export default function HostPage() {
                   <div className="text-xs text-muted mt-1">Everyone meets first, then heads off together.</div>
                 </div>
                 <div className={`w-10 h-6 rounded-full transition-colors ${
-                  groupMeetup ? "bg-brand-green" : "bg-muted"
+                  groupMeetup ? "bg-anticipation" : "bg-muted"
                 }`}>
                   <div className={`w-5 h-5 rounded-full bg-surface mt-0.5 transition-transform ${
                     groupMeetup ? "translate-x-4" : "translate-x-0.5"
@@ -722,7 +742,7 @@ export default function HostPage() {
                   <div className="text-xs text-muted mt-1">Trip spans multiple days.</div>
                 </div>
                 <div className={`w-10 h-6 rounded-full transition-colors ${
-                  isMultiDay ? "bg-brand-green" : "bg-muted"
+                  isMultiDay ? "bg-anticipation" : "bg-muted"
                 }`}>
                   <div className={`w-5 h-5 rounded-full bg-surface mt-0.5 transition-transform ${
                     isMultiDay ? "translate-x-4" : "translate-x-0.5"
@@ -750,7 +770,7 @@ export default function HostPage() {
             </button>
             <button
               onClick={() => setCurrentStep("summary")}
-              className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90"
             >
               Continue
             </button>
@@ -1166,6 +1186,13 @@ export default function HostPage() {
           )}
         </div>
 
+        {/* Error message */}
+        {submitError && (
+          <div className="mb-4 rounded-lg border border-border bg-surface/50 px-4 py-3" aria-live="polite">
+            <p className="text-sm text-foreground">{submitError}</p>
+          </div>
+        )}
+
         <div className="flex gap-3">
           <button
             onClick={() => {
@@ -1187,7 +1214,7 @@ export default function HostPage() {
               }
             }}
             disabled={submitting}
-            className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
+              className="flex-1 rounded-lg btn-anticipation px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
           >
             {submitting ? "Creating…" : "Confirm & create trip"}
           </button>
@@ -1214,7 +1241,7 @@ export default function HostPage() {
           <button
             onClick={handleCreateHostedRound}
             disabled={submitting}
-            className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
+              className="flex-1 rounded-lg btn-anticipation px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
           >
             {submitting ? "Creating…" : "Create hosted round"}
           </button>
@@ -1223,33 +1250,6 @@ export default function HostPage() {
     );
   }
 
-  // Confirmation (shown after successful creation)
-  if (currentStep === "confirm" && createdTripId) {
-    return (
-      <div className="container mx-auto max-w-2xl px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">{tripIntent === "group_trip" ? "Trip created" : "All set"}</h1>
-        </div>
-
-        <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
-          <div className="text-sm text-muted">
-            {tripIntent === "group_trip" 
-              ? "This trip has been added to the group."
-              : "Your round is ready. Share it with your mates or start playing."}
-          </div>
-
-          <div className="flex gap-3">
-            <Link
-              href={`/trips/${createdTripId}`}
-              className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 text-center"
-            >
-              View {tripIntent === "group_trip" ? "trip" : "details"}
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return null;
 }

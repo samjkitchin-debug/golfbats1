@@ -156,7 +156,7 @@ export default function CreateGroupPage() {
               </button>
               <button
                 onClick={() => shareInvite(createdGroupSlug)}
-                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity"
+                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
               >
                 Share invite
               </button>
@@ -174,7 +174,7 @@ export default function CreateGroupPage() {
               router.push("/");
               router.refresh();
             }}
-            className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+            className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-semibold hover:opacity-90"
           >
             Continue
           </button>
@@ -212,7 +212,7 @@ export default function CreateGroupPage() {
           <button
             type="submit"
             disabled={status === "submitting"}
-            className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
             {status === "submitting" ? "Creating..." : "Create group"}
           </button>

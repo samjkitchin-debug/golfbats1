@@ -28,10 +28,29 @@ export async function apiJson<T>(
     let errorMessage = `API request failed with status ${res.status}`;
     try {
       const errorBody = await res.json();
-      if (errorBody.error) {
-        errorMessage += `: ${errorBody.error}`;
-      } else if (errorBody.reason) {
-        errorMessage += `: ${errorBody.reason}`;
+      let detail: string | undefined;
+      
+      // Extract error message from various formats (legacy and new)
+      if (typeof errorBody?.error === "string") {
+        detail = errorBody.error;
+      } else if (typeof errorBody?.errorMessage === "string") {
+        detail = errorBody.errorMessage;
+      } else if (typeof errorBody?.error?.message === "string") {
+        detail = errorBody.error.message;
+      } else if (typeof errorBody?.reason === "string") {
+        detail = errorBody.reason;
+      } else if (typeof errorBody?.message === "string") {
+        detail = errorBody.message;
+      } else if (typeof errorBody?.error === "object" && errorBody.error !== null) {
+        try {
+          detail = JSON.stringify(errorBody.error);
+        } catch {
+          // If JSON.stringify fails, skip this path
+        }
+      }
+      
+      if (detail) {
+        errorMessage += `: ${detail}`;
       }
     } catch {
       // If JSON parsing fails, use status text

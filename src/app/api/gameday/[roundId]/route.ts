@@ -1,5 +1,36 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { isLegacyNumericId, safeParseUUID } from "@/app/lib/invariants";
+import { jsonError, jsonOk } from "@/app/lib/http";
+
+export const dynamic = "force-dynamic";
+
+function isExpiredForTripDate(
+  tripDate: string | null | undefined,
+  timeZone?: string | null
+): boolean {
+  if (!tripDate) return false;
+
+  const tz =
+    typeof timeZone === "string" && timeZone.length > 0
+      ? timeZone
+      : "Asia/Singapore";
+
+  const now = new Date();
+
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const todayLocal = fmt.format(now);           // YYYY-MM-DD in trip timezone
+  const tripDayLocal = fmt.format(new Date(tripDate));
+
+  // Expire if the trip day is before today in the trip's local timezone
+  return tripDayLocal < todayLocal;
+}
 
 /**
  * GET /api/gameday/[roundId]
@@ -21,24 +52,31 @@ export async function GET(
 ) {
   try {
     const { roundId } = await params;
+    
+    // Validate roundId: must be UUID or numeric legacy id
+    const isUUID = safeParseUUID(roundId) !== null;
+    const isNumeric = isLegacyNumericId(roundId);
+    
+    if (!isUUID && !isNumeric) {
+      return jsonError(400, "invalid_round_id", "Round ID must be a valid UUID or numeric ID");
+    }
+    
     const supabase = await createSupabaseServerClient();
     
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return jsonError(401, "unauthorized", "Unauthorized");
     }
 
     // Parse roundId - could be numeric legacy_id or UUID
-    const numericId = parseInt(roundId, 10);
-    const isNumeric = !isNaN(numericId);
+    const numericId = isNumeric ? parseInt(roundId, 10) : null;
 
     // Find trip by legacy_id or id (UUID)
     // GameDay core payload; heavy holes fetched via /course-pack
     let tripQuery = supabase
       .from("trips")
-      .select("id,legacy_id,group_id,trip_date,format,course_id,tee_id,meeting_point,meet_time,status")
-      .eq("trip_origin", "member"); // GameDay is only for member-hosted rounds
+      .select("id,legacy_id,group_id,trip_date,format,course_id,tee_id,meeting_point,meet_time,status,created_by_member_id,timezone,courses(timezone)");
 
     if (isNumeric) {
       tripQuery = tripQuery.eq("legacy_id", numericId);
@@ -49,10 +87,17 @@ export async function GET(
     const { data: tripData, error: tripError } = await tripQuery.single();
 
     if (tripError || !tripData) {
-      return NextResponse.json(
-        { error: "Round not found." },
-        { status: 404 }
-      );
+      return jsonError(404, "not_found", "Round not found");
+    }
+
+    // Get timezone from trip or course
+    const tripTimezone = (tripData as any).timezone;
+    const courseTimezone = (tripData as any).courses?.timezone;
+    const effectiveTimezone = tripTimezone ?? courseTimezone;
+
+    // Check if trip has expired (after 23:59 in trip's local timezone)
+    if (isExpiredForTripDate(tripData.trip_date, effectiveTimezone)) {
+      return jsonError(404, "not_found", "Round not found");
     }
 
     // Get current member ID for visibility check
@@ -76,6 +121,14 @@ export async function GET(
     }
 
     const attendeeMemberIds = (attendeesData || []).map((a: any) => a.member_id).filter(Boolean);
+
+    // Enforce visibility: only creator or confirmed attendees can access
+    const isCreator = tripData.created_by_member_id && tripData.created_by_member_id === currentMemberId;
+    const isConfirmedAttendee = attendeeMemberIds.includes(currentMemberId || "");
+
+    if (!isCreator && !isConfirmedAttendee) {
+      return jsonError(404, "not_found", "Round not found");
+    }
 
     // Fetch member display names
     const participants: Array<{ id: string; displayName: string }> = [];
@@ -138,8 +191,7 @@ export async function GET(
       numericRoundId = Math.abs(hash) % 1000000 + 1000000;
     }
 
-    return NextResponse.json({
-      ok: true,
+    return jsonOk({
       roundId: numericRoundId,
       tripId: tripData.id,
       groupId: tripData.group_id,
@@ -155,9 +207,6 @@ export async function GET(
     });
   } catch (error) {
     console.error("Get gameday error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "An error occurred." },
-      { status: 500 }
-    );
+    return jsonError(500, "internal_error", "An error occurred while loading GameDay data");
   }
 }

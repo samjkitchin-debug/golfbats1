@@ -58,19 +58,19 @@ export function PromptModal({
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className="mb-6 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-brand-green focus:outline-none"
+          className="mb-6 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-anticipation focus:outline-none"
           autoFocus
         />
         <div className="flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5"
+            className="flex-1 rounded-lg border border-anticipation bg-surface px-4 py-2 text-sm font-medium text-anticipation hover:bg-anticipation/5"
           >
             {cancelLabel}
           </button>
           <button
             onClick={handleConfirm}
-            className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            className="flex-1 rounded-lg btn-anticipation px-4 py-2 text-sm font-medium hover:opacity-90"
           >
             {confirmLabel}
           </button>

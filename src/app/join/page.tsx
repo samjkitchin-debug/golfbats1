@@ -179,7 +179,7 @@ function JoinPageContent() {
           </p>
           <Link
             href="/me/edit?required=true"
-            className="mt-4 block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
+            className="mt-4 block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold hover:opacity-90"
           >
             Complete profile
           </Link>
@@ -221,7 +221,7 @@ function JoinPageContent() {
       />
 
       <button
-        className="mt-4 w-full rounded-lg btn-primary px-4 py-2 text-white disabled:opacity-50"
+        className="mt-4 w-full rounded-lg btn-primary px-4 py-2 disabled:opacity-50"
         onClick={submit}
         disabled={status === "submitting"}
       >
@@ -231,7 +231,7 @@ function JoinPageContent() {
       {message && (
         <p
           className={`mt-4 text-sm ${
-            status === "error" ? "text-foreground" : status === "done" ? "text-brand-green" : "text-muted"
+            status === "error" ? "text-foreground" : status === "done" ? "text-anticipation" : "text-muted"
           }`}
         >
           {message}

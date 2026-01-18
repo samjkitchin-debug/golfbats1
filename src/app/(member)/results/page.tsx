@@ -163,7 +163,7 @@ export default function ResultsPage() {
     const hasResults = !!trip.result;
     
     if (participated) {
-      return { label: "Played", style: "bg-brand-green/10 text-brand-green" };
+      return { label: "Played", style: "bg-anticipation/10 text-anticipation" };
     }
     if (!participated) {
       return { label: "DNP", style: "bg-muted/10 text-muted" };
@@ -266,8 +266,8 @@ export default function ResultsPage() {
                   if (userEntry && !isInTop3) {
                     return (
                       <div className="flex items-center justify-between text-xs pt-2 border-t border-border/50">
-                        <span className="text-brand-green font-medium">You</span>
-                        <span className="text-brand-green font-medium">
+                        <span className="text-anticipation font-medium">You</span>
+                        <span className="text-anticipation font-medium">
                           {userEntry.points ? `${userEntry.points} pts` : "—"}
                         </span>
                       </div>
@@ -396,8 +396,8 @@ export default function ResultsPage() {
                   if (userEntry && !isInTop3) {
                     return (
                       <div className="flex items-center justify-between text-xs pt-2 border-t border-border/50">
-                        <span className="text-brand-green font-medium">You</span>
-                        <span className="text-brand-green font-medium">
+                        <span className="text-anticipation font-medium">You</span>
+                        <span className="text-anticipation font-medium">
                           {userEntry.points ? `${userEntry.points} pts` : "—"}
                         </span>
                       </div>

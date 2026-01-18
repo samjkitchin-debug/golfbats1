@@ -20,7 +20,7 @@ export default function ClubhousePage() {
         </Link>
         <Link
           href="/groups/create"
-          className="rounded-lg btn-anticipation px-4 py-2 text-sm font-medium active:scale-[0.98] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green/40"
+          className="rounded-lg btn-anticipation px-4 py-2 text-sm font-medium active:scale-[0.98] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
         >
           Create group
         </Link>

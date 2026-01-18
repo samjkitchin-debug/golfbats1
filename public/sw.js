@@ -28,6 +28,17 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  
+  // Never cache API, auth, or Next.js internal requests - always fetch from network
+  if (url.pathname.startsWith('/api/') || 
+      url.pathname.startsWith('/auth/') || 
+      url.pathname.startsWith('/_next/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
+  // For other requests, use cache-first strategy
   event.respondWith(
     caches.match(event.request)
       .then((response) => {

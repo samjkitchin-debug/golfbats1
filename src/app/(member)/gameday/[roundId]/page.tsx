@@ -4,6 +4,17 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { loadCourses, type Course, loadCoursePack, type CoursePack } from "../../../lib/courseActions";
 import Link from "next/link";
+import { InlineNotice } from "@/app/components/InlineNotice";
+import { isLegacyNumericId, safeParseUUID } from "@/app/lib/invariants";
+
+// Helper to extract error message from API responses (handles both old and new formats)
+function extractErrorMessage(errorResponse: any): string {
+  if (typeof errorResponse === "string") return errorResponse;
+  if (errorResponse?.errorMessage) return errorResponse.errorMessage;
+  if (errorResponse?.error?.message) return errorResponse.error.message;
+  if (typeof errorResponse?.error === "string") return errorResponse.error;
+  return "An error occurred";
+}
 import {
   gamedayHole,
   gamedayLanding,
@@ -63,6 +74,9 @@ export default function GameDayPage() {
   const params = useParams<{ roundId: string }>();
   const searchParams = useSearchParams();
   const roundId = params.roundId;
+  
+  // Validate roundId at the top
+  const isValidRoundId = roundId && (isLegacyNumericId(roundId) || safeParseUUID(roundId) !== null);
 
   const [gameDayData, setGameDayData] = useState<GameDayData | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -161,6 +175,8 @@ export default function GameDayPage() {
     document.title = "DayForeIt - GameDay";
   }, []);
 
+  // REMOVED: unsafe redirect to /trips/${roundId} - causes cascades
+
   // Load GameDay data using dedicated API
   useEffect(() => {
     async function loadData() {
@@ -183,7 +199,7 @@ export default function GameDayPage() {
         const isGroupAdmin = Boolean(bootstrap.isGroupAdmin);
         setCanEditStartHole(isHost || isGroupAdmin);
 
-        if (!roundId) {
+        if (!roundId || !isValidRoundId) {
           setLoading(false);
           return;
         }
@@ -202,19 +218,21 @@ export default function GameDayPage() {
           }
         } else {
           const gameDay = await gameDayRes.json();
-          if (gameDay.ok) {
-            setGameDayData(gameDay);
+          if (gameDay.ok && gameDay.data) {
+            // Extract data from jsonOk wrapper
+            const gameDayData = gameDay.data;
+            setGameDayData(gameDayData);
             
             // Initialize start settings from gameDay data
-            if (gameDay.gameday?.startHole) {
-              setStartHole(gameDay.gameday.startHole);
+            if (gameDayData.gameday?.startHole) {
+              setStartHole(gameDayData.gameday.startHole);
             }
-            if (gameDay.gameday?.holesToPlay) {
-              setHolesToPlay(gameDay.gameday.holesToPlay as 9 | 18);
+            if (gameDayData.gameday?.holesToPlay) {
+              setHolesToPlay(gameDayData.gameday.holesToPlay as 9 | 18);
             }
             
             // Conditionally load course pack only if tee_id exists
-            if (gameDay.teeId) {
+            if (gameDayData.teeId) {
               const pack = await loadCoursePack(roundId);
               if (pack) {
                 setCoursePack(pack);
@@ -229,7 +247,7 @@ export default function GameDayPage() {
 
             // Load flights for this trip (if any)
             try {
-              const flightsJson = await apiJson<unknown>(tripFlightsApi(gameDay.roundId));
+              const flightsJson = await apiJson<unknown>(tripFlightsApi(gameDayData.roundId));
               const validated = validateFlightsList(flightsJson);
               const rawFlights = validated.flights;
               const flightsForMember: Flight[] = rawFlights.map((f: any) => {
@@ -340,17 +358,17 @@ export default function GameDayPage() {
 
       if (!updateRes.ok) {
         const error = await updateRes.json();
-        throw new Error(error.error || "Failed to update course");
+        throw new Error(extractErrorMessage(error));
       }
 
       // Reload GameDay data
       const res = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
-        if (data.ok) {
-          setGameDayData(data);
+        if (data.ok && data.data) {
+          setGameDayData(data.data);
           // Reload course pack if tee_id exists
-          if (data.teeId) {
+          if (data.data.teeId) {
             const pack = await loadCoursePack(roundId);
             if (pack) {
               setCoursePack(pack);
@@ -389,17 +407,17 @@ export default function GameDayPage() {
 
       if (!updateRes.ok) {
         const error = await updateRes.json();
-        throw new Error(error.error || "Failed to update tee");
+        throw new Error(extractErrorMessage(error));
       }
 
       // Reload GameDay data
       const res = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
-        if (data.ok) {
-          setGameDayData(data);
+        if (data.ok && data.data) {
+          setGameDayData(data.data);
           // Reload course pack if tee_id exists
-          if (data.teeId) {
+          if (data.data.teeId) {
             const pack = await loadCoursePack(roundId);
             if (pack) {
               setCoursePack(pack);
@@ -433,15 +451,15 @@ export default function GameDayPage() {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || "Failed to add participant");
+        throw new Error(extractErrorMessage(error));
       }
 
       // Reload GameDay data
       const gameDayRes = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
       if (gameDayRes.ok) {
         const data = await gameDayRes.json();
-        if (data.ok) {
-          setGameDayData(data);
+        if (data.ok && data.data) {
+          setGameDayData(data.data);
         }
       }
     } catch (error) {
@@ -466,15 +484,15 @@ export default function GameDayPage() {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || "Failed to remove participant");
+        throw new Error(extractErrorMessage(error));
       }
 
       // Reload GameDay data
       const gameDayRes = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
       if (gameDayRes.ok) {
         const data = await gameDayRes.json();
-        if (data.ok) {
-          setGameDayData(data);
+        if (data.ok && data.data) {
+          setGameDayData(data.data);
         }
       }
     } catch (error) {
@@ -502,15 +520,15 @@ export default function GameDayPage() {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || "Failed to start round");
+        throw new Error(extractErrorMessage(error));
       }
 
       // Reload GameDay data
       const gameDayRes = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
       if (gameDayRes.ok) {
         const data = await gameDayRes.json();
-        if (data.ok) {
-          setGameDayData(data);
+        if (data.ok && data.data) {
+          setGameDayData(data.data);
         }
       }
     } catch (error) {
@@ -552,7 +570,7 @@ export default function GameDayPage() {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || "Failed to save score");
+        throw new Error(extractErrorMessage(error));
       }
 
       const result = await res.json();
@@ -563,8 +581,8 @@ export default function GameDayPage() {
         const gameDayRes = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
         if (gameDayRes.ok) {
           const data = await gameDayRes.json();
-          if (data.ok) {
-            setGameDayData(data);
+          if (data.ok && data.data) {
+            setGameDayData(data.data);
           }
         }
       } else {
@@ -631,7 +649,7 @@ export default function GameDayPage() {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || "Failed to save scores");
+        throw new Error(extractErrorMessage(error));
       }
 
       const result = await res.json();
@@ -658,11 +676,11 @@ export default function GameDayPage() {
         const gameDayRes = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
         if (gameDayRes.ok) {
           const data = await gameDayRes.json();
-          if (data.ok) {
-            setGameDayData(data);
+          if (data.ok && data.data) {
+            setGameDayData(data.data);
             
             // Auto-advance to next hole after delay (600ms)
-            const updatedHoleIndex = data.gameday?.currentHoleIndex ?? currentHoleIndexVal;
+            const updatedHoleIndex = data.data.gameday?.currentHoleIndex ?? currentHoleIndexVal;
             const canGoNext = updatedHoleIndex < playOrder.length - 1;
             if (canGoNext) {
               setTimeout(() => {
@@ -774,15 +792,15 @@ export default function GameDayPage() {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || "Failed to close round");
+        throw new Error(extractErrorMessage(error));
       }
 
       // Reload GameDay data
       const gameDayRes = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
       if (gameDayRes.ok) {
         const data = await gameDayRes.json();
-        if (data.ok) {
-          setGameDayData(data);
+        if (data.ok && data.data) {
+          setGameDayData(data.data);
         }
       }
     } catch (error) {
@@ -806,15 +824,15 @@ export default function GameDayPage() {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || "Failed to publish results");
+        throw new Error(extractErrorMessage(error));
       }
 
       // Reload GameDay data
       const gameDayRes = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
       if (gameDayRes.ok) {
         const data = await gameDayRes.json();
-        if (data.ok) {
-          setGameDayData(data);
+        if (data.ok && data.data) {
+          setGameDayData(data.data);
         }
       }
     } catch (error) {
@@ -823,6 +841,39 @@ export default function GameDayPage() {
     } finally {
       setPublishingRound(false);
     }
+  }
+
+  // Self-heal: clear persisted active-round keys when round is unavailable
+  useEffect(() => {
+    if (!isValidRoundId || (!loading && !gameDayData)) {
+      // Clear any persisted active-round keys
+      if (typeof window !== 'undefined') {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('gameday:last:') || key === 'dayforeit:last_mode')) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+      }
+    }
+  }, [isValidRoundId, loading, gameDayData]);
+
+  // Show invalid roundId or not found state
+  if (!isValidRoundId || (!loading && !gameDayData)) {
+    return (
+      <div className="p-4">
+        <InlineNotice
+          variant="warning"
+          title="Round unavailable"
+          body="We couldn't open this round. It may have ended, or the link is incorrect."
+        />
+        <div className="mt-3">
+          <Link className="rounded-lg btn-ghost px-4 py-2 text-sm font-medium inline-block" href="/trips">Back to trips</Link>
+        </div>
+      </div>
+    );
   }
 
   if (loading) {
@@ -835,14 +886,33 @@ export default function GameDayPage() {
     );
   }
 
+  // Self-heal: clear persisted active-round keys when gameDayData is null
+  useEffect(() => {
+    if (!loading && !gameDayData) {
+      // Clear any persisted active-round keys
+      if (typeof window !== 'undefined') {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('gameday:last:') || key === 'dayforeit:last_mode')) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+      }
+    }
+  }, [loading, gameDayData]);
+
   if (!gameDayData) {
     return (
-      <div className="container mx-auto max-w-2xl px-4 py-8">
-        <div className="rounded-xl border border-border bg-surface p-8 text-center">
-          <p className="text-sm text-muted">Round not found</p>
-          <Link href="/" className="mt-4 inline-block text-sm text-brand-green hover:underline">
-            Go home
-          </Link>
+      <div className="p-4">
+        <InlineNotice
+          variant="warning"
+          title="Round unavailable"
+          body="We couldn't open this round. It may have ended, or the link is incorrect."
+        />
+        <div className="mt-3">
+          <Link className="btn-ghost" href="/trips">Back to trips</Link>
         </div>
       </div>
     );
@@ -892,7 +962,7 @@ export default function GameDayPage() {
                     ? "chip-success"
                     : flight.executionStatus === "finished"
                     ? "bg-muted/30 text-foreground"
-                    : "bg-amber-soft text-foreground";
+                    : "bg-warning/10 text-foreground";
 
                 const memberNames = flight.slots.map((s) => s.memberName).join(", ");
 
@@ -935,8 +1005,8 @@ export default function GameDayPage() {
                               });
                               if (gameDayRes.ok) {
                                 const gameDay = await gameDayRes.json();
-                                if (gameDay.ok) {
-                                  setGameDayData(gameDay);
+                                if (gameDay.ok && gameDay.data) {
+                                  setGameDayData(gameDay.data);
                                 }
                               }
                               return;
@@ -957,8 +1027,8 @@ export default function GameDayPage() {
 
                     if (gameDayRes.ok) {
                       const gameDay = await gameDayRes.json();
-                      if (gameDay.ok) {
-                        setGameDayData(gameDay);
+                      if (gameDay.ok && gameDay.data) {
+                        setGameDayData(gameDay.data);
                       }
                     }
 
@@ -1142,7 +1212,7 @@ export default function GameDayPage() {
                           type="button"
                           onClick={handleFlightStart}
                           disabled={isStartingThisFlight}
-                          className="ml-3 rounded-lg btn-anticipation px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="ml-3 rounded-lg btn-anticipation px-3 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isStartingThisFlight ? "Starting…" : "Start scoring"}
                         </button>
@@ -1273,7 +1343,7 @@ export default function GameDayPage() {
                       onClick={() => setHolesToPlay(9)}
                       className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
                         holesToPlay === 9
-                          ? "btn-anticipation text-white border-brand-amber"
+                          ? "btn-anticipation border-warning/30"
                           : "border-border bg-surface text-foreground hover:bg-muted/50"
                       }`}
                     >
@@ -1284,7 +1354,7 @@ export default function GameDayPage() {
                       onClick={() => setHolesToPlay(18)}
                       className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
                         holesToPlay === 18
-                          ? "btn-anticipation text-white border-brand-amber"
+                          ? "btn-anticipation border-warning/30"
                           : "border-border bg-surface text-foreground hover:bg-muted/50"
                       }`}
                     >
@@ -1298,7 +1368,7 @@ export default function GameDayPage() {
             <button
               onClick={handleStartRound}
               disabled={startingRound}
-                  className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {startingRound ? "Starting…" : "Start round"}
             </button>
@@ -1424,7 +1494,7 @@ export default function GameDayPage() {
                               }}
                               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                                 currentScore === score
-                                  ? "bg-brand-green text-white"
+                                  ? "bg-anticipation text-anticipation-fg"
                                   : "bg-surface border border-border text-foreground hover:bg-muted/50"
                               }`}
                             >
@@ -1467,7 +1537,7 @@ export default function GameDayPage() {
                               }}
                               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                                 currentScore === score
-                                  ? "bg-brand-green text-white"
+                                  ? "bg-anticipation text-anticipation-fg"
                                   : "bg-surface border border-border text-foreground hover:bg-muted/50"
                               }`}
                             >
@@ -1489,7 +1559,7 @@ export default function GameDayPage() {
                     <button
                       type="button"
                       onClick={handleUndo}
-                      className="text-sm font-medium text-brand-green hover:underline"
+                      className="text-sm font-medium text-anticipation hover:underline"
                     >
                       Undo
                     </button>
@@ -1503,7 +1573,7 @@ export default function GameDayPage() {
                   type="button"
                   onClick={handleConfirmHole}
                   disabled={isSavingHole || !canConfirm}
-                  className="w-full rounded-lg btn-anticipation px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full rounded-lg btn-anticipation px-4 py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSavingHole 
                     ? "Saving…" 
@@ -1534,8 +1604,8 @@ export default function GameDayPage() {
                         const res = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
                         if (res.ok) {
                           const data = await res.json();
-                          if (data.ok) {
-                            setGameDayData(data);
+                          if (data.ok && data.data) {
+                            setGameDayData(data.data);
                             setSelectedHole(newHole);
                           }
                         }
@@ -1565,8 +1635,8 @@ export default function GameDayPage() {
                         const res = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
                         if (res.ok) {
                           const data = await res.json();
-                          if (data.ok) {
-                            setGameDayData(data);
+                          if (data.ok && data.data) {
+                            setGameDayData(data.data);
                             setSelectedHole(newHole);
                           }
                         }
@@ -1605,7 +1675,7 @@ export default function GameDayPage() {
             <button
               onClick={handlePublishRound}
               disabled={publishingRound}
-                  className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {publishingRound ? "Publishing…" : "Publish results"}
             </button>
@@ -1704,7 +1774,7 @@ export default function GameDayPage() {
             <button
               onClick={() => handleAddParticipant(currentMemberId)}
               disabled={managingParticipants || gameDayData.participants.some((p) => p.id === currentMemberId)}
-              className="mt-2 text-xs text-brand-green hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-2 text-xs text-anticipation hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {gameDayData.participants.some((p) => p.id === currentMemberId) ? "You're in" : "Add yourself"}
             </button>

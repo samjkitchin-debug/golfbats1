@@ -6,7 +6,6 @@ import { createServerClient } from "@supabase/ssr";
  *
  * - Always refreshes auth cookies for SSR.
  * - Allows public paths: /login, /auth/*, /_next/*, static assets.
- * - Optionally protects /admin/* by requiring authentication.
  * - Does NOT enforce onboarding or membership gates (handled by layouts).
  */
 
@@ -37,10 +36,6 @@ function isPublicPath(pathname: string) {
   }
 
   return false;
-}
-
-function isAdminPath(pathname: string) {
-  return pathname.startsWith("/admin");
 }
 
 /**
@@ -112,18 +107,6 @@ export async function middleware(req: NextRequest) {
 
   // Allow public paths
   if (isPublicPath(pathname)) {
-    return res;
-  }
-
-  // Protect /admin/* routes: require authentication
-  if (isAdminPath(pathname)) {
-    if (!user) {
-      const loginUrl = req.nextUrl.clone();
-      loginUrl.pathname = "/login";
-      loginUrl.searchParams.set("next", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-    // Auth check passed - admin layout will handle admin authorization
     return res;
   }
 

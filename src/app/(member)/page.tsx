@@ -19,6 +19,8 @@ import {
   validateGamedayStart,
 } from "../lib/apiContracts";
 import { useActiveGameDay } from "./components/ActiveGameDayChip";
+import { InlineNotice } from "../components/InlineNotice";
+import { canEditMeetDetails, isTripHost } from "@/app/lib/permissions";
 
 type ActiveCoordination = {
   tripId: string;
@@ -48,6 +50,7 @@ export default function HomePage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
   const [weather, setWeather] = useState<{
     basis: "course" | "city" | "none";
     label: string | null;
@@ -65,6 +68,7 @@ export default function HomePage() {
   const [bootstrapDone, setBootstrapDone] = useState(false);
   const [activeGameDayDone, setActiveGameDayDone] = useState(false);
   const [isProfileComplete, setIsProfileComplete] = useState<boolean | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [profilePhotoPath, setProfilePhotoPath] = useState<string | null>(null);
   const [memberFullName, setMemberFullName] = useState<string | null>(null);
   const [memberDisplayName, setMemberDisplayName] = useState<string | null>(null);
@@ -111,8 +115,8 @@ export default function HomePage() {
     
     // Helper to check if user is attending
     const isUserAttending = (trip: Trip) => {
-      if (currentUserId) {
-        const entry = trip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
+      if (currentMemberId) {
+        const entry = trip.attendees.find((a) => a.memberId && a.memberId === currentMemberId);
         return entry?.status === "confirmed";
       } else if (currentUserName) {
         const entry = trip.attendees.find((a) => a.name === currentUserName);
@@ -143,7 +147,7 @@ export default function HomePage() {
 
     // If user has joined a trip, that's the primary. Otherwise, use the next eligible trip.
     return joinedTrip || upcoming[0] || null;
-  }, [allTripsWithGroups, currentUserId, currentUserName]);
+  }, [allTripsWithGroups, currentMemberId, currentUserName]);
 
 
   // All useEffect hooks - must be before any early returns
@@ -171,6 +175,7 @@ export default function HomePage() {
         const bootstrap = await res.json();
         
         setCurrentUserId(bootstrap.userId);
+        setCurrentMemberId(bootstrap.member?.id ?? null);
         setCurrentUserName(bootstrap.member?.display_name || bootstrap.member?.full_name || null);
         setMemberFullName(bootstrap.member?.full_name || null);
         setMemberDisplayName(bootstrap.member?.display_name || null);
@@ -185,6 +190,8 @@ export default function HomePage() {
         const hasAdminRole = (bootstrap.approvedGroups || []).some((g: { role?: string }) => g.role === 'admin');
         setIsGroupAdmin(hasAdminRole);
         
+        setBootstrapError(null);
+        
         const duration = perfMeasure("bootstrap", start);
         perfLog("bootstrap: success", {
           durationMs: duration.toFixed(2),
@@ -196,8 +203,9 @@ export default function HomePage() {
       } catch (error) {
         perfMeasure("bootstrap", start);
         perfLog("bootstrap: error", { error: error instanceof Error ? error.message : String(error) });
-        setHasMemberships(false);
-        setIsProfileComplete(false);
+        setHasMemberships(null);
+        setIsProfileComplete(null);
+        setBootstrapError("Some account data is unavailable right now. Try again in a moment.");
         setIsBootstrapResolved(true);
         setBootstrapDone(true);
       } finally {
@@ -422,6 +430,7 @@ export default function HomePage() {
 
 
   // Compute onboarding states (based on real data)
+  // Only treat as incomplete when explicitly false (not null/unknown)
   const profileComplete = isProfileComplete === true;
   const hasApprovedGroup = hasMemberships === true;
 
@@ -486,8 +495,8 @@ export default function HomePage() {
         // Must be today in Singapore time
         if (t.date !== todaySGT) return false;
         // User must have attended (confirmed status)
-        if (currentUserId) {
-          const entry = t.attendees.find((a) => a.memberId && a.memberId === currentUserId);
+        if (currentMemberId) {
+          const entry = t.attendees.find((a) => a.memberId && a.memberId === currentMemberId);
           if (entry?.status !== "confirmed") return false;
         } else if (currentUserName) {
           const entry = t.attendees.find((a) => a.name === currentUserName);
@@ -506,15 +515,25 @@ export default function HomePage() {
       });
     
     return completedToday[0] || null;
-  }, [allTripsWithGroups, activeGameDay, currentUserId, currentUserName]);
+  }, [allTripsWithGroups, activeGameDay, currentMemberId, currentUserName]);
 
   // Host guardrail: check if meet details are missing and time is approaching
   const hostGuardrail = useMemo(() => {
-    if (!nextGame?.trip || !currentUserId) return null;
+    if (!nextGame?.trip) return null;
     const nextGameTrip = nextGame.trip;
-    const isHost = nextGameTrip.createdByMemberId === currentUserId;
     
-    if (!isHost) return null;
+    // Check authorization based on trip type
+    let isAuthorized = false;
+    if (nextGameTrip.tripOrigin === 'member') {
+      // Hosted rounds: host-only
+      isAuthorized = nextGameTrip.createdByMemberId === currentMemberId;
+    } else {
+      // Group rounds: group-admin-only
+      const tripGroup = approvedGroups.find((g) => g.id === nextGameTrip.groupId);
+      isAuthorized = tripGroup?.role === 'admin' || false;
+    }
+    
+    if (!isAuthorized) return null;
     
     const hasMeetTime = !!nextGameTrip.logistics?.meetTime;
     const hasMeetingPoint = !!nextGameTrip.logistics?.meetingPoint;
@@ -565,7 +584,7 @@ export default function HomePage() {
       message,
       blockEnterGameDay: hoursUntil <= 6,
     };
-  }, [nextGame, currentUserId]);
+  }, [nextGame, currentMemberId, approvedGroups]);
 
   // Check if Enter GameDay should be shown
   const canEnterGameDay = useMemo(() => {
@@ -574,8 +593,8 @@ export default function HomePage() {
     
     // Helper to determine user relationship to trip
     const getUserRelationship = (trip: Trip): 'attending' | 'eligible' | null => {
-      if (currentUserId) {
-        const entry = trip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
+      if (currentMemberId) {
+        const entry = trip.attendees.find((a) => a.memberId && a.memberId === currentMemberId);
         if (entry?.status === "confirmed") return 'attending';
       } else if (currentUserName) {
         const entry = trip.attendees.find((a) => a.name === currentUserName);
@@ -624,7 +643,7 @@ export default function HomePage() {
     }
     
     return false;
-  }, [nextGame, currentUserId, currentUserName, activeCoordination, activeGameDay]);
+  }, [nextGame, currentMemberId, currentUserName, activeCoordination, activeGameDay]);
 
   // Auto-redirect to GameDay if intent is high-confidence
   useEffect(() => {
@@ -642,7 +661,7 @@ export default function HomePage() {
 
   // Fetch weather when playing today
   useEffect(() => {
-    if (allTripsWithGroups.length === 0 || courses.length === 0 || !currentUserId) {
+    if (allTripsWithGroups.length === 0 || courses.length === 0 || !currentMemberId) {
       setWeather(null);
       return;
     }
@@ -673,7 +692,7 @@ export default function HomePage() {
 
     // Check if attending
     const confirmed = nextGameTrip.attendees.filter((a) => a.status === "confirmed");
-    const byId = nextGameTrip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
+    const byId = nextGameTrip.attendees.find((a) => a.memberId && a.memberId === currentMemberId);
     const isAttending = (byId && byId.status === "confirmed") || 
       (currentUserName && confirmed.find((a) => a.name === currentUserName)?.status === "confirmed");
 
@@ -728,7 +747,7 @@ export default function HomePage() {
     }
 
     fetchWeather();
-  }, [allTripsWithGroups, courses, currentUserId, currentUserName]);
+  }, [allTripsWithGroups, courses, currentMemberId, currentUserName]);
 
   if (loadingBootstrap || !homeReady) {
     content = (
@@ -736,7 +755,7 @@ export default function HomePage() {
         <p className="text-sm text-muted">Just a moment…</p>
       </div>
     );
-  } else if (!hasApprovedGroup) {
+  } else if (hasMemberships === false) {
     // Compute step states based on real data
     const step1Active = !profileComplete;
     const step1Completed = profileComplete;
@@ -757,12 +776,12 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             {step1Completed ? (
-              <div className="h-6 w-6 rounded-full btn-primary flex items-center justify-center text-xs font-semibold text-white">
+              <div className="h-6 w-6 rounded-full btn-primary flex items-center justify-center text-xs font-semibold">
                 ✓
               </div>
             ) : (
               <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                step1Active ? "btn-primary text-white" : "bg-border text-muted"
+                step1Active ? "btn-primary" : "bg-border text-muted"
               }`}>
                 1
               </div>
@@ -774,12 +793,12 @@ export default function HomePage() {
           <div className="h-px flex-1 bg-border" />
           <div className="flex items-center gap-2">
             {step2Completed ? (
-              <div className="h-6 w-6 rounded-full btn-primary flex items-center justify-center text-xs font-semibold text-white">
+              <div className="h-6 w-6 rounded-full btn-primary flex items-center justify-center text-xs font-semibold">
                 ✓
               </div>
             ) : (
               <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                step2Active ? "btn-primary text-white" : "bg-border text-muted"
+                step2Active ? "btn-primary" : "bg-border text-muted"
               }`}>
                 2
               </div>
@@ -800,7 +819,7 @@ export default function HomePage() {
             </p>
             <Link
               href="/me/edit?required=true"
-              className="mt-4 block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
+              className="mt-4 block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold hover:opacity-90 text-center"
             >
               Complete profile
             </Link>
@@ -839,13 +858,13 @@ export default function HomePage() {
             <div className="space-y-3">
               <Link
                 href="/join"
-                className="block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
+                className="block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold hover:opacity-90 text-center"
               >
                 Join a group
               </Link>
               <Link
                 href="/groups/create"
-                className="block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold text-white hover:opacity-90 text-center"
+                className="block w-full rounded-lg btn-primary px-4 py-3 text-sm font-semibold hover:opacity-90 text-center"
               >
                 Create a group
               </Link>
@@ -865,8 +884,8 @@ export default function HomePage() {
   } else {
     // Helper to determine user relationship to trip
     const getUserRelationship = (trip: Trip): 'attending' | 'eligible' | null => {
-      if (currentUserId) {
-        const entry = trip.attendees.find((a) => a.memberId && a.memberId === currentUserId);
+      if (currentMemberId) {
+        const entry = trip.attendees.find((a) => a.memberId && a.memberId === currentMemberId);
         if (entry?.status === "confirmed") return 'attending';
       } else if (currentUserName) {
         const entry = trip.attendees.find((a) => a.name === currentUserName);
@@ -968,11 +987,11 @@ export default function HomePage() {
         try {
           if (nextGame.type === 'coordination') {
             try {
-              const data = await apiJson(gamedayStartApi(), {
+              const response = await apiJson(gamedayStartApi(), {
                 method: "POST",
                 body: JSON.stringify({ tripId: activeCoordination!.tripId }),
               });
-              validateGamedayStart(data);
+              validateGamedayStart(response);
               router.push(nextGame.route);
             } catch (error) {
               if (error instanceof Error && error.message.includes("409")) {
@@ -1101,7 +1120,7 @@ export default function HomePage() {
     const isPlayingToday = daysUntil === 0 && relationship === 'attending';
 
     // Check if user is host of next round
-    const isHost = nextGameTrip && currentUserId && nextGameTrip.createdByMemberId === currentUserId;
+    const isHost = nextGameTrip && currentMemberId && nextGameTrip.createdByMemberId === currentMemberId;
 
     // Helper to get Afterglow one-liner (safe, conservative)
     const getAfterglowOneLiner = (trip: Trip): string | null => {
@@ -1196,20 +1215,45 @@ export default function HomePage() {
         )}
 
         {/* Host guardrail: meet details reminder (host only, calm) */}
-        {hostGuardrail && hostGuardrail.show && nextGameTrip && (
-          <div className="px-5 -mt-4">
-            <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5">
-              <div className="text-sm font-medium text-primary mb-1">Meet details needed</div>
-              <div className="text-xs secondary-text mb-2">{hostGuardrail.message}</div>
-              <Link
-                href={`/trips/${nextGameTrip.id}#meet-details`}
-                className="text-xs text-primary hover:opacity-80 underline"
-              >
-                Set meet details
-              </Link>
+        {hostGuardrail && hostGuardrail.show && (() => {
+          
+          // Get the trip this banner applies to (same as "playing today" section)
+          const bannerTrip = nextGameTrip ?? null;
+          
+          // Check if meet details are missing for bannerTrip
+          const hasMeetTime = bannerTrip ? !!bannerTrip.logistics?.meetTime : false;
+          const hasMeetingPoint = bannerTrip ? !!bannerTrip.logistics?.meetingPoint : false;
+          const isMissingDetails = !hasMeetTime || !hasMeetingPoint;
+          
+          // Compute scoringStartedForTrip for bannerTrip (not nextGameTrip)
+          const scoringStartedForTrip = Boolean(
+            bannerTrip?.id &&
+            (
+              (activeCoordination?.tripId && String(activeCoordination.tripId) === String(bannerTrip.id)) ||
+              (activeGameDay?.roundId && String(activeGameDay.roundId) === String(bannerTrip.id))
+            )
+          );
+          
+          // Only render if ALL conditions are true: bannerTrip exists, details missing, and user can edit
+          if (!bannerTrip || !isMissingDetails || !canEditMeetDetails(currentMemberId, bannerTrip, scoringStartedForTrip, isGroupAdmin)) {
+            return null;
+          }
+          
+          return (
+            <div className="px-5 -mt-4">
+              <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5">
+                <div className="text-sm font-medium text-primary mb-1">Meet details needed</div>
+                <div className="text-xs secondary-text mb-2">{hostGuardrail.message}</div>
+                <Link
+                  href={`/trips/${bannerTrip.id}?edit=meet`}
+                  className="text-xs text-primary hover:opacity-80 underline"
+                >
+                  Set meet details
+                </Link>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Primary surface: Next Game Instrument (only show if no Afterglow) */}
         {!afterglowRound && nextGame && nextGameTrip && headline ? (
@@ -1251,20 +1295,48 @@ export default function HomePage() {
             {/* Orientation block: playing today */}
             {isPlayingToday && (
               <div className="mt-3 space-y-1">
-                {nextGameTrip.logistics?.meetTime && nextGameTrip.logistics?.meetingPoint ? (
-                  <>
-                    <div className="text-primary">
-                      Meet at {nextGameTrip.logistics.meetTime}
-                    </div>
-                    <div className="text-secondary">
-                      {nextGameTrip.logistics.meetingPoint}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-secondary">
-                    Meet details being confirmed
-                  </div>
-                )}
+                {(() => {
+                  const hasMeetTime = !!nextGameTrip.logistics?.meetTime;
+                  const hasMeetingPoint = !!nextGameTrip.logistics?.meetingPoint;
+                  const meetDetailsMissing = !(hasMeetTime && hasMeetingPoint);
+                  
+                  const scoringStartedForTrip = Boolean(
+                    nextGameTrip?.id &&
+                    (
+                      (activeCoordination?.tripId && String(activeCoordination.tripId) === String(nextGameTrip.id)) ||
+                      (activeGameDay?.roundId && String(activeGameDay.roundId) === String(nextGameTrip.id))
+                    )
+                  );
+                  
+                  const canEditMeet = canEditMeetDetails(currentMemberId, nextGameTrip, scoringStartedForTrip, isGroupAdmin);
+                  
+                  // A) If meet details exist, show them
+                  if (!meetDetailsMissing) {
+                    return (
+                      <>
+                        <div className="text-primary">
+                          Meet at {nextGameTrip.logistics?.meetTime}
+                        </div>
+                        <div className="text-secondary">
+                          {nextGameTrip.logistics?.meetingPoint}
+                        </div>
+                      </>
+                    );
+                  }
+                  
+                  // B) If missing and cannot edit, show muted status
+                  if (meetDetailsMissing && !canEditMeet) {
+                    return (
+                      <div className="mt-2 space-y-0.5">
+                        <div className="text-xs text-muted">Meet details being confirmed</div>
+                        <div className="text-xs text-muted">Check back later.</div>
+                      </div>
+                    );
+                  }
+                  
+                  // C) If missing and can edit, don't show member status (host gets banner elsewhere)
+                  return null;
+                })()}
                 
                 {/* Weather line */}
                 {weather && (() => {
@@ -1386,21 +1458,55 @@ export default function HomePage() {
                       }
                       setStartingGameDay(true);
                       try {
-                        const data = await apiJson(gamedayStartApi(), {
+                        // Look up trip UUID from legacy_id
+                        // The gameday/start API expects a UUID, but nextGameTrip.id is numeric (legacy_id)
+                        let tripUuid: string | null = null;
+                        
+                        // Check if we have activeCoordination with matching trip
+                        // activeCoordination.tripLegacyId matches nextGameTrip.id (both numeric)
+                        if (activeCoordination && activeCoordination.tripLegacyId === nextGameTrip.id) {
+                          // Use the UUID tripId from activeCoordination
+                          tripUuid = activeCoordination.tripId;
+                        }
+                        
+                        // If not found, look up via Supabase using legacy_id
+                        if (!tripUuid && activeGroupId) {
+                          const supabase = createBrowserClient(
+                            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+                          );
+                          const { data: tripData } = await supabase
+                            .from("trips")
+                            .select("id")
+                            .eq("legacy_id", nextGameTrip.id)
+                            .eq("group_id", activeGroupId)
+                            .maybeSingle();
+                          if (tripData?.id) {
+                            tripUuid = tripData.id;
+                          }
+                        }
+
+                        if (!tripUuid) {
+                          throw new Error("Could not resolve trip UUID");
+                        }
+
+                        const response = await apiJson(gamedayStartApi(), {
                           method: "POST",
-                          body: JSON.stringify({ tripId: String(nextGameTrip.id) }),
+                          body: JSON.stringify({ tripId: tripUuid }),
                         });
-                        validateGamedayStart(data);
-                        router.push(`/gameday/${nextGameTrip.id}`);
+                        const data = validateGamedayStart(response);
+                        // After starting, use tripId from response (UUID) to navigate
+                        // The gameday route accepts UUIDs and will resolve to the correct round
+                        router.replace(`/gameday/${data.tripId}`);
                       } catch (error) {
                         console.error("Failed to start GameDay:", error);
-                        // Still navigate on error (user can try again on GameDay page)
-                        router.push(`/gameday/${nextGameTrip.id}`);
+                        // On error, redirect back to trips page
+                        router.replace(`/trips/${nextGameTrip.id}`);
                       } finally {
                         setStartingGameDay(false);
                       }
                     }}
-                    disabled={startingGameDay || hostGuardrail?.blockEnterGameDay}
+                    disabled={startingGameDay}
                     className="block w-full py-4 text-base font-medium text-center btn-anticipation rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {startingGameDay ? "Starting…" : "Enter GameDay"}
@@ -1431,6 +1537,12 @@ export default function HomePage() {
   // Always return modals + content
   return (
     <>
+      {bootstrapError && (
+        <div className="mb-6 rounded-xl border border-border bg-surface px-3 py-2">
+          <div className="text-sm font-medium text-fg">Something didn't load</div>
+          <div className="text-sm text-muted">{bootstrapError}</div>
+        </div>
+      )}
       {content}
       <ConfirmModal
         isOpen={confirmModal.isOpen}

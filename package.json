@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "lint:colors": "node scripts/lint-colors.js"
+    "lint:colors": "node scripts/lint-colors.js",
+    "brand:audit": "node scripts/brand-audit.mjs",
+    "hardening:audit": "node scripts/repo-hardening-audit.mjs",
+    "role:audit": "node scripts/role-visibility-audit.mjs",
+    "prebuild": "npm run brand:audit && npm run hardening:audit && npm run role:audit"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",

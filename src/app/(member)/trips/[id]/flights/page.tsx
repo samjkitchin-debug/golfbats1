@@ -1051,7 +1051,7 @@ export default function FlightsEditorPage() {
         )}
         <button
           disabled={true}
-          className="w-full rounded-lg btn-primary px-4 py-3 text-sm font-medium text-white opacity-50 cursor-not-allowed"
+          className="w-full rounded-lg btn-primary px-4 py-3 text-sm font-medium opacity-50 cursor-not-allowed"
         >
           Export (coming soon)
         </button>

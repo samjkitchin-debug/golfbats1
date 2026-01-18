@@ -607,7 +607,7 @@ export default function MeEditPage() {
                         <p className="mt-2 text-xs text-muted">Uploading…</p>
                       )}
                       {passportPhotoPath && !uploadingPassportPhoto && (
-                        <p className="mt-2 text-xs text-brand-green">
+                        <p className="mt-2 text-xs text-anticipation">
                           Photo uploaded successfully
                         </p>
                       )}
@@ -622,7 +622,7 @@ export default function MeEditPage() {
           <button
             type="submit"
             disabled={saving || uploadingProfilePhoto || uploadingPassportPhoto}
-            className="w-full rounded-xl btn-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+            className="w-full rounded-xl btn-primary px-4 py-3 text-sm font-semibold disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save and continue"}
           </button>
@@ -645,7 +645,7 @@ function Field({
     <div>
       <div className="text-sm font-semibold">
         {label}
-        {required && <span className="text-brand-orange ml-1">*</span>}
+        {required && <span className="text-warning ml-1">*</span>}
       </div>
       <div className="mt-2">{children}</div>
     </div>

@@ -119,7 +119,7 @@ export default function StartPage() {
 
           <button
             onClick={() => setShowCreateForm(true)}
-            className="block w-full rounded-lg border border-brand-green bg-brand-green px-4 py-4 text-center text-sm font-semibold text-white hover:opacity-95"
+            className="block w-full rounded-lg border border-anticipation bg-anticipation px-4 py-4 text-center text-sm font-semibold text-anticipation-fg hover:opacity-95"
           >
             Create a group
           </button>
@@ -164,7 +164,7 @@ export default function StartPage() {
                 status === "error" 
                   ? "border-danger bg-danger-light text-danger" 
                   : status === "done"
-                  ? "border-brand-green bg-brand-green-light text-brand-green"
+                  ? "border-anticipation bg-anticipation/10 text-anticipation"
                   : "border-border bg-surface"
               }`}>
                 {message}
@@ -188,7 +188,7 @@ export default function StartPage() {
               <button
                 onClick={handleCreateGroup}
                 disabled={status === "submitting"}
-                className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="flex-1 rounded-lg bg-anticipation px-4 py-2 text-sm font-semibold text-anticipation-fg disabled:opacity-50"
               >
                 {status === "submitting" ? "Creating..." : "Create group"}
               </button>

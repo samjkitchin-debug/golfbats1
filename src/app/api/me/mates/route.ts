@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/me/mates
  * Returns recommended mates and search results for cross-group invites
@@ -29,7 +31,10 @@ export async function GET(req: Request) {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { 
+        status: 401,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     // Get current member ID
@@ -42,7 +47,10 @@ export async function GET(req: Request) {
     currentMemberId = memberData?.id || null;
 
     if (!currentMemberId) {
-      return NextResponse.json({ error: "Member profile not found." }, { status: 403 });
+      return NextResponse.json({ error: "Member profile not found." }, { 
+        status: 403,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     const { searchParams } = new URL(req.url);
@@ -58,7 +66,10 @@ export async function GET(req: Request) {
       .eq("status", "approved");
 
     if (!memberships || memberships.length === 0) {
-      return NextResponse.json({ ok: true, recommended: [], results: [] });
+      return NextResponse.json({ ok: true, recommended: [], results: [] }, {
+        status: 200,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     const groupIds = memberships.map((m) => m.group_id);
@@ -71,7 +82,10 @@ export async function GET(req: Request) {
       .eq("status", "approved");
 
     if (!groupMembersData || groupMembersData.length === 0) {
-      return NextResponse.json({ ok: true, recommended: [], results: [] });
+      return NextResponse.json({ ok: true, recommended: [], results: [] }, {
+        status: 200,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     const allMemberIds = Array.from(new Set(groupMembersData.map((gm) => gm.user_id))).filter(
@@ -79,7 +93,10 @@ export async function GET(req: Request) {
     );
 
     if (allMemberIds.length === 0) {
-      return NextResponse.json({ ok: true, recommended: [], results: [] });
+      return NextResponse.json({ ok: true, recommended: [], results: [] }, {
+        status: 200,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     // Compute recommended mates based on co-attendance history
@@ -184,12 +201,18 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, recommended, results });
+    return NextResponse.json({ ok: true, recommended, results }, {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (error) {
     console.error("Get mates error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "An error occurred." },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: { "Cache-Control": "no-store" },
+      }
     );
   }
 }

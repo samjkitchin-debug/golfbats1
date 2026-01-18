@@ -17,23 +17,13 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "DayForeIt",
   },
-  // Icons reference brand assets
   icons: {
-    icon: [
-      { url: "/brand/logo-mark.png", sizes: "32x32", type: "image/png" },
-      { url: "/favicon.ico" },
-    ],
-    shortcut: [
-      { url: "/favicon.ico" },
-    ],
-    apple: [
-      { url: "/brand/logo-mark.png", sizes: "180x180", type: "image/png" },
-    ],
+    icon: "/favicon.png",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2E8F63",
+  themeColor: "rgb(46, 143, 99)",
 };
 
 export default function RootLayout({

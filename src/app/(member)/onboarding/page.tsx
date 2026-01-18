@@ -444,7 +444,7 @@ export default function OnboardingPage() {
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-medium ${
                     index <= currentStepIndex
-                      ? "border-foreground bg-brand-green text-white"
+                      ? "border-foreground bg-anticipation text-anticipation-fg"
                       : "border-border bg-surface text-muted"
                   }`}
                 >
@@ -500,7 +500,7 @@ export default function OnboardingPage() {
 
           <button
             onClick={() => setCurrentStep("profile")}
-            className="w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-medium text-white hover:opacity-90"
+            className="w-full rounded-lg btn-anticipation px-4 py-3 text-sm font-medium hover:opacity-90"
           >
             Get started
           </button>
@@ -520,7 +520,7 @@ export default function OnboardingPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-foreground">
-                Full name <span className="text-brand-orange">*</span>
+                Full name <span className="text-warning">*</span>
               </label>
               <input
                 type="text"
@@ -534,7 +534,7 @@ export default function OnboardingPage() {
 
             <div>
               <label className="block text-sm font-medium text-foreground">
-                Display name <span className="text-brand-orange">*</span>
+                Display name <span className="text-warning">*</span>
               </label>
               <input
                 type="text"
@@ -551,7 +551,7 @@ export default function OnboardingPage() {
 
             <div>
               <label className="block text-sm font-medium text-foreground">
-                Nationality <span className="text-brand-orange">*</span>
+                Nationality <span className="text-warning">*</span>
               </label>
               <select
                 value={nationality}
@@ -648,7 +648,7 @@ export default function OnboardingPage() {
           <button
             onClick={handleSaveProfile}
             disabled={savingProfile || profileSaved}
-            className="w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-lg btn-anticipation px-4 py-3 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {savingProfile ? "Saving..." : profileSaved ? "Saved" : "Save & continue"}
           </button>
@@ -811,7 +811,7 @@ export default function OnboardingPage() {
             <button
               onClick={() => handleSavePassport(false)}
               disabled={savingPassport}
-              className="w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-lg btn-anticipation px-4 py-3 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {savingPassport ? "Saving..." : "Save passport"}
             </button>
@@ -830,9 +830,9 @@ export default function OnboardingPage() {
       {currentStep === "complete" && (
         <div className="space-y-6 text-center">
           <div>
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-green-light">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-anticipation/10">
               <svg
-                className="h-8 w-8 text-brand-green"
+                className="h-8 w-8 text-anticipation"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -859,7 +859,7 @@ export default function OnboardingPage() {
 
           <button
             onClick={handleComplete}
-            className="w-full rounded-lg bg-brand-green px-4 py-3 text-sm font-medium text-white hover:opacity-90"
+            className="w-full rounded-lg btn-anticipation px-4 py-3 text-sm font-medium hover:opacity-90"
           >
             Go to profile
           </button>
@@ -1063,13 +1063,13 @@ function ImageCropModal({
           <div className="flex gap-2">
             <button
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-brand-green bg-surface px-4 py-2 text-sm font-medium text-brand-green hover:bg-brand-green/5"
+              className="flex-1 rounded-lg border border-anticipation bg-surface px-4 py-2 text-sm font-medium text-anticipation hover:bg-anticipation/5"
             >
               Cancel
             </button>
             <button
               onClick={onSave}
-              className="flex-1 rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              className="flex-1 rounded-lg btn-anticipation px-4 py-2 text-sm font-medium hover:opacity-90"
             >
               Save
             </button>

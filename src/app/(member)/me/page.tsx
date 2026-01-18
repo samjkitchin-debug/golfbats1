@@ -54,6 +54,7 @@ export default function MePage() {
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
+  const [authUser, setAuthUser] = useState<any>(null);
 
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -88,6 +89,14 @@ export default function MePage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Password change state
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null);
+  const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
 
   // Data security modal state
   const [showDataSecurityModal, setShowDataSecurityModal] = useState(false);
@@ -149,6 +158,8 @@ export default function MePage() {
         router.push("/login?next=/me");
         return;
       }
+
+      setAuthUser(user);
 
       const { data, error: memberErr } = await supabase
         .from("members")
@@ -554,7 +565,7 @@ export default function MePage() {
             </div>
             {isAdmin && (
               <Link
-                href="/admin"
+                href="/members"
                 className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background"
               >
                 Admin
@@ -999,7 +1010,7 @@ export default function MePage() {
                 <input
                   className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
                     highlightedFields.includes("passport_full_name")
-                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      ? "border-warning ring-2 ring-warning/30"
                       : "border-border"
                   }`}
                   value={passportFullName}
@@ -1007,7 +1018,7 @@ export default function MePage() {
                   placeholder="e.g. John Smith"
                 />
                 {highlightedFields.includes("passport_full_name") && (
-                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
+                  <p className="mt-1 text-xs text-warning">Needed to export your travel details</p>
                 )}
               </div>
 
@@ -1016,7 +1027,7 @@ export default function MePage() {
                 <input
                   className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
                     highlightedFields.includes("passport_number")
-                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      ? "border-warning ring-2 ring-warning/30"
                       : "border-border"
                   }`}
                   value={passportNumber}
@@ -1025,7 +1036,7 @@ export default function MePage() {
                 />
                 <p className="mt-1 text-xs text-muted">Your passport number is encrypted and secure</p>
                 {highlightedFields.includes("passport_number") && (
-                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
+                  <p className="mt-1 text-xs text-warning">Needed to export your travel details</p>
                 )}
               </div>
 
@@ -1034,7 +1045,7 @@ export default function MePage() {
                 <input
                   className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
                     highlightedFields.includes("passport_nationality")
-                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      ? "border-warning ring-2 ring-warning/30"
                       : "border-border"
                   }`}
                   value={passportNationality}
@@ -1042,7 +1053,7 @@ export default function MePage() {
                   placeholder="e.g. Singaporean"
                 />
                 {highlightedFields.includes("passport_nationality") && (
-                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
+                  <p className="mt-1 text-xs text-warning">Needed to export your travel details</p>
                 )}
               </div>
 
@@ -1052,14 +1063,14 @@ export default function MePage() {
                   type="date"
                   className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
                     highlightedFields.includes("passport_date_of_birth")
-                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      ? "border-warning ring-2 ring-warning/30"
                       : "border-border"
                   }`}
                   value={passportDateOfBirth}
                   onChange={(e) => setPassportDateOfBirth(e.target.value)}
                 />
                 {highlightedFields.includes("passport_date_of_birth") && (
-                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
+                  <p className="mt-1 text-xs text-warning">Needed to export your travel details</p>
                 )}
               </div>
 
@@ -1069,21 +1080,21 @@ export default function MePage() {
                   type="date"
                   className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
                     highlightedFields.includes("passport_expiry_date")
-                      ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      ? "border-warning ring-2 ring-warning/30"
                       : "border-border"
                   }`}
                   value={passportExpiryDate}
                   onChange={(e) => setPassportExpiryDate(e.target.value)}
                 />
                 {highlightedFields.includes("passport_expiry_date") && (
-                  <p className="mt-1 text-xs text-brand-orange">Needed to export your travel details</p>
+                  <p className="mt-1 text-xs text-warning">Needed to export your travel details</p>
                 )}
               </div>
 
               <button
                 onClick={handleSavePassport}
                 disabled={savingPassport || !passportFullName.trim() || !passportNumber.trim() || !passportNationality.trim() || !passportDateOfBirth.trim() || !passportExpiryDate.trim()}
-                className="w-full rounded-xl btn-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-xl btn-primary px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {savingPassport ? "Saving..." : "Save passport details"}
               </button>
@@ -1096,6 +1107,129 @@ export default function MePage() {
             </div>
           )}
         </div>
+
+        {/* Security */}
+        {(() => {
+          const authProvider = authUser?.app_metadata?.provider;
+          const canChangePassword = authProvider === "email";
+          return canChangePassword ? (
+            <div className="border-t border-border pt-4 px-5">
+              <div className="mb-3">
+                <div className="text-sm font-medium text-foreground">Security</div>
+              </div>
+              {!changingPassword ? (
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-foreground">Password</div>
+              <button
+                onClick={() => {
+                  setChangingPassword(true);
+                  setNewPassword("");
+                  setConfirmPassword("");
+                  setPasswordChangeError(null);
+                  setPasswordChangeSuccess(false);
+                }}
+                className="text-sm text-muted hover:text-foreground hover:underline"
+              >
+                Change password
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {passwordChangeError && (
+                <div className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
+                  {passwordChangeError}
+                </div>
+              )}
+              {passwordChangeSuccess && (
+                <div className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
+                  Password updated.
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold">New password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold">Confirm password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    setPasswordChangeError(null);
+                    setPasswordChangeSuccess(false);
+
+                    if (!newPassword) {
+                      setPasswordChangeError("Enter a new password.");
+                      return;
+                    }
+
+                    if (!confirmPassword) {
+                      setPasswordChangeError("Confirm your password.");
+                      return;
+                    }
+
+                    if (newPassword !== confirmPassword) {
+                      setPasswordChangeError("Passwords do not match.");
+                      return;
+                    }
+
+                    setUpdatingPassword(true);
+
+                    try {
+                      const { error } = await supabase.auth.updateUser({
+                        password: newPassword,
+                      });
+
+                      if (error) throw error;
+                      setPasswordChangeSuccess(true);
+                      setNewPassword("");
+                      setConfirmPassword("");
+                      setTimeout(() => {
+                        setChangingPassword(false);
+                        setPasswordChangeSuccess(false);
+                      }, 2000);
+                    } catch (e: any) {
+                      setPasswordChangeError("Couldn't update your password. Try again.");
+                    } finally {
+                      setUpdatingPassword(false);
+                    }
+                  }}
+                  disabled={updatingPassword}
+                  className="flex-1 rounded-xl btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {updatingPassword ? "Updating…" : "Update password"}
+                </button>
+                <button
+                  onClick={() => {
+                    setChangingPassword(false);
+                    setNewPassword("");
+                    setConfirmPassword("");
+                    setPasswordChangeError(null);
+                    setPasswordChangeSuccess(false);
+                  }}
+                  className="rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+            </div>
+          ) : null;
+        })()}
 
         {/* Preferences */}
         <div className="border-t border-border pt-4 px-5">
@@ -1184,7 +1318,7 @@ export default function MePage() {
               <button
                 onClick={() => handleLeaveGroup(leaveGroupModal.groupId, leaveGroupModal.groupName, leaveGroupModal.isSoleAdmin)}
                 disabled={leavingGroup || leaveGroupModal.isSoleAdmin}
-                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {leavingGroup ? "Leaving..." : "Leave group"}
               </button>
@@ -1202,7 +1336,7 @@ export default function MePage() {
               This will permanently delete your account and all associated data. This action cannot be undone.
             </p>
             <p className="mb-4 text-sm font-medium text-foreground">
-              Type <span className="text-brand-orange">DELETE</span> to confirm:
+              Type <span className="text-warning">DELETE</span> to confirm:
             </p>
             <input
               type="text"
@@ -1210,7 +1344,7 @@ export default function MePage() {
               onChange={(e) => setDeleteConfirmText(e.target.value)}
               placeholder="Type DELETE to confirm"
               disabled={deletingAccount}
-              className="mb-6 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-brand-green focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mb-6 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-anticipation focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
               autoFocus
             />
             <div className="flex gap-3">
@@ -1272,7 +1406,7 @@ export default function MePage() {
                   }
                 }}
                 disabled={deleteConfirmText !== "DELETE" || deletingAccount}
-                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deletingAccount ? "Deleting..." : "Delete account"}
               </button>
@@ -1549,7 +1683,7 @@ function ProfileBlock({
             <input
               className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
                 highlightedFields.includes("handicap")
-                  ? "border-brand-orange ring-2 ring-brand-orange/30"
+                      ? "border-warning ring-2 ring-warning/30"
                   : "border-border"
               }`}
               value={declaredHandicap}
@@ -1558,7 +1692,7 @@ function ProfileBlock({
               placeholder="e.g. 18.2"
             />
             {highlightedFields.includes("handicap") && (
-              <p className="mt-1 text-xs text-brand-orange">Required for agent export</p>
+              <p className="mt-1 text-xs text-warning">Required for agent export</p>
             )}
           </div>
 
@@ -1762,7 +1896,7 @@ function ImageCropModal({
             </button>
             <button
               onClick={onSave}
-              className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+              className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-95"
             >
               Save
             </button>

@@ -6,33 +6,101 @@ import { createSupabaseBrowserClient } from "../lib/supabaseBrowser";
 export default function LoginClient() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState<null | "magic" | "google" | "apple" | "facebook">(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"sign_in" | "sign_up">("sign_in");
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [busy, setBusy] = useState<null | "email" | "google" | "facebook" | "reset">(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function signInMagicLink() {
-    setMessage(null);
-    setBusy("magic");
+  async function handleEmailAuth() {
+    setError(null);
+    setResetSuccess(false);
+
+    if (!email.trim()) {
+      setError("Enter your email.");
+      return;
+    }
+
+    if (!password) {
+      setError("Enter your password.");
+      return;
+    }
+
+    setBusy("email");
 
     try {
-      const origin = window.location.origin.replace(/\/$/, "");
-      const emailRedirectTo = `${origin}/auth/confirm?next=/`;
+      if (mode === "sign_in") {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
 
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { emailRedirectTo },
-      });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+        });
 
-      if (error) throw error;
-      setMessage("Check your email for the sign-in link.");
+        if (error) throw error;
+      }
     } catch (e: any) {
-      setMessage(e?.message ?? "Unable to send sign-in link.");
+      const errorMessage = e?.message?.toLowerCase() || "";
+      
+      if (mode === "sign_in") {
+        // Check for unconfirmed email
+        if (errorMessage.includes("confirm") && errorMessage.includes("email")) {
+          setError("Check your email to confirm your account before signing in.");
+        } else {
+          // Generic sign-in error - optionally suggest OAuth
+          setError("Couldn't sign you in. Check your details and try again.");
+        }
+      } else {
+        // Sign-up mode: check for email already in use
+        if (
+          errorMessage.includes("already") ||
+          errorMessage.includes("registered") ||
+          errorMessage.includes("exists")
+        ) {
+          setError("An account already exists for this email. Sign in instead.");
+        } else {
+          setError("Couldn't create your account. Try a different email or password.");
+        }
+      }
     } finally {
       setBusy(null);
     }
   }
 
-  async function signInOAuth(provider: "google" | "apple" | "facebook") {
-    setMessage(null);
+  async function handleResetPassword() {
+    setError(null);
+    setResetSuccess(false);
+
+    if (!email.trim()) {
+      setError("Enter your email.");
+      return;
+    }
+
+    setBusy("reset");
+
+    try {
+      const origin = window.location.origin.replace(/\/$/, "");
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${origin}/reset-password`,
+      });
+
+      if (error) throw error;
+      setResetSuccess(true);
+    } catch (e: any) {
+      setError("Couldn't send the reset email. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function signInOAuth(provider: "google" | "facebook") {
+    setError(null);
     setBusy(provider);
 
     try {
@@ -46,17 +114,22 @@ export default function LoginClient() {
 
       if (error) throw error;
     } catch (e: any) {
-      const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : "Facebook";
-      setMessage(e?.message ?? `Unable to sign in with ${providerName}.`);
+      const providerName = provider === "google" ? "Google" : "Facebook";
+      setError(e?.message ?? `Unable to sign in with ${providerName}.`);
       setBusy(null);
     }
   }
 
   return (
     <div className="flex flex-col items-center">
-      {message && (
+      {error && (
         <div className="mb-4 w-full rounded-lg border border-border bg-surface px-3 py-2 text-center text-sm text-foreground">
-          {message}
+          {error}
+        </div>
+      )}
+      {resetSuccess && (
+        <div className="mb-4 w-full rounded-lg border border-border bg-surface px-3 py-2 text-center text-sm text-foreground">
+          Check your email for a password reset link.
         </div>
       )}
 
@@ -89,18 +162,9 @@ export default function LoginClient() {
         </button>
 
         <button
-          disabled
-          className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-4 text-base font-medium text-foreground opacity-50 cursor-not-allowed"
-        >
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zm-5.02-13.03c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-          </svg>
-          Continue with Apple
-        </button>
-
-        <button
-          disabled
-          className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-4 text-base font-medium text-foreground opacity-50 cursor-not-allowed"
+          onClick={() => signInOAuth("facebook")}
+          disabled={busy !== null}
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-4 text-base font-medium text-foreground hover:bg-background disabled:opacity-50"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
@@ -108,36 +172,77 @@ export default function LoginClient() {
               fill="currentColor"
             />
           </svg>
-          Continue with Facebook
+          {busy === "facebook" ? "Opening Facebook…" : "Continue with Facebook"}
         </button>
 
-        {/* Divider */}
-        <div className="my-1 flex items-center gap-3">
-          <div className="flex-1 border-t border-border"></div>
-          <span className="text-sm text-muted">or</span>
-          <div className="flex-1 border-t border-border"></div>
+        {/* Email block */}
+        <div className="mt-6 flex w-full flex-col gap-3">
+          <label className="text-sm text-muted">Email</label>
+          <input
+            type="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-xl border border-border bg-surface px-3 py-4 text-base text-foreground placeholder:text-muted outline-none"
+          />
+          {!isResetting ? (
+            <>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-xl border border-border bg-surface px-3 py-4 text-base text-foreground placeholder:text-muted outline-none"
+              />
+              <button
+                onClick={handleEmailAuth}
+                disabled={busy !== null}
+                className="w-full rounded-xl btn-anticipation px-4 py-4 text-base font-medium disabled:opacity-50"
+              >
+                {busy === "email" ? (mode === "sign_in" ? "Signing in…" : "Creating account…") : mode === "sign_in" ? "Continue with email" : "Create account"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsResetting(true);
+                  setError(null);
+                  setResetSuccess(false);
+                }}
+                className="text-center text-[11px] text-muted hover:text-foreground hover:underline"
+              >
+                Forgot password?
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode(mode === "sign_in" ? "sign_up" : "sign_in")}
+                className="text-center text-xs text-muted hover:text-foreground hover:underline"
+              >
+                {mode === "sign_in" ? "New here? Create an account" : "Already have an account? Sign in"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleResetPassword}
+                disabled={busy !== null}
+                className="w-full rounded-xl btn-anticipation px-4 py-4 text-base font-medium disabled:opacity-50"
+              >
+                {busy === "reset" ? "Sending…" : "Send reset email"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsResetting(false);
+                  setError(null);
+                  setResetSuccess(false);
+                }}
+                className="text-center text-xs text-muted hover:text-foreground hover:underline"
+              >
+                Back to sign in
+              </button>
+            </>
+          )}
         </div>
-
-        {/* Email */}
-        <input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-xl border border-border bg-surface px-3 py-4 text-base text-foreground placeholder:text-muted outline-none"
-        />
-
-        <button
-          onClick={signInMagicLink}
-          disabled={busy !== null || !email}
-          className="w-full rounded-xl bg-brand-green px-4 py-4 text-base font-medium text-white disabled:opacity-50"
-        >
-          {busy === "magic" ? "Sending link…" : "Send sign-in link"}
-        </button>
-
-        <p className="mt-1 text-center text-xs text-muted">
-          We'll email you a secure sign-in link — no password needed.
-        </p>
       </div>
     </div>
   );

@@ -16,12 +16,12 @@ these rules apply to all features, not just trips.
 1.1 canonical sources of truth
 before proposing, modifying, or refactoring any product behaviour (including trip creation, trip management, rsvp, logistics, exports, scoring, or related ui/logic), you must read and respect:
 
-- docs/trips/readme.md
-- docs/trips/scenarios.md
-- docs/trips/iteration-playbook.md
-- docs/trips/ai-scenario-assist.md
+- docs/v1.md (single source of truth for product constitution)
+- docs/trips/scenarios.md (scenario definitions)
+- docs/trips/iteration-playbook.md (iteration guidelines)
+- docs/trips/ai-scenario-assist.md (ai assistance rules)
 
-these documents are the authoritative product truth.
+docs/v1.md is the authoritative product truth. trip-specific scenario docs supplement v1.md.
 
 1.2 non-negotiable product principles
 - minimum prompts beats completeness
@@ -68,7 +68,7 @@ for the cross_border_agent (batam) scenario, the following rules are immutable:
 - manual flight edits must persist
 
 1.5 ai assistance constraints
-ai may assist only as defined in docs/trips/ai-scenario-assist.md:
+ai may assist only as defined in docs/trips/ai-scenario-assist.md (see also docs/v1.md section 6 for core flows):
 
 - ai may propose:
   - scenarioanswers
@@ -85,7 +85,7 @@ these rules govern how work is executed safely across the entire project.
 2.1 data and persistence
 - no local storage
 - always use the database
-- database schema is defined in docs/schema.md and is authoritative
+- database schema is defined in docs/schema.md and is authoritative (see also docs/v1.md section 8 for data model summary)
 - do not invent fields or types not listed in the schema
 
 2.2 supabase setup (do not change unless asked)

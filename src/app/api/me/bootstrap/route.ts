@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/me/bootstrap
  * Returns a consolidated bootstrap payload for member pages to avoid multiple client-side queries.
@@ -16,7 +18,10 @@ export async function GET(req: Request) {
     } = await supabase.auth.getUser();
 
     if (userErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { 
+        status: 401,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     // Fetch member profile and approved memberships in parallel
@@ -84,6 +89,19 @@ export async function GET(req: Request) {
 
     const hasApprovedGroup = approvedGroups.length > 0;
 
+    // Compute hasPendingAdminTasks: check if user is admin of at least one group with pending members
+    let hasPendingAdminTasks = false;
+    const adminGroupIds = approvedGroups.filter((g) => g.role === "admin").map((g) => g.id);
+    if (adminGroupIds.length > 0) {
+      const { count } = await supabase
+        .from("group_members")
+        .select("*", { count: "exact", head: true })
+        .in("group_id", adminGroupIds)
+        .eq("status", "pending");
+
+      hasPendingAdminTasks = (count || 0) > 0;
+    }
+
     // Build response
     return NextResponse.json({
       userId: user.id,
@@ -101,12 +119,19 @@ export async function GET(req: Request) {
       approvedGroups,
       activeGroupId,
       hasApprovedGroup,
+      hasPendingAdminTasks,
+    }, {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
     console.error("[bootstrap API] Error:", error);
     return NextResponse.json(
       { error: "An error occurred while loading bootstrap data." },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: { "Cache-Control": "no-store" },
+      }
     );
   }
 }

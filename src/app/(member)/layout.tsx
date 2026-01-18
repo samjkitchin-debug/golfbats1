@@ -6,13 +6,6 @@ import { createSupabaseServerClient } from "../lib/supabaseServer";
 import MainNav from "../components/MainNav";
 import ActiveGameDayChip from "./components/ActiveGameDayChip";
 
-function parseAdminEmails(raw: string | undefined) {
-  return (raw ?? "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
-
 export default async function MemberLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
 
@@ -35,7 +28,7 @@ export default async function MemberLayout({ children }: { children: React.React
 
           <Link href="/" className="flex flex-1 justify-center">
             <Image
-              src="/brand/logo-mark.png"
+              src="/brand/logo-app.png"
               alt="DayForeIt"
               width={102}
               height={51}
@@ -49,7 +42,7 @@ export default async function MemberLayout({ children }: { children: React.React
         </div>
 
         {/* brand accent */}
-        <div className="h-0.5 w-full bg-brand-green/20" />
+        <div className="h-0.5 w-full bg-anticipation/20" />
       </header>
 
       {/* Content */}

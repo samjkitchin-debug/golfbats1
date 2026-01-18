@@ -732,7 +732,7 @@ export default function TripsListPage() {
                   onClick={() => {
                     router.push(`/me?highlight=${completionStatus.missingFields.join(',')}`);
                   }}
-                  className="rounded-md btn-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-95"
+                  className="rounded-md btn-primary px-3 py-1.5 text-xs font-medium hover:opacity-95"
                 >
                   Complete now
                 </button>
@@ -742,7 +742,7 @@ export default function TripsListPage() {
             {/* Completion status badge for Batam trips */}
             {trip.scenarioKey === "cross_border_agent" && rsvpStatus === "joined" && completionStatus && completionStatus.isReady && (
               <div className="mb-3">
-                <span className="text-xs text-brand-green font-medium">✓ Details complete</span>
+                <span className="text-xs text-anticipation font-medium">✓ Details complete</span>
               </div>
             )}
 
@@ -986,7 +986,7 @@ export default function TripsListPage() {
                   router.push(`/me?highlight=${completionPrompt.missingFields.join(',')}`);
                   setCompletionPrompt(null);
                 }}
-                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-95"
               >
                 Complete now
               </button>
