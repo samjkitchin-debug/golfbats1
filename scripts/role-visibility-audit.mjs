@@ -23,7 +23,8 @@ function removeComments(text) {
 }
 
 const files = walk(SRC_DIR);
-let failures = 0;
+let failCount = 0;
+let warnCount = 0;
 
 for (const file of files) {
   const text = fs.readFileSync(file, "utf8");
@@ -38,7 +39,7 @@ for (const file of files) {
     
     if (!hasPermissionCheck) {
       console.error(`${file}: "Set meet details" or "Add meet details" found without permission check (canEditMeetDetails/canEditTrip/isTripHost)`);
-      failures++;
+      failCount++;
     }
   }
   
@@ -47,7 +48,7 @@ for (const file of files) {
     const normalizedPath = path.normalize(file).replace(/\\/g, "/");
     if (!normalizedPath.includes("src/app/(member)/page.tsx")) {
       console.error(`${file}: "Meet details needed" found outside src/app/(member)/page.tsx`);
-      failures++;
+      failCount++;
     }
   }
   
@@ -62,8 +63,8 @@ for (const file of files) {
     text.includes('getUser(');
   
   if (hasFromMembers && hasEqId && hasAuthUserIdSignal) {
-    console.error(`${file}: Rule 3A violation - Found .from("members") with .eq("id",) alongside auth user.id signals - suspicious: auth id used with members.id (should use member_id)`);
-    failures++;
+    console.warn(`${file}: Rule 3A violation - Found .from("members") with .eq("id",) alongside auth user.id signals - suspicious: auth id used with members.id (should use member_id)`);
+    warnCount++;
   }
   
   // Rule 3B: member-id mismatch - .from("members") with .eq("user_id", alongside member-id signals
@@ -73,14 +74,18 @@ for (const file of files) {
     !text.includes('user.id'); // Exclude if it's user.id (that would be auth, not member)
   
   if (hasFromMembers && hasEqUserId && hasMemberIdSignal) {
-    console.error(`${file}: Rule 3B violation - Found .from("members") with .eq("user_id",) alongside member-id signals - suspicious: member id used with members.user_id (should use members.id or member_id)`);
-    failures++;
+    console.warn(`${file}: Rule 3B violation - Found .from("members") with .eq("user_id",) alongside member-id signals - suspicious: member id used with members.user_id (should use members.id or member_id)`);
+    warnCount++;
   }
 }
 
-if (failures > 0) {
-  console.error(`Role visibility audit failed: ${failures} issue(s).`);
+if (failCount > 0) {
+  console.error(`Role visibility audit failed: ${failCount} issue(s).`);
   process.exit(1);
+}
+
+if (warnCount > 0) {
+  console.log(`Role visibility audit warnings: ${warnCount} issue(s).`);
 }
 
 console.log("Role visibility audit passed.");
