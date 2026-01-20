@@ -42,6 +42,13 @@ function isPublicPath(pathname: string) {
  * Canonical host enforcement: redirect non-canonical hosts to dayforeit.sg
  */
 function getCanonicalRedirect(req: NextRequest): NextResponse | null {
+  const pathname = req.nextUrl.pathname;
+  
+  // Never redirect auth endpoints (prevents breaking sign-in flows)
+  if (pathname === "/login" || pathname.startsWith("/auth/")) {
+    return null;
+  }
+
   const hostname = req.headers.get("host") || "";
   const canonicalHost = "dayforeit.sg";
 
@@ -63,7 +70,7 @@ function getCanonicalRedirect(req: NextRequest): NextResponse | null {
     const url = req.nextUrl.clone();
     // Construct canonical URL: preserve protocol, pathname, and search params
     const canonicalUrl = new URL(url.pathname + url.search, `${url.protocol}//${canonicalHost}`);
-    return NextResponse.redirect(canonicalUrl, 301);
+    return NextResponse.redirect(canonicalUrl, 307);
   }
 
   return null;

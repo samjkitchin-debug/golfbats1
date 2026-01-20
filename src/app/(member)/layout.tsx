@@ -16,7 +16,10 @@ export default async function MemberLayout({ children }: { children: React.React
   return (
     <div className="min-h-dvh app-background-theme">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-header border-b border-border relative">
+      <header
+        className="sticky top-0 z-50 border-b border-border relative"
+        style={{ backgroundColor: "rgb(var(--header-bg))" }}
+      >
         {/* Subtle vertical gradient overlay (sunrise warmth) */}
         <div 
           className="absolute inset-0 pointer-events-none header-warmth-gradient"
@@ -46,7 +49,7 @@ export default async function MemberLayout({ children }: { children: React.React
       </header>
 
       {/* Content */}
-      <main className="mx-auto w-full max-w-md px-4 pt-6 pb-5">{children}</main>
+      <main className="mx-auto w-full max-w-md px-4 pt-20 pb-5">{children}</main>
 
       {/* Active GameDay chip */}
       <ActiveGameDayChip />

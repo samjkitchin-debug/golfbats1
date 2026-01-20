@@ -17,46 +17,21 @@ import {
 import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import { PromptModal } from "../../../components/PromptModal";
-import { TripRsvpActions } from "../../../components/TripRsvpActions";
 import { InlineNotice } from "../../../components/InlineNotice";
-import { canEditTrip, canEditMeetDetails } from "../../../lib/permissions";
+import { canEditTrip } from "../../../lib/permissions";
 import { perfMark, perfMeasure, perfLog } from "../../../lib/perf";
-import { checkMemberExportReadiness } from "../../../lib/memberExportReadiness";
 import { getGolfNoun } from "../../../lib/roundNounHelper";
 import { todayInSGT, computeSignupOpenAt } from "../../../lib/tripDates";
-import { TimeDialPicker } from "../../../components/TimeDialPicker";
+import { resolveEventContext } from "../../../lib/domain/event/resolveEventContext";
+import { buildEventPolicy } from "../../../lib/domain/policy/eventPolicy";
+import { getInstrumentRegistry } from "../../../lib/domain/instruments/registry";
+import { getResultSnapshot } from "../../../lib/domain/results/resultsEngine";
+import type { InstrumentKey, EventContext } from "../../../lib/domain/event/eventTypes";
+import BaseCampLane from "../../../components/BaseCampLane";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
-}
-
-// Helper to convert meetTime string to HH:MM format (for initial state only)
-// Note: TimePicker component handles all time selection; this helper is for parsing existing values
-function parseTimeToHHMM(timeStr: string | undefined): string {
-  if (!timeStr) return "";
-  
-  // If already in HH:MM format, return as-is
-  if (/^\d{2}:\d{2}$/.test(timeStr)) return timeStr;
-  
-  // Try to parse formats like "7:30am", "7:30 AM", "07:30", etc.
-  const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(am|pm|AM|PM)?/i);
-  if (match) {
-    let hours = parseInt(match[1], 10);
-    const minutes = match[2];
-    const period = match[3]?.toLowerCase();
-    
-    if (period === "pm" && hours !== 12) {
-      hours += 12;
-    } else if (period === "am" && hours === 12) {
-      hours = 0;
-    }
-    
-    return `${hours.toString().padStart(2, "0")}:${minutes}`;
-  }
-  
-  // If no match, return empty
-  return "";
 }
 
 // Helper to check if trip is a hosted round
@@ -67,279 +42,6 @@ function isHostedRound(trip: Trip): boolean {
 // Helper to check if trip is a group trip
 function isGroupTrip(trip: Trip): boolean {
   return trip.tripOrigin === "group" || (trip.scenarioKey !== "hosted_round" && trip.tripOrigin !== "member");
-}
-
-// Meet details editor component (host only)
-function MeetDetailsEditor({
-  trip,
-  currentUserId,
-  supabase,
-  activeGroupId,
-  onUpdate,
-}: {
-  trip: Trip;
-  currentUserId: string | null;
-  supabase: ReturnType<typeof createBrowserClient>;
-  activeGroupId: string | null;
-  onUpdate: (updatedTrip: Trip) => void;
-}) {
-  const rawMeetTime = (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime)?.trim() || "";
-  const [meetTime, setMeetTime] = useState(parseTimeToHHMM(rawMeetTime));
-  const [meetingPoint, setMeetingPoint] = useState(
-    (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint)?.trim() || ""
-  );
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  async function handleSave() {
-    if (saving || !currentUserId || !activeGroupId) return;
-
-    setSaving(true);
-    setSaved(false);
-
-    try {
-      // Update trip in database by legacy_id (Trip.id is numeric legacy_id)
-      const { error } = await supabase
-        .from("trips")
-        .update({
-          meet_time: meetTime.trim() || null,
-          meeting_point: meetingPoint.trim() || null,
-        })
-        .eq("legacy_id", trip.id);
-
-      if (error) {
-        throw error;
-      }
-
-      // Update local trip state immediately (before reload) to ensure UI updates instantly
-      const trimmedMeetTime = meetTime.trim() || undefined;
-      const trimmedMeetingPoint = meetingPoint.trim() || undefined;
-      
-      // Update both decisionLogistics and logistics to match API normalization
-      const immediateUpdate: Trip = {
-        ...trip,
-        logistics: {
-          ...trip.logistics,
-          meetTime: trimmedMeetTime,
-          meetingPoint: trimmedMeetingPoint,
-        },
-        decisionLogistics: {
-          ...trip.decisionLogistics,
-          meetTime: trimmedMeetTime,
-          meetingPoint: trimmedMeetingPoint,
-        },
-      };
-      onUpdate(immediateUpdate);
-
-      // Reload trips to get fresh data from API (ensures consistency)
-      const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
-      const updatedTrip = freshTrips.find(t => t.id === trip.id);
-      
-      if (updatedTrip) {
-        // Update again with API-normalized data to ensure consistency
-        onUpdate(updatedTrip);
-      }
-
-      setSaved(true);
-      
-      // Clear saved state after 2 seconds
-      setTimeout(() => setSaved(false), 2000);
-    } catch (error) {
-      console.error("Failed to save meet details:", error);
-      alert(`Failed to save meet details: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <div className="text-xs font-semibold mb-1">Meet time</div>
-        <TimeDialPicker
-          value={meetTime}
-          onChange={(value) => {
-            setMeetTime(value);
-            setSaved(false);
-          }}
-          onClear={() => {
-            setMeetTime("");
-            setSaved(false);
-          }}
-          placeholder="Select time"
-        />
-      </div>
-      <div>
-        <div className="text-xs font-semibold mb-1">Meeting point</div>
-        <input
-          type="text"
-          value={meetingPoint}
-          onChange={(e) => {
-            setMeetingPoint(e.target.value);
-            setSaved(false);
-          }}
-          placeholder="e.g. Tanah Merah Ferry Terminal"
-          className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30"
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded-xl btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? "Saving..." : saved ? "Saved" : "Save"}
-        </button>
-        {saved && (
-          <span className="text-xs text-muted">Saved</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Hosted round meet details instrument
-function HostedRoundMeetDetailsInstrument({
-  trip,
-  currentUserId,
-  supabase,
-  activeGroupId,
-  onUpdate,
-}: {
-  trip: Trip;
-  currentUserId: string | null;
-  supabase: ReturnType<typeof createBrowserClient>;
-  activeGroupId: string | null;
-  onUpdate: (updatedTrip: Trip) => void;
-}) {
-  const rawMeetTime = (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime)?.trim() || "";
-  const parsedTime = rawMeetTime ? parseTimeToHHMM(rawMeetTime) : "";
-  const [meetTime, setMeetTime] = useState(parsedTime);
-  const [meetingPoint, setMeetingPoint] = useState(
-    (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint)?.trim() || ""
-  );
-  const [note, setNote] = useState(
-    (trip.logistics?.notes)?.trim() || ""
-  );
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  async function handleSave() {
-    if (saving || !currentUserId || !activeGroupId) return;
-
-    setSaving(true);
-    setSaved(false);
-
-    try {
-      // Update trip in database - save all three fields together
-      const { error } = await supabase
-        .from("trips")
-        .update({
-          meet_time: meetTime.trim() || null,
-          meeting_point: meetingPoint.trim() || null,
-          notes: note.trim() || null,
-        })
-        .eq("legacy_id", trip.id);
-
-      if (error) {
-        throw error;
-      }
-
-      // Reload trips to get fresh data
-      const freshTrips = await loadTrips(activeGroupId, true);
-      const updatedTrip = freshTrips.find(t => t.id === trip.id);
-      
-      if (updatedTrip) {
-        onUpdate(updatedTrip);
-      } else {
-        // Fallback: update local state
-        const fallbackTrip: Trip = {
-          ...trip,
-          logistics: {
-            ...trip.logistics,
-            meetTime: meetTime.trim() || undefined,
-            meetingPoint: meetingPoint.trim() || undefined,
-            notes: note.trim() || undefined,
-          },
-          decisionLogistics: {
-            ...trip.decisionLogistics,
-            meetTime: meetTime.trim() || undefined,
-            meetingPoint: meetingPoint.trim() || undefined,
-          },
-        };
-        onUpdate(fallbackTrip);
-      }
-
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (error) {
-      console.error("Failed to save meet details:", error);
-      alert(`Failed to save meet details: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <div className="text-xs font-semibold mb-1">Meet time</div>
-        <TimeDialPicker
-          value={meetTime}
-          onChange={(value) => {
-            setMeetTime(value);
-            setSaved(false);
-          }}
-          onClear={() => {
-            setMeetTime("");
-            setSaved(false);
-          }}
-          placeholder="Select time"
-        />
-      </div>
-      <div>
-        <div className="text-xs font-semibold mb-1">Where to meet</div>
-        <input
-          type="text"
-          value={meetingPoint}
-          onChange={(e) => {
-            setMeetingPoint(e.target.value);
-            setSaved(false);
-          }}
-          placeholder="e.g. Course clubhouse"
-          className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30"
-        />
-      </div>
-      <div>
-        <div className="text-xs font-semibold mb-1">Note</div>
-        <textarea
-          value={note}
-          onChange={(e) => {
-            setNote(e.target.value);
-            setSaved(false);
-          }}
-          placeholder="Anything else your group should know?"
-          className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30 resize-none"
-          rows={3}
-        />
-        <div className="mt-1 text-xs text-muted">
-          e.g. Mike will pick us up and we'll head off together.
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded-xl btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? "Saving..." : saved ? "Saved" : "Save"}
-        </button>
-        {saved && (
-          <span className="text-xs text-muted">Saved</span>
-        )}
-      </div>
-    </div>
-  );
 }
 
 // Travel instrument component (group trips only)
@@ -671,21 +373,10 @@ export default function TripDetailPage() {
   const [isTripGroupAdmin, setIsTripGroupAdmin] = useState(false);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [profileHandicap, setProfileHandicap] = useState<number | null>(null);
-  const [editingMeetDetails, setEditingMeetDetails] = useState(false);
-  const [hideMeetInstrument, setHideMeetInstrument] = useState(false);
-  const [showMeetDetailsInfoNotice, setShowMeetDetailsInfoNotice] = useState(false);
   const [editingTripName, setEditingTripName] = useState(false);
   const [tripNameValue, setTripNameValue] = useState<string>("");
   const [showTravelNote, setShowTravelNote] = useState(false);
   // Local phase override state (for manual control, not persisted)
-  // CanonicalPhase for group trips (consolidates all phase/moment/state branching)
-  type CanonicalPhase =
-    | "scheduled"
-    | "signups_open"
-    | "locked"
-    | "gameday"
-    | "in_play"
-    | "completed";
   
   const [showTopAnchorSheet, setShowTopAnchorSheet] = useState(false);
   const [showBottomAnchorSheet, setShowBottomAnchorSheet] = useState(false);
@@ -696,10 +387,6 @@ export default function TripDetailPage() {
     | { kind: "reopen_signups" }
     | { kind: "set_signups_close_date"; dateIso: string };
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [signupsCloseDateValue, setSignupsCloseDateValue] = useState<string>("");
-  const [showTravelOutlineSheet, setShowTravelOutlineSheet] = useState(false);
-  const [travelOutlineValue, setTravelOutlineValue] = useState<string>("");
-  const [showTripNameSheet, setShowTripNameSheet] = useState(false);
   const [showZoneAOverflowSheet, setShowZoneAOverflowSheet] = useState(false);
   
   // v2.1.1: Control Zone C visibility for group trips (A+B only when false)
@@ -869,6 +556,26 @@ export default function TripDetailPage() {
     return trips.find((t) => t.id === tripId);
   }, [trips, tripId]);
 
+  // Create EventContext and Policy after trip is loaded
+  const event = useMemo(() => {
+    if (!trip) return null;
+    return resolveEventContext({ trip, scoringStarted, now: Date.now() });
+  }, [trip, scoringStarted]);
+
+  const policy = useMemo(() => {
+    if (!event) return null;
+    return buildEventPolicy({ event, currentMemberId: currentUserId, isGroupAdmin: isTripGroupAdmin });
+  }, [event, currentUserId, isTripGroupAdmin]);
+
+  const instruments = useMemo(() => getInstrumentRegistry(), []);
+
+  // Map BaseCamp instrument IDs to domain InstrumentKeys
+  // Only instruments that exist in both systems are listed here
+  const baseCampInstrumentKeys: InstrumentKey[] = [
+    "meet_details",
+    // Add more as they are migrated to the domain instrument system
+  ];
+
 
   // Load group name and admin status for the trip (for group trips) - must be after trip is defined
   useEffect(() => {
@@ -939,57 +646,6 @@ export default function TripDetailPage() {
     loadTripGroupInfo();
   }, [tripId, trip, currentUserId, activeGroupId, approvedGroups, supabase]);
 
-  // Phase inference for group trips (must be before early returns)
-  type TripPhase = "created" | "forming" | "locked" | "playing_today" | "in_progress" | "afterglow";
-  const currentPhase = useMemo<TripPhase>(() => {
-    if (!trip) return "forming";
-    
-    // 1) Afterglow - trip is completed
-    if (trip.result || trip.coordinationStatus === "completed") {
-      return "afterglow";
-    }
-    
-    // 2) In progress (GameDay) - scoring has started
-    if (scoringStarted) {
-      return "in_progress";
-    }
-    
-    // 3) Playing today - trip date is today
-    const today = new Date().toISOString().slice(0, 10);
-    const isToday = trip.date === today;
-    if (isToday && !scoringStarted) {
-      return "playing_today";
-    }
-    
-    // 4) Locked - trip status is closed/locked
-    if (trip.status === "closed" && !isToday && !scoringStarted) {
-      return "locked";
-    }
-    
-    // 5) Created - only if ?created=1 query param
-    if (isCreatedPhase) {
-      return "created";
-    }
-    
-    // 6) Forming - default for open signups / before trip day
-    return "forming";
-  }, [trip, scoringStarted, isCreatedPhase]);
-
-  // Base Camp phase calculations (for group trips only)
-  const phaseOrder: TripPhase[] = ["created", "forming", "locked", "playing_today", "in_progress", "afterglow"];
-  const currentPhaseIndex = useMemo(() => phaseOrder.indexOf(currentPhase), [currentPhase]);
-  const nextPhase = useMemo<TripPhase | null>(
-    () => currentPhaseIndex < phaseOrder.length - 1 ? phaseOrder[currentPhaseIndex + 1] : null,
-    [currentPhaseIndex]
-  );
-  const phaseLabels: Record<TripPhase, string> = {
-    created: "Created",
-    forming: "Forming",
-    locked: "Locked",
-    playing_today: "Playing today",
-    in_progress: "In progress",
-    afterglow: "Afterglow",
-  };
 
   // Base Camp Instrument Registry types and computation (must be before early returns)
   type BaseCampBoundary =
@@ -999,7 +655,7 @@ export default function TripDetailPage() {
     | "any";
 
   type BaseCampInstrument = {
-    id: "trip_name" | "meet_details" | "travel_outline";
+    id: "meet_details"; // Only meet_details remains as legacy; trip_name is now a domain instrument
     boundary: BaseCampBoundary;
     label: string;
     isRelevant: boolean;
@@ -1015,6 +671,20 @@ export default function TripDetailPage() {
   const isGroupTripPage = trip ? isGroupTrip(trip) : false;
   // Permissions: Use centralized permission helpers
   const canEdit = canEditTrip(currentUserId, trip, isTripGroupAdmin);
+
+  // Unified host label (computed once, reused everywhere)
+  const hostLabel = useMemo(() => {
+    if (!trip) return null;
+    if (isGroupTripPage) {
+      return tripGroupName ? `Hosted by ${tripGroupName}` : null;
+    }
+    // Hosted round
+    if (!trip.createdByMemberName) return null;
+    if (trip.createdByMemberId === currentUserId) {
+      return "Hosted by you";
+    }
+    return `Hosted by ${trip.createdByMemberName.split(" ")[0]}`;
+  }, [trip, isGroupTripPage, tripGroupName, currentUserId]);
 
   // Helper: Convert YYYY-MM-DD to cutoff_at ISO at 23:59 SGT
   const toCutoffAtIsoFromYmd = (ymd: string): string => {
@@ -1078,8 +748,6 @@ export default function TripDetailPage() {
 
     // Travel details state
     const travelInvolvedValue = trip.travelInvolved === true;
-    // travel_outline completion: true when travel_outline string exists (non-empty, trimmed)
-    const hasTravelOutline = Boolean(trip.travelNote?.trim());
     const hasTravelDetailsValue = travelInvolvedValue && Boolean(
       trip.travelType || trip.travelScope || trip.bookingApproach || trip.bookingProviderName || trip.travelNote
     );
@@ -1152,8 +820,6 @@ export default function TripDetailPage() {
       travelInvolved: travelInvolvedValue,
       hasTravelDetails: hasTravelDetailsValue,
       travelSummaryLine,
-      hasTravelOutline,
-      travelOutline: trip.travelNote?.trim() || null,
       signupsCloseDateYmd: effectiveCloseYmd,
       signupsCloseDateFormatted,
       openMomentTime: effectiveOpenMomentTime,
@@ -1163,140 +829,18 @@ export default function TripDetailPage() {
     };
   }, [trip, isGroupTripPage]);
 
-  // Derive canonical phase from canonical moments (group trips only)
-  function deriveCanonicalPhase(args: {
-    resultsPublished: boolean;
-    scoringStarted: boolean;
-    isGameDay: boolean;
-    signupCloseAtEffective: number | null;
-    signupOpenAt: number | null;
-    nowTime: number;
-    todaySGT: string;
-    tripDate: string;
-  }): CanonicalPhase {
-    // Completed always wins (irreversible)
-    if (args.resultsPublished) {
-      return "completed";
-    }
-
-    // In-play always wins (irreversible)
-    if (args.scoringStarted) {
-      return "in_play";
-    }
-
-    // GameDay (trip.date is today in SGT)
-    if (args.isGameDay) {
-      return "gameday";
-    }
-
-    // Locked (now >= effectiveCloseMoment AND today < trip.date)
-    if (args.signupCloseAtEffective && args.nowTime >= args.signupCloseAtEffective && args.todaySGT < args.tripDate) {
-      return "locked";
-    }
-
-    // Sign-ups open (openMoment <= now < effectiveCloseMoment)
-    if (args.signupOpenAt && args.nowTime >= args.signupOpenAt) {
-      if (!args.signupCloseAtEffective || args.nowTime < args.signupCloseAtEffective) {
-        return "signups_open";
-      }
-    }
-
-    // Scheduled (default - before sign-ups open)
-    return "scheduled";
-  }
-
-  const canonicalPhase = useMemo<CanonicalPhase | null>(() => {
-    if (!trip || !isGroupTripPage || !signals) return null;
-
-    const nowTime = Date.now();
-    const todaySGT = todayInSGT();
-    
-    // Canonical moments
-    const resultsPublished = Boolean(trip.result || trip.coordinationStatus === "completed");
-    const isGameDay = trip.date === todaySGT;
-    
-    // Derive phase from canonical moments
-    const derived = deriveCanonicalPhase({
-      resultsPublished,
-      scoringStarted,
-      isGameDay,
-      signupCloseAtEffective: signals.effectiveCloseMomentTime,
-      signupOpenAt: signals.openMomentTime,
-      nowTime,
-      todaySGT,
-      tripDate: trip.date,
-    });
-
-    // Irreversible truths win first (completed/in_play always override)
-    if (resultsPublished) return "completed";
-    if (scoringStarted) return "in_play";
-
-    // Derive from canonical moments (uses persisted gates: signups_opened_at and cutoff_at)
-    return derived;
-  }, [trip, isGroupTripPage, signals, scoringStarted]);
-
-  // Helper: Get lane instrument IDs for a given phase
-  function getLaneInstrumentIds(phase: CanonicalPhase): string[] {
-    switch (phase) {
-      case "scheduled":
-        return ["trip_name"];
-      case "signups_open":
-        return ["meet_details", "travel_outline"];
-      case "locked":
-        return ["travel_outline"]; // Only if not done (filtered by registry)
-      case "gameday":
-      case "in_play":
-      case "completed":
-        return []; // No instruments in these phases
-      default:
-        return [];
-    }
-  }
-
-  // Helper: Get next phase for preview
-  function getNextPhase(phase: CanonicalPhase): CanonicalPhase | null {
-    switch (phase) {
-      case "scheduled":
-        return "signups_open";
-      case "signups_open":
-        return "locked";
-      case "locked":
-        return "gameday";
-      default:
-        return null;
-    }
-  }
 
   // Build instrument registry (group trips only) - must be before early returns
-  const instruments: BaseCampInstrument[] = useMemo(() => {
-    if (!signals || !canonicalPhase || !trip) return [];
+  const baseCampInstruments: BaseCampInstrument[] = useMemo(() => {
+    if (!signals || !event || !trip) return [];
     
     // canEdit is defined at component level, accessible here
     
-    // Use signups close date from signals (computed in signals useMemo)
-    const signupsCloseDateYmd = signals.signupsCloseDateYmd;
-    const signupsCloseDateFormatted = signals.signupsCloseDateFormatted;
-
-    // 1) trip_name instrument (Scheduled lane only)
-    // Strict completion: typeof trip.trip_name === "string" && trip.trip_name.trim().length > 0
-    const tripNameIsDone = typeof trip.tripName === "string" && trip.tripName.trim().length > 0;
-    const tripNameInstrument: BaseCampInstrument = {
-      id: "trip_name",
-      boundary: "before_signups_open",
-      label: tripNameIsDone ? "Trip name set" : "Add a trip name",
-      isRelevant: true,
-      isDone: tripNameIsDone,
-      chromeLine: null,
-      renderInline: null,
-      renderLink: null,
-    };
-
-
-    // 3) meet_details instrument
-    // Boundary: only shown when sign-ups are open (NOT in Scheduled lane)
-    // Lane filtering is handled by getLaneInstrumentIds, but boundary kept for registry structure
+    // meet_details instrument
+    // Boundary: only shown when sign-ups are open
+    // Note: meet_details is now rendered via domain instrument system, but legacy registry structure kept for compatibility
     const meetDetailsBoundary: BaseCampBoundary =
-      canonicalPhase === "signups_open"
+      event.state === "signups_open"
         ? "before_signups_close"
         : "before_gameday";
 
@@ -1308,85 +852,19 @@ export default function TripDetailPage() {
       isDone: signals.hasMeetDetails,
       chromeLine: signals.meetSummaryLine || null,
       pastLine: signals.hasMeetDetails ? "Meet details set" : null,
-      renderInline: !hideMeetInstrument && canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin) ? (() => {
-        // Inline editor shows when not hidden (allows editing even when done)
-        return (
-          <div className="mt-3 rounded-lg border border-border bg-surface p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium text-foreground">Meet details</div>
-                <p className="mt-1 text-xs text-muted">Set the time and place so everyone's ready.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setHideMeetInstrument(true)}
-                className="text-xs text-muted hover:text-foreground underline"
-              >
-                Not now
-              </button>
-            </div>
-            <MeetDetailsEditor
-              trip={trip!}
-              currentUserId={currentUserId}
-              supabase={supabase}
-              activeGroupId={activeGroupId}
-              onUpdate={(updatedTrip) => {
-                setTrips((prev) => prev.map((t) => (t.id === trip!.id ? updatedTrip : t)));
-                setEditingMeetDetails(false);
-                setHideMeetInstrument(false);
-              }}
-            />
-          </div>
-        );
-      }) : null,
+      renderInline: null, // Meet details now rendered via domain instrument system
       renderLink: null, // Handled in rendering (row is clickable)
     };
 
-    // 3) travel_outline instrument
-    // Boundary: before_gameday (travel planning is a "locked → gameday" concern)
-    const travelInstrument: BaseCampInstrument = {
-      id: "travel_outline",
-      boundary: "before_gameday",
-      label: "Outline travel plan (so everyone can book)",
-      isRelevant: signals.travelInvolved === true,
-      isDone: signals.hasTravelOutline === true, // Done when travel_outline (travelNote) is non-empty
-      chromeLine: signals.hasTravelOutline ? "Travel: outlined" : null,
-      pastLine: null, // No past line (keep sparse)
-      renderInline: null, // Opens sheet, not inline
-      renderLink: null, // Handled in rendering (row is clickable)
-    };
-
-    // Build base instruments array (ordered: trip_name, confirm_details, meet_details, travel_outline)
-    // Note: signups_close instrument removed - control now lives on anchors
-    const baseInstruments: BaseCampInstrument[] = [tripNameInstrument, meetDetailsInstrument, travelInstrument];
+    // Build base instruments array (only meet_details remains as legacy)
+    // Note: trip_name and signups_close instruments removed - now domain instruments
+    const baseInstruments: BaseCampInstrument[] = [meetDetailsInstrument];
     
     
     return baseInstruments;
-  }, [signals, trip, currentUserId, hideMeetInstrument, supabase, activeGroupId, isGroupTripPage, canonicalPhase, scoringStarted, isTripGroupAdmin]);
+  }, [signals, event, trip, currentUserId, supabase, activeGroupId, isGroupTripPage, scoringStarted, isTripGroupAdmin, policy]);
 
-  // Sync hideMeetInstrument when meet details are added
-  useEffect(() => {
-    if (!signals || !signals.hasMeetDetails) return;
-    setHideMeetInstrument(false);
-  }, [signals?.hasMeetDetails]);
 
-  // Initialize signups close date value from trip (SGT-safe)
-  useEffect(() => {
-    if (!trip || !signals) return;
-    const closeDateYmd = signals.signupsCloseDateYmd;
-    if (signupsCloseDateValue !== closeDateYmd) {
-      setSignupsCloseDateValue(closeDateYmd || "");
-    }
-  }, [trip?.date, trip?.cutoffAt, signals?.signupsCloseDateYmd]);
-
-  // Initialize travel outline value from trip
-  useEffect(() => {
-    if (!trip || !signals) return;
-    const outlineValue = signals.travelOutline || "";
-    if (travelOutlineValue !== outlineValue && !showTravelOutlineSheet) {
-      setTravelOutlineValue(outlineValue);
-    }
-  }, [trip?.travelNote, signals?.travelOutline, showTravelOutlineSheet]);
 
   // Scroll to meet-details anchor if hash is present
   useEffect(() => {
@@ -1401,54 +879,25 @@ export default function TripDetailPage() {
     }
   }, [trip]);
 
-  // Handle ?edit=meet query param: open editor for hosts, show info notice for non-hosts
+  // Handle ?edit=meet query param: scroll to meet-details section
   useEffect(() => {
     if (!trip) return;
     const editParam = searchParams?.get("edit");
     if (editParam === "meet") {
-      const canEditMeet = canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin);
-      if (canEditMeet) {
-        // Host: open the inline editor
-        setHideMeetInstrument(false);
-        setShowMeetDetailsInfoNotice(false);
-        // Scroll to meet-details section
-        setTimeout(() => {
-          const element = document.getElementById('meet-details');
-          if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }, 100);
-      } else {
-        // Non-host: remove query param and show info notice
-        if (router && tripId) {
-          router.replace(`/trips/${tripId}`, { scroll: false });
+      // Scroll to meet-details section (if it exists in BaseCamp lane)
+      setTimeout(() => {
+        const element = document.getElementById('meet-details');
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-        setShowMeetDetailsInfoNotice(true);
-        setHideMeetInstrument(true); // Ensure editor is not shown
+      }, 100);
+      // Remove query param after scrolling
+      if (router && tripId) {
+        router.replace(`/trips/${tripId}`, { scroll: false });
       }
-    } else {
-      // Reset notice when edit param is not present
-      setShowMeetDetailsInfoNotice(false);
     }
-  }, [trip, currentUserId, scoringStarted, isTripGroupAdmin, searchParams, router, tripId]);
+  }, [trip, searchParams, router, tripId]);
 
-  // Sync meet details edit state when trip changes
-  useEffect(() => {
-    if (!trip) return;
-    const meetTimeValue =
-      (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime || "").trim();
-    const meetingPointValue =
-      (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint || "").trim();
-    const noteValue =
-      (trip.logistics?.notes || "").trim();
-    const hasMeetDetails = isHostedRound(trip)
-      ? Boolean(meetTimeValue || meetingPointValue || noteValue)
-      : Boolean(meetTimeValue || meetingPointValue);
-    // If details become available (e.g. just saved), collapse to read-only.
-    if (hasMeetDetails) setEditingMeetDetails(false);
-    // If details are cleared somehow, go back to edit mode.
-    if (!hasMeetDetails) setEditingMeetDetails(true);
-  }, [trip]);
 
   // Sync trip name edit state when trip changes
   useEffect(() => {
@@ -1464,10 +913,11 @@ export default function TripDetailPage() {
   const signupOpenDateYmd = Number.isFinite(signupOpenUtc)
     ? new Date(signupOpenUtc).toISOString().slice(0, 10)
     : null;
+  const resultSnapshotForScheduled = trip ? getResultSnapshot(trip) : null;
   const isScheduled =
     !!trip &&
     trip.status === "open" &&
-    !trip.result &&
+    !resultSnapshotForScheduled?.exists &&
     Number.isFinite(signupOpenUtc) &&
     Date.now() < signupOpenUtc;
 
@@ -1497,65 +947,6 @@ export default function TripDetailPage() {
   // Debug state tracking removed - use React DevTools instead
 
   const [hcp, setHcp] = useState<string>("");
-  const [attendeeProfilePhotos, setAttendeeProfilePhotos] = useState<
-    Array<{ memberId: string; name: string; photoUrl: string | null }>
-  >([]);
-  const [hostedRoundAttendees, setHostedRoundAttendees] = useState<
-    Array<{
-      memberId: string | null;
-      name: string;
-      photoUrl: string | null;
-      handicap: number | null;
-      handicapForTrip: number | null | undefined;
-      isWaitlist: boolean;
-    }>
-  >([]);
-  const [exportReadinessNotice, setExportReadinessNotice] = useState<{
-    show: boolean;
-    missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap">;
-  } | null>(null);
-
-  // Check export readiness when trip or myEntry changes (for cross_border_agent trips)
-  useEffect(() => {
-    async function checkReadiness() {
-      if (
-        trip?.scenarioKey === "cross_border_agent" &&
-        myEntry?.status === "confirmed" &&
-        currentUserId
-      ) {
-        try {
-          const readiness = await checkMemberExportReadiness(
-            currentUserId,
-            myEntry.handicapForTrip
-          );
-          
-          if (!readiness.isReady && readiness.missingFields.length > 0) {
-            // Only show notice if we don't already have one, or if missing fields changed
-            setExportReadinessNotice(prev => {
-              if (prev?.show && JSON.stringify(prev.missingFields) === JSON.stringify(readiness.missingFields)) {
-                return prev; // Don't update if same
-              }
-              return {
-                show: true,
-                missingFields: readiness.missingFields,
-              };
-            });
-          } else if (readiness.isReady) {
-            // Hide notice if member becomes ready
-            setExportReadinessNotice(null);
-          }
-        } catch (error) {
-          // Silently fail - don't show errors
-          console.warn("Failed to check export readiness:", error);
-        }
-      } else if (trip?.scenarioKey !== "cross_border_agent" || myEntry?.status !== "confirmed") {
-        // Hide notice if trip is not cross_border_agent or member is not confirmed
-        setExportReadinessNotice(null);
-      }
-    }
-    
-    checkReadiness();
-  }, [trip?.scenarioKey, trip?.id, myEntry?.status, myEntry?.handicapForTrip, currentUserId]);
 
   // Compute confirmed and waitlist before early returns (with fallback for null trip)
   const confirmed = useMemo(() => {
@@ -1584,134 +975,6 @@ export default function TripDetailPage() {
     setHcp(v === null || v === undefined ? "" : String(v));
   }, [myEntry, profileHandicap]);
 
-  // Fetch profile photos for confirmed attendees (up to 4)
-  useEffect(() => {
-    async function loadAttendeeProfilePhotos() {
-      if (!trip || confirmed.length === 0) {
-        setAttendeeProfilePhotos([]);
-        return;
-      }
-
-      // Get up to 4 confirmed attendees with memberIds
-      const attendeesWithMemberIds = confirmed
-        .filter((a) => a.memberId)
-        .slice(0, 4);
-
-      if (attendeesWithMemberIds.length === 0) {
-        setAttendeeProfilePhotos([]);
-        return;
-      }
-
-      try {
-        const { data: memberData } = await supabase
-          .from("members")
-          .select("id,profile_photo_path,display_name,full_name")
-          .in(
-            "id",
-            attendeesWithMemberIds.map((a) => a.memberId!)
-          );
-
-        if (memberData) {
-          const photos = attendeesWithMemberIds.map((attendee) => {
-            const member = memberData.find((m) => m.id === attendee.memberId);
-            const photoPath = member?.profile_photo_path;
-            const photoUrl = photoPath
-              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${photoPath}`
-              : null;
-            return {
-              memberId: attendee.memberId!,
-              name: attendee.name,
-              photoUrl,
-            };
-          });
-          setAttendeeProfilePhotos(photos);
-        }
-      } catch (error) {
-        perfLog("loadAttendeeProfilePhotos: error", { error: error instanceof Error ? error.message : String(error) });
-        setAttendeeProfilePhotos([]);
-      }
-    }
-
-    loadAttendeeProfilePhotos();
-  }, [trip, confirmed, supabase]);
-
-  // Fetch full attendee data for hosted rounds (avatar + handicap)
-  useEffect(() => {
-    async function loadHostedRoundAttendees() {
-      if (!trip || !isHostedRound(trip)) {
-        setHostedRoundAttendees([]);
-        return;
-      }
-
-      const allAttendees = [...confirmed, ...waitlist];
-      if (allAttendees.length === 0) {
-        setHostedRoundAttendees([]);
-        return;
-      }
-
-      // Get all attendees with memberIds
-      const attendeesWithMemberIds = allAttendees.filter((a) => a.memberId);
-
-      if (attendeesWithMemberIds.length === 0) {
-        // If no memberIds, still show attendees with names and handicapForTrip
-        setHostedRoundAttendees(
-          allAttendees.map((a) => ({
-            memberId: a.memberId || null,
-            name: a.name,
-            photoUrl: null,
-            handicap: null,
-            handicapForTrip: a.handicapForTrip,
-            isWaitlist: a.status === "waitlist",
-          }))
-        );
-        return;
-      }
-
-      try {
-        const { data: memberData } = await supabase
-          .from("members")
-          .select("id,profile_photo_path,display_name,full_name,declared_handicap")
-          .in(
-            "id",
-            attendeesWithMemberIds.map((a) => a.memberId!)
-          );
-
-        if (memberData) {
-          const attendees = allAttendees.map((attendee) => {
-            const member = memberData.find((m) => m.id === attendee.memberId);
-            const photoPath = member?.profile_photo_path;
-            const photoUrl = photoPath
-              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${photoPath}`
-              : null;
-            return {
-              memberId: attendee.memberId || null,
-              name: attendee.name,
-              photoUrl,
-              handicap: member?.declared_handicap ?? null,
-              handicapForTrip: attendee.handicapForTrip,
-              isWaitlist: attendee.status === "waitlist",
-            };
-          });
-          setHostedRoundAttendees(attendees);
-        }
-      } catch (error) {
-        perfLog("loadHostedRoundAttendees: error", { error: error instanceof Error ? error.message : String(error) });
-        // Fallback to basic data
-        setHostedRoundAttendees(
-          allAttendees.map((a) => ({
-            memberId: a.memberId || null,
-            name: a.name,
-            photoUrl: null,
-            handicap: null,
-            handicapForTrip: a.handicapForTrip,
-            isWaitlist: a.status === "waitlist",
-          }))
-        );
-      }
-    }
-
-    loadHostedRoundAttendees();
-  }, [trip, confirmed, waitlist, supabase]);
 
   if (!tripId) {
     return (
@@ -1738,220 +1001,8 @@ export default function TripDetailPage() {
 
   // From here down, trip is guaranteed
   const tripIdSafe = trip.id;
-  const locked = isTripLocked(trip);
-  const joinDisabled = locked || isScheduled || trip.status === "cancelled";
 
-  // Meet details state: derive current values and edit mode
-  const meetTimeValue =
-    (trip.decisionLogistics?.meetTime || trip.logistics?.meetTime || "").trim();
 
-  const meetingPointValue =
-    (trip.decisionLogistics?.meetingPoint || trip.logistics?.meetingPoint || "").trim();
-  
-  const noteValue =
-    (trip.logistics?.notes || "").trim();
-
-  const hasMeetDetails = isHostedRound(trip)
-    ? Boolean(meetTimeValue || meetingPointValue || noteValue)
-    : Boolean(meetTimeValue || meetingPointValue);
-
-  async function handleImIn() {
-    // Prevent RSVP changes once scoring has started
-    if (scoringStarted) return;
-    
-    // Prevent duplicate joins
-    if (myEntry) return;
-
-    if (!currentUserId || !activeGroupId) {
-      alert("You must be signed in and have an active group to join a trip.");
-      return;
-    }
-
-    try {
-      // Use bootstrap data - fetch handicap from members table for trip-specific value
-      const { data: memberData } = await supabase
-        .from("members")
-        .select("full_name,display_name,nationality,declared_handicap")
-        .eq("id", currentUserId)
-        .maybeSingle();
-
-      const existingHandicap =
-        memberData && typeof memberData.declared_handicap === "number"
-          ? memberData.declared_handicap
-          : null;
-
-      // Prepare the join action function
-      const continueWithHandicap = async (handicapValue: number | null) => {
-        try {
-          await supabase
-            .from("members")
-            .update({
-              declared_handicap: handicapValue,
-              last_seen: new Date().toISOString(),
-              full_name: memberData?.full_name ?? null,
-              display_name: memberData?.display_name ?? null,
-              nationality: memberData?.nationality ?? null,
-            })
-            .eq("id", currentUserId);
-
-          const updated = await joinTrip(trips, tripIdSafe, handicapValue, activeGroupId);
-          setTrips(updated);
-          
-          // Reload trips to get fresh data
-          if (activeGroupId) {
-            try {
-              const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
-              setTrips(freshTrips);
-              
-              // Check if this is a cross_border_agent trip and if member needs to complete details
-              const joinedTrip = freshTrips.find(t => t.id === tripIdSafe);
-              if (joinedTrip?.scenarioKey === "cross_border_agent" && currentUserId) {
-                // Find the member's attendee entry
-                const myAttendee = joinedTrip.attendees.find(
-                  a => a.memberId === currentUserId || a.name === currentUserName
-                );
-                
-                if (myAttendee?.status === "confirmed") {
-                  // Check export readiness
-                  const readiness = await checkMemberExportReadiness(
-                    currentUserId,
-                    myAttendee.handicapForTrip
-                  );
-                  
-                  if (!readiness.isReady && readiness.missingFields.length > 0) {
-                    // Show notice to complete details
-                    setExportReadinessNotice({
-                      show: true,
-                      missingFields: readiness.missingFields,
-                    });
-                  }
-                }
-              }
-            } catch (reloadError) {
-              perfLog("handleImIn: reload error", { tripId: tripIdSafe, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
-            }
-          }
-        } catch (error) {
-          perfLog("handleImIn: error", { tripId: tripIdSafe, error: error instanceof Error ? error.message : String(error) });
-          alert(
-            `Failed to join trip: ${error instanceof Error ? error.message : String(error)}`
-          );
-        }
-      };
-
-        if (existingHandicap !== null) {
-          // Show confirm modal to ask if they want to edit
-          setConfirmModal({
-            isOpen: true,
-            title: "Edit handicap?",
-            message: `Your current handicap is ${existingHandicap}. Do you want to edit it before joining this trip?`,
-            onConfirm: () => {
-              setConfirmModal({ ...confirmModal, isOpen: false });
-              // Show prompt modal for editing handicap
-              setPromptModal({
-                isOpen: true,
-                title: "Enter handicap",
-                message: "Enter your handicap for this trip (0–36), or leave blank to keep it the same:",
-                defaultValue: String(existingHandicap),
-                placeholder: "0–36",
-                onConfirm: (input: string) => {
-                  setPromptModal({ ...promptModal, isOpen: false });
-                  const trimmed = input.trim();
-                  let handicapValue: number | null = existingHandicap;
-                  if (trimmed === "") {
-                    handicapValue = existingHandicap;
-                  } else {
-                    const parsed = Number(trimmed);
-                    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-                      alert("Handicap must be a number between 0 and 36.");
-                      return;
-                    }
-                    handicapValue = parsed;
-                  }
-                  void continueWithHandicap(handicapValue);
-                },
-                onCancel: () => {
-                  setPromptModal({ ...promptModal, isOpen: false });
-                  // Join with existing handicap even if they cancel the prompt
-                  void continueWithHandicap(existingHandicap);
-                },
-              });
-            },
-            onCancel: () => {
-              setConfirmModal({ ...confirmModal, isOpen: false });
-              // Use existing handicap without editing
-              void continueWithHandicap(existingHandicap);
-            },
-          });
-        } else {
-          // Show prompt modal for new handicap
-          setPromptModal({
-            isOpen: true,
-            title: "Enter handicap",
-            message: "Please enter your current handicap (0–36), or leave blank if you are not sure yet:",
-            defaultValue: "",
-            placeholder: "0–36",
-            onConfirm: (input: string) => {
-              setPromptModal({ ...promptModal, isOpen: false });
-              const trimmed = input.trim();
-              let handicapValue: number | null = null;
-              if (trimmed !== "") {
-                const parsed = Number(trimmed);
-                if (!Number.isFinite(parsed) || parsed < 0 || parsed > 36) {
-                  alert("Handicap must be a number between 0 and 36.");
-                  return;
-                }
-                handicapValue = parsed;
-              }
-              void continueWithHandicap(handicapValue);
-            },
-            onCancel: () => {
-              setPromptModal({ ...promptModal, isOpen: false });
-              // Join without handicap
-              void continueWithHandicap(null);
-            },
-          });
-        }
-    } catch (error) {
-      perfLog("handleImIn: member update error", { tripId: tripIdSafe, error: error instanceof Error ? error.message : String(error) });
-      alert(
-        `Failed to join trip: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  async function handleImOut() {
-    // Prevent RSVP changes once scoring has started
-    if (scoringStarted) return;
-    
-    setConfirmModal({
-      isOpen: true,
-      title: "Leave this trip?",
-      message: "You'll be removed from the attendee list.",
-      onConfirm: async () => {
-        setConfirmModal({ ...confirmModal, isOpen: false });
-        try {
-          const updated = await leaveTrip(trips, tripIdSafe, activeGroupId || undefined);
-          setTrips(updated);
-          // Reload trips to get fresh data
-          if (activeGroupId) {
-            try {
-              const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
-              setTrips(freshTrips);
-            } catch (reloadError) {
-              perfLog("handleImOut: reload error", { tripId: tripIdSafe, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
-            }
-          }
-        } catch (error) {
-          perfLog("handleImOut: error", { tripId: tripIdSafe, error: error instanceof Error ? error.message : String(error) });
-          alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      },
-      onCancel: () => {
-        setConfirmModal({ ...confirmModal, isOpen: false });
-      },
-    });
-  }
 
   async function saveHandicap() {
     if (!myEntry || !currentUserId) return;
@@ -2052,15 +1103,6 @@ export default function TripDetailPage() {
       : null;
 
   const confirmedCountValue = trip.attendees.filter((a) => a.status === "confirmed").length;
-
-  // Helper function to get initials from name
-  function getInitials(name: string): string {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  }
   
   return (
     <div className={isHostedRoundTrip ? "space-y-3 pb-24" : "space-y-4 pb-24"}>
@@ -2166,7 +1208,7 @@ export default function TripDetailPage() {
               </div>
 
               {/* Compiled details summary (from instruments, read-only) */}
-              {instruments
+              {baseCampInstruments
                 .filter(instrument => instrument.chromeLine)
                 .map((instrument, idx) => (
                   <div key={instrument.id} className="text-xs text-muted">
@@ -2175,691 +1217,36 @@ export default function TripDetailPage() {
                 ))}
 
               {/* Host indication */}
-              {isGroupTripPage ? (
-                tripGroupName ? (
-                  <div className="text-sm text-secondary">
-                    Hosted by {tripGroupName}
-                  </div>
-                ) : null
-              ) : trip.createdByMemberName ? (
+              {hostLabel && (
                 <div className="text-sm text-secondary">
-                  {trip.createdByMemberId === currentUserId ? "Hosted by you" : `Hosted by ${trip.createdByMemberName.split(" ")[0]}`}
+                  {hostLabel}
                 </div>
-              ) : null}
-            </section>
-
-            {/* Zone B: Base Camp (Narrative Spine) */}
-            <section aria-label="Base Camp" className="mt-6">
-              {/* Rail/spine begins here, not above chrome */}
-              <div className="grid grid-cols-[28px_1fr] gap-x-3 sm:grid-cols-[40px_1fr]">
-              {/* Row 1: Top anchor */}
-              {/* Left cell: Current phase node + tick (spine starts here, no spine above) */}
-              <div className="relative flex items-start">
-                <div className="relative z-10 flex items-center pt-[0.375rem]">
-                  <div className="h-2.5 w-2.5 rounded-full bg-ink-700 ring-2 ring-ink-700/20 -translate-x-1/2" />
-                  <div className="absolute left-0 w-3 h-px bg-border translate-x-1/2" style={{ top: "6px" }} />
-                </div>
-                {/* Spine segment from top node down (connects to Row 2) */}
-                <div className="absolute left-0 top-[1.125rem] bottom-0 w-px bg-border" />
-              </div>
-              {/* Right cell: Top anchor (system-owned statement, may be actionable) */}
-              <div id="base-camp-top-anchor" className="pt-[0.375rem]">
-                {canonicalPhase && (() => {
-                  // Format date helper for anchors
-                  const formatDateForAnchor = (ymd: string): string => {
-                    const [year, month, day] = ymd.split('-').map(Number);
-                    const dateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-                    const dayName = dateObj.toLocaleDateString("en-GB", { weekday: "short" });
-                    const dayNum = dateObj.getUTCDate();
-                    const mon = dateObj.toLocaleDateString("en-GB", { month: "short" });
-                    return `${dayName} ${dayNum} ${mon}`;
-                  };
-
-                  // Compute anchor actionability (host/admin only)
-                  // Scheduled phase: top anchor not actionable (no up chevron)
-                  const topAnchorIsActionable =
-                    canEdit && canonicalPhase !== "scheduled" && (canonicalPhase === "signups_open" || canonicalPhase === "locked");
-
-                  // Top anchor text mapping
-                  let topAnchorText: string | null = null;
-                  switch (canonicalPhase) {
-                    case "scheduled":
-                      topAnchorText = "Scheduled.";
-                      break;
-                    case "signups_open":
-                      topAnchorText = "Sign-ups are open now.";
-                      break;
-                    case "locked":
-                      topAnchorText = "Sign-ups are closed.";
-                      break;
-                    case "gameday":
-                      topAnchorText = "GameDay.";
-                      break;
-                    case "in_play":
-                      topAnchorText = "In play.";
-                      break;
-                    case "completed":
-                      topAnchorText = "Completed.";
-                      break;
-                  }
-
-                  if (!topAnchorText) return null;
-
-                  return topAnchorIsActionable ? (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        if (!topAnchorIsActionable) return;
-                        setShowTopAnchorSheet(true);
-                      }}
-                      onKeyDown={(e) => {
-                        if ((e.key === "Enter" || e.key === " ") && topAnchorIsActionable) {
-                          e.preventDefault();
-                          setShowTopAnchorSheet(true);
-                        }
-                      }}
-                      className="w-full text-sm text-muted font-medium flex items-center justify-between gap-3 hover:opacity-80 cursor-pointer"
-                    >
-                      <span>{topAnchorText}</span>
-                      {topAnchorIsActionable && (
-                        <div className="shrink-0 opacity-60">
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted font-medium">
-                      {topAnchorText}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Row 2: Between-anchor instrument lane (readiness) */}
-              {/* Left cell: Spine segment (connects Row 1 to Row 3) */}
-              <div className="relative">
-                <div className="absolute left-0 top-0 bottom-0 w-px bg-border" />
-              </div>
-              {/* Right cell: Between-anchor content (instrument slots) - extra horizontal padding for breathing room */}
-              <div className="mt-10 pb-10 pl-6">
-                {/* Show info notice for non-hosts who tried to edit */}
-                {showMeetDetailsInfoNotice && !canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin) && (
-                  <div className="mb-6">
-                    <InlineNotice
-                      variant="info"
-                      title="Meet details being confirmed"
-                      body="Only the organiser can update meet details."
-                    />
-                  </div>
-                )}
-                {/* Render meet details if missing (host can edit until GameDay/scoring starts) */}
-                {!signals?.hasMeetDetails && canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin) && signals?.groupMeetup === true && (() => {
-                  const meetInstrument = instruments.find(i => i.id === "meet_details");
-                  if (!meetInstrument || !meetInstrument.renderInline) return null;
-                  return (
-                    <div className="mb-6 rounded-lg border border-border bg-surface p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-medium text-foreground">Meet details</div>
-                          <p className="mt-1 text-xs text-muted">Set the time and place so everyone's ready.</p>
-                        </div>
-                      </div>
-                      <MeetDetailsEditor
-                        trip={trip!}
-                        currentUserId={currentUserId}
-                        supabase={supabase}
-                        activeGroupId={activeGroupId}
-                        onUpdate={(updatedTrip) => {
-                          setTrips((prev) => prev.map((t) => (t.id === trip!.id ? updatedTrip : t)));
-                          setEditingMeetDetails(false);
-                          setHideMeetInstrument(false);
-                        }}
-                      />
-                    </div>
-                  );
-                })()}
-                {canonicalPhase && canonicalPhase !== "gameday" && canonicalPhase !== "in_play" && canonicalPhase !== "completed" && (() => {
-                  // Get lane instrument IDs for current phase
-                  const laneInstrumentIds = getLaneInstrumentIds(canonicalPhase);
-                  
-                  // Filter registry by phase lane (keep both outstanding AND done instruments in lane)
-                  const activeInstruments = instruments.filter(i => 
-                    i.isRelevant && 
-                    laneInstrumentIds.includes(i.id)
-                  );
-
-                  // Guardrail: Only one inline instrument visible at a time (v1 constraint)
-                  // Select the first instrument (stable order) that is eligible for inline rendering
-                  // Note: renderInline is null when instrument uses sheet or user cannot edit
-                  const activeInlineInstrumentId = (() => {
-                    // Check instruments in stable order: meet_details (inline), travel_outline (sheet)
-                    // Inline editor shows when instrument is not hidden (allows editing even when done)
-                    for (const instrument of instruments) {
-                      if (
-                        instrument.isRelevant &&
-                        instrument.renderInline && // renderInline exists only for meet_details inline editor
-                        !hideMeetInstrument && // Respect "Not now" state
-                        canEdit
-                      ) {
-                        return instrument.id;
-                      }
-                    }
-                    return null;
-                  })();
-
-                  // Note: Completed instruments stay in-lane (not shown as past lines)
-                  // Past lines only appear after moment state changes (when instrument is no longer in activeInstruments)
-
-                  return (
-                    <div className="space-y-6">
-                        {activeInstruments.slice(0, 3).map((instrument) => {
-                          // Compute if row is actionable (can edit and not done, or done but can still edit)
-                          const isActionable = canEdit && (
-                            instrument.id === "trip_name" || 
-                            instrument.id === "meet_details" || 
-                            instrument.id === "travel_outline"
-                          );
-                          
-                          // trip_name: clickable row (!isDone) or completed row (isDone)
-                          if (instrument.id === "trip_name") {
-                            // If done: show tick only, not clickable
-                            if (instrument.isDone) {
-                              return (
-                                <div key={instrument.id}>
-                                  <div className="text-sm flex items-center justify-between gap-3 text-muted opacity-60">
-                                    <span>{instrument.label}</span>
-                                    <div className="shrink-0">
-                                      <svg className="h-4 w-4 text-muted opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            }
-                            // If not done: clickable with chevron, opens bottom sheet
-                            if (isActionable) {
-                              return (
-                                <div key={instrument.id}>
-                                  <div
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => {
-                                      setShowTripNameSheet(true);
-                                      setTripNameValue(trip.tripName || "");
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if ((e.key === "Enter" || e.key === " ") && isActionable) {
-                                        e.preventDefault();
-                                        setShowTripNameSheet(true);
-                                        setTripNameValue(trip.tripName || "");
-                                      }
-                                    }}
-                                    className="text-sm flex items-center justify-between gap-3 hover:opacity-80 cursor-pointer text-foreground"
-                                  >
-                                    <span>{instrument.label}</span>
-                                    <div className="shrink-0 opacity-60">
-                                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                      </svg>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            }
-                          }
-                          
-                          // meet_details: opens inline editor when clicked
-                          if (instrument.id === "meet_details" && instrument.renderInline && instrument.id === activeInlineInstrumentId) {
-                            return (
-                              <div key={instrument.id}>
-                                {instrument.renderInline()}
-                              </div>
-                            );
-                          }
-                          
-                          // meet_details: show info notice for non-hosts who tried to edit
-                          if (instrument.id === "meet_details" && showMeetDetailsInfoNotice && !canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin)) {
-                            return (
-                              <div key={instrument.id} className="mb-6">
-                                <InlineNotice
-                                  variant="info"
-                                  title="Meet details being confirmed"
-                                  body="Only the organiser can update meet details."
-                                />
-                              </div>
-                            );
-                          }
-                          
-                          // meet_details: clickable row (opens inline if not done, or if done but can edit)
-                          if (instrument.id === "meet_details" && isActionable) {
-                            return (
-                              <div key={instrument.id}>
-                                <div
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={() => {
-                                    // Open inline editor (works for both done and not done)
-                                    setHideMeetInstrument(false);
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if ((e.key === "Enter" || e.key === " ") && isActionable) {
-                                      e.preventDefault();
-                                      setHideMeetInstrument(false);
-                                    }
-                                  }}
-                                  className={`text-sm flex items-center justify-between gap-3 hover:opacity-80 cursor-pointer ${
-                                    instrument.isDone ? "text-muted opacity-60" : "text-foreground"
-                                  }`}
-                                >
-                                  <span>{instrument.label}</span>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    {isActionable && (
-                                      <svg className="h-4 w-4 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                      </svg>
-                                    )}
-                                    {instrument.isDone && (
-                                      <svg className="h-4 w-4 text-muted opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-                          
-                          // travel_outline: clickable row (opens sheet)
-                          if (instrument.id === "travel_outline" && isActionable) {
-                            return (
-                              <div key={instrument.id}>
-                                <div
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={() => {
-                                    setShowTravelOutlineSheet(true);
-                                    setTravelOutlineValue(signals?.travelOutline || "");
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if ((e.key === "Enter" || e.key === " ") && isActionable) {
-                                      e.preventDefault();
-                                      setShowTravelOutlineSheet(true);
-                                      setTravelOutlineValue(signals?.travelOutline || "");
-                                    }
-                                  }}
-                                  className={`text-sm flex items-center justify-between gap-3 hover:opacity-80 cursor-pointer ${
-                                    instrument.isDone ? "text-muted opacity-60" : "text-foreground"
-                                  }`}
-                                >
-                                  <span>{instrument.label}</span>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    {isActionable && (
-                                      <svg className="h-4 w-4 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                      </svg>
-                                    )}
-                                    {instrument.isDone && (
-                                      <svg className="h-4 w-4 text-muted opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-                          
-                          // Fallback: non-actionable instruments (should not happen in normal flow)
-                          // Consistency: if done, show tick; if not done and not actionable, still show (read-only)
-                          return (
-                            <div key={instrument.id}>
-                              <div className={`text-sm ${instrument.isDone ? "text-muted opacity-60" : "text-foreground"} flex items-center justify-between gap-2`}>
-                                <span>{instrument.label}</span>
-                                {instrument.isDone && (
-                                  <div className="shrink-0">
-                                    <svg className="h-4 w-4 text-muted opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  </div>
-                                )}
-                                {!instrument.isDone && instrument.renderLink && instrument.renderLink()}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {/* Instrument-driven muted past lines (only show after moment state changes) */}
-                        {/* Note: completed instruments stay in-lane until moment change, so past lines are minimal */}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Row 3: Bottom anchor (next moment) - only render if canonicalPhase is not completed */}
-              {canonicalPhase && canonicalPhase !== "completed" && (
-                <>
-                  {/* Left cell: Next moment node + tick (spine from Row 2 connects here, stops at node) */}
-                  <div className="relative flex items-start">
-                    {/* Small spine segment above node (connects from Row 2) */}
-                    <div className="absolute left-0 top-0 w-px bg-border" style={{ height: "0.5rem" }} />
-                    {/* Next moment node (muted/hollow) */}
-                    <div className="relative z-10 flex items-center pt-[0.375rem]">
-                      <div className="h-2.5 w-2.5 rounded-full border-2 border-border bg-transparent -translate-x-1/2" />
-                      <div className="absolute left-0 w-3 h-px bg-border translate-x-1/2" style={{ top: "6px" }} />
-                    </div>
-                    {/* Spine stops at bottom node (no continuation below) */}
-                  </div>
-                  {/* Right cell: Bottom anchor (next moment statement, may be actionable) */}
-                  <div id="base-camp-bottom-anchor" className="pt-[0.375rem]">
-                    {canonicalPhase && (() => {
-                      // Format date helper for anchors
-                      const formatDateForAnchor = (ymd: string): string => {
-                        const [year, month, day] = ymd.split('-').map(Number);
-                        const dateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-                        const dayName = dateObj.toLocaleDateString("en-GB", { weekday: "short" });
-                        const dayNum = dateObj.getUTCDate();
-                        const mon = dateObj.toLocaleDateString("en-GB", { month: "short" });
-                        return `${dayName} ${dayNum} ${mon}`;
-                      };
-
-                      // Compute anchor actionability (host/admin only)
-                      // Scheduled phase: bottom anchor actionable (down chevron for "Open sign-ups now")
-                      const bottomAnchorIsActionable =
-                        canEdit && (canonicalPhase === "scheduled" || canonicalPhase === "signups_open");
-
-                      // Bottom anchor text mapping
-                      let bottomAnchorText: string | null = null;
-                      switch (canonicalPhase) {
-                        case "scheduled":
-                          bottomAnchorText = signals?.signupOpenDateYmd 
-                            ? `Sign-ups open on ${formatDateForAnchor(signals.signupOpenDateYmd)}.`
-                            : "Sign-ups will open.";
-                          break;
-                        case "signups_open":
-                          bottomAnchorText = signals?.signupsCloseDateFormatted
-                            ? `Sign-ups close on ${signals.signupsCloseDateFormatted}.`
-                            : null;
-                          break;
-                        case "locked":
-                          bottomAnchorText = `GameDay on ${formatDateForAnchor(trip.date)}.`;
-                          break;
-                        case "gameday":
-                          bottomAnchorText = "Next: In play.";
-                          break;
-                        case "in_play":
-                          bottomAnchorText = "Next: Completed.";
-                          break;
-                        default:
-                          bottomAnchorText = null;
-                      }
-
-                      if (!bottomAnchorText) return null;
-
-                      return bottomAnchorIsActionable ? (
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => {
-                            if (!bottomAnchorIsActionable) return;
-                            setShowBottomAnchorSheet(true);
-                            setSignupsCloseDateValue(signals?.signupsCloseDateYmd || "");
-                          }}
-                          onKeyDown={(e) => {
-                            if ((e.key === "Enter" || e.key === " ") && bottomAnchorIsActionable) {
-                              e.preventDefault();
-                              setShowBottomAnchorSheet(true);
-                              setSignupsCloseDateValue(signals?.signupsCloseDateYmd || "");
-                            }
-                          }}
-                          className="w-full text-sm text-muted opacity-60 font-medium flex items-center justify-between gap-3 hover:opacity-80 cursor-pointer"
-                        >
-                          <span>{bottomAnchorText}</span>
-                          {bottomAnchorIsActionable && (
-                            <div className="shrink-0 opacity-60">
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="text-sm text-muted opacity-60 font-medium">
-                          {bottomAnchorText}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  
-                  {/* Row 4: Next lane preview (non-interactive tease) */}
-                  {(() => {
-                    if (!canonicalPhase || canonicalPhase === "gameday" || canonicalPhase === "in_play") {
-                      return null;
-                    }
-                    
-                    // Get next phase
-                    const nextPhase = getNextPhase(canonicalPhase);
-                    if (!nextPhase) return null;
-                    
-                    // Get lane instrument IDs for next phase
-                    const nextLaneInstrumentIds = getLaneInstrumentIds(nextPhase);
-                    
-                    // Filter registry by next phase lane (preview only, non-interactive)
-                    let previewInstruments = instruments.filter(i => 
-                      i.isRelevant &&
-                      nextLaneInstrumentIds.includes(i.id)
-                    );
-                    
-                    // Cap to 2 items
-                    previewInstruments = previewInstruments.slice(0, 2);
-                    
-                    if (previewInstruments.length === 0) {
-                      return null;
-                    }
-                    
-                    // Map instrument IDs to noun-phrase labels (non-imperative)
-                    const previewLabelById: Record<string, string> = {
-                      meet_details: "Meet details",
-                      travel_outline: "Travel plan",
-                    };
-                    
-                    const getPreviewLabel = (instrument: BaseCampInstrument): string => {
-                      if (previewLabelById[instrument.id]) {
-                        return previewLabelById[instrument.id];
-                      }
-                      // Fallback: convert label to noun phrase (remove imperative verbs)
-                      const label = instrument.label;
-                      // Remove common imperative verbs: "Set", "Outline", "Add"
-                      const cleaned = label
-                        .replace(/^(Set|Outline|Add)\s+/i, "")
-                        .replace(/\s+\(.*?\)$/g, ""); // Remove parenthetical context
-                      return cleaned || instrument.id.replace(/_/g, " ").split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-                    };
-                    
-                    return (
-                      <>
-                        {/* Left cell: empty (no rail extension) */}
-                        <div />
-                        {/* Right cell: preview items + escape hatches */}
-                        <div className="mt-3 pl-6 space-y-2">
-                          {/* Escape hatches (group admins only, non-mutating) */}
-                          {canEdit && isGroupTripPage && (
-                            <div className="mb-3 rounded-lg bg-surface p-3 space-y-2">
-                              <div className="text-xs uppercase tracking-wide text-ink-500">Preview</div>
-                              <div className="text-xs text-ink-500">These do not change the trip.</div>
-                              <div className="space-y-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    // Scroll to top anchor
-                                    const topAnchor = document.getElementById('base-camp-top-anchor');
-                                    if (topAnchor) {
-                                      topAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                    }
-                                  }}
-                                  className="text-xs text-ink-600 hover:text-ink-700 hover:underline block"
-                                >
-                                  View previous phase
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    // Scroll to bottom anchor
-                                    const bottomAnchor = document.getElementById('base-camp-bottom-anchor');
-                                    if (bottomAnchor) {
-                                      bottomAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                    }
-                                  }}
-                                  className="text-xs text-ink-600 hover:text-ink-700 hover:underline block"
-                                >
-                                  View next phase
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    // Navigate to GameDay preview (read-only) - must resolve actual round ID
-                                    if (!trip) return;
-                                    try {
-                                      // Fetch coordination/active to get the correct route
-                                      const coordRes = await fetch("/api/coordination/active", { credentials: "include" });
-                                      if (coordRes.ok) {
-                                        const coordData = await coordRes.json();
-                                        if (coordData.active && coordData.active.tripId === String(trip.id) && coordData.active.resume?.route) {
-                                          router.push(coordData.active.resume.route);
-                                          return;
-                                        }
-                                      }
-                                    } catch (error) {
-                                      console.error("Failed to resolve GameDay route:", error);
-                                    }
-                                    // If no active round found, stay on trip details
-                                  }}
-                                  className="text-xs text-ink-600 hover:text-ink-700 hover:underline block"
-                                >
-                                  Preview GameDay
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          {/* Preview instruments */}
-                          <div className="opacity-50">
-                            {previewInstruments.map((instrument) => (
-                              <div key={instrument.id} className="text-xs text-muted truncate">
-                                {getPreviewLabel(instrument)}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </>
               )}
-              </div>
             </section>
+
+            {/* Zone B: Base Camp (Narrative Spine) - group trips only */}
+            <BaseCampLane
+              event={event}
+              policy={policy}
+              instruments={instruments}
+              baseCampInstruments={baseCampInstruments}
+              currentUserId={currentUserId}
+              supabase={supabase}
+              activeGroupId={activeGroupId}
+              onTripUpdate={(updatedTrip) => {
+                setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
+              }}
+              canEdit={canEdit}
+              trip={trip}
+              isGroupTripPage={isGroupTripPage}
+              onShowBottomAnchorSheet={() => setShowBottomAnchorSheet(true)}
+            />
 
             {/* Zone C: Secondary surfaces (below Base Camp) */}
             {/* Large instrument cards and coordination surfaces live here */}
             {/* v2.1.1: All post-BaseCamp content wrapped behind flag */}
             {SHOW_ZONE_C_GROUP_TRIPS && (
               <>
-            {/* Meet details instrument - hidden for group trips (replaced by inline instrument) */}
-            {!isGroupTripPage && (
-          <section id="meet-details" className="mt-6 rounded-xl border bg-surface shadow-sm p-5">
-            {(() => {
-              const canEditMeet = canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin);
-              
-              // Group trip: existing behavior
-              if (!canEditMeet) {
-                // Non-host view: show read-only or empty state
-                if (!hasMeetDetails) {
-                  return (
-                    <div>
-                      <div className="text-sm font-medium text-foreground mb-1">Meet details</div>
-                      <InlineNotice
-                        variant="info"
-                        title="Meet details being confirmed"
-                        body="Meet details haven't been added yet. Check back later."
-                      />
-                    </div>
-                  );
-                }
-                // Show read-only details
-                return (
-                  <div className="space-y-3">
-                    <div className="text-sm font-medium text-foreground">Meet details</div>
-                    <div>
-                      <div className="text-xs text-muted">Meet time</div>
-                      <div className="mt-1 text-sm text-foreground">
-                        {meetTimeValue ? meetTimeValue : "—"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted">Meeting point</div>
-                      <div className="mt-1 text-sm text-foreground">
-                        {meetingPointValue ? meetingPointValue : "—"}
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              
-              // Group trip host view: existing behavior
-              return (
-                <>
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-foreground">Meet details</div>
-                      <p className="mt-1 text-xs text-muted">
-                        {editingMeetDetails ? "Set the time and place so everyone's ready." : "All set."}
-                      </p>
-                    </div>
-
-                    {hasMeetDetails && (
-                      <button
-                        type="button"
-                        onClick={() => setEditingMeetDetails((v) => !v)}
-                        className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface"
-                      >
-                        {editingMeetDetails ? "Cancel" : "Edit"}
-                      </button>
-                    )}
-                  </div>
-
-                  {editingMeetDetails ? (
-                    <MeetDetailsEditor
-                      trip={trip}
-                      currentUserId={currentUserId}
-                      supabase={supabase}
-                      activeGroupId={activeGroupId}
-                      onUpdate={(updatedTrip) => {
-                        setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-                        setEditingMeetDetails(false);
-                      }}
-                    />
-                  ) : (
-                    <div className="space-y-3">
-                      <div>
-                        <div className="text-xs text-muted">Meet time</div>
-                        <div className="mt-1 text-sm text-foreground">
-                          {meetTimeValue ? meetTimeValue : "—"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted">Meeting point</div>
-                        <div className="mt-1 text-sm text-foreground">
-                          {meetingPointValue ? meetingPointValue : "—"}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-          </section>
-            )}
 
             {/* Travel instrument (group trips only, when travel involved) */}
             {isGroupTripPage && trip.travelInvolved && (
@@ -2880,7 +1267,7 @@ export default function TripDetailPage() {
             {/* Trip coordination section (organiser area) */}
             <section aria-label="Trip coordination" className="mt-6 space-y-4">
             {/* Next steps (host only) - only shown in Created phase */}
-            {trip.createdByMemberId === currentUserId && !isHostedRound(trip) && currentPhase === "created" && (() => {
+            {trip.createdByMemberId === currentUserId && !isHostedRound(trip) && isCreatedPhase && (() => {
               const isGroupTrip = trip.tripOrigin === "group" || trip.isPostedToGroup;
               const isHost = trip.createdByMemberId === currentUserId;
               const signupsOpen = trip.status === "open" && !isScheduled;
@@ -2895,14 +1282,20 @@ export default function TripDetailPage() {
                 onClick: () => void;
               }> = [];
 
-              // 1) Meet details - use instrument state (only if user can edit)
-              if (isGroupTrip && !signals?.hasMeetDetails && canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin)) {
+              // 1) Meet details - scroll to meet-details section (only if user can edit)
+              if (isGroupTrip && !signals?.hasMeetDetails && policy?.canEditMeetDetails) {
                 steps.push({
                   id: "meet_details",
                   intent: "Set the meetup time and place.",
                   action: "Add meet details",
                   onClick: () => {
-                    setHideMeetInstrument(false);
+                    // Scroll to meet-details section in BaseCamp lane
+                    setTimeout(() => {
+                      const element = document.getElementById('meet-details');
+                      if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }, 100);
                   },
                 });
               }
@@ -3037,61 +1430,6 @@ export default function TripDetailPage() {
 
             {/* Participant area */}
             <div className="mt-6 space-y-4">
-            <section className="rounded-xl border bg-surface p-5 shadow-sm">
-              <div className="text-sm font-medium text-muted mb-3">RSVP</div>
-
-              {scoringStarted ? (
-                <div className="mt-2">
-                  <div className="text-sm text-foreground">
-                    {myEntry?.status === "confirmed" ? "You're playing today." : "You're marked as not playing."}
-                  </div>
-                  <div className="mt-1 text-xs text-muted">
-                    Scoring has started.
-                  </div>
-                </div>
-              ) : (
-                <TripRsvpActions
-                  status={myEntry?.status}
-                  onJoin={handleImIn}
-                  onLeave={handleImOut}
-                  joinDisabled={joinDisabled}
-                  leaveDisabled={locked}
-                  showJoin={signals?.signupsOpenNow ?? (trip.status === "open" && !isScheduled)}
-                  showMicrocopy={true}
-                  neutralLeaveButton={false}
-                />
-              )}
-
-              {/* Export readiness notice for cross_border_agent trips */}
-              {trip.scenarioKey === "cross_border_agent" && 
-               myEntry?.status === "confirmed" && 
-               exportReadinessNotice?.show && (
-                <div className="mt-4 rounded-lg border border-border bg-background p-3">
-                  <div className="text-sm font-medium text-foreground mb-1">
-                    This trip requires passport details for the organiser / booking contact.
-                  </div>
-                  <div className="text-xs text-muted mb-3">
-                    Please complete your passport details to enable agent export.
-                  </div>
-                  <button
-                    onClick={() => {
-                      // Navigate to Me page with highlight query params for missing fields
-                      const highlightParams = exportReadinessNotice.missingFields.join(",");
-                      router.push(`/me?highlight=${encodeURIComponent(highlightParams)}`);
-                    }}
-                    className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface"
-                  >
-                    Add missing details
-                  </button>
-                </div>
-              )}
-
-              {(signals?.isScheduled ?? isScheduled) && (signals?.signupOpenDateYmd ?? signupOpenDateYmd) && (
-                <div className="mt-3 text-sm text-muted">
-                  Signups open on <span className="font-semibold">{signals?.signupOpenDateYmd ?? signupOpenDateYmd}</span> (30 days before the trip).
-                </div>
-              )}
-            </section>
 
             {/* Handicap snapshot */}
             <section className="border-t border-border bg-transparent px-1 pt-4">
@@ -3211,17 +1549,11 @@ export default function TripDetailPage() {
           )}
 
           {/* 4) Host indication (calm, secondary) */}
-          {isGroupTripPage ? (
-            tripGroupName ? (
-              <div className="mt-2 text-sm text-secondary">
-                Hosted by {tripGroupName}
-              </div>
-            ) : null
-          ) : trip.createdByMemberName ? (
+          {hostLabel && (
             <div className="mt-2 text-sm text-secondary">
-              {trip.createdByMemberId === currentUserId ? "Hosted by you" : `Hosted by ${trip.createdByMemberName}`}
+              {hostLabel}
             </div>
-          ) : null}
+          )}
 
           {/* 5) Trip state block (muted) */}
           {tripStateText && (
@@ -3253,367 +1585,11 @@ export default function TripDetailPage() {
             return null;
           })()}
 
-          {/* Meet details - hosted rounds only */}
-          <section id="meet-details" className="rounded-xl border bg-surface shadow-sm p-4">
-            {(() => {
-              const canEditMeet = canEditMeetDetails(currentUserId, trip, scoringStarted, isTripGroupAdmin);
-              
-              // Hosted round instrument behavior
-              if (!canEditMeet) {
-                // Non-host view: show read-only or empty state
-                const note = (trip.logistics?.notes)?.trim() || null;
-                if (!hasMeetDetails && !note) {
-                  return (
-                    <div>
-                      <div className="text-sm font-medium text-foreground mb-1">Meet details</div>
-                      <InlineNotice
-                        variant="info"
-                        title="Meet details being confirmed"
-                        body="Meet details haven't been added yet. Check back later."
-                      />
-                    </div>
-                  );
-                }
-                // Show read-only details
-                return (
-                  <div className="space-y-3">
-                    <div className="text-sm font-medium text-foreground">Meet details</div>
-                    <div>
-                      <div className="text-xs text-muted">Meet time</div>
-                      <div className="mt-1 text-sm text-foreground">
-                        {meetTimeValue ? meetTimeValue : "—"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted">Where to meet</div>
-                      <div className="mt-1 text-sm text-foreground">
-                        {meetingPointValue ? meetingPointValue : "—"}
-                      </div>
-                    </div>
-                    {note && (
-                      <div>
-                        <div className="text-xs text-muted">Note</div>
-                        <div className="mt-1 text-sm text-foreground whitespace-pre-wrap">
-                          {note}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              
-              // Host view: show instrument or read-only with edit button
-              if (editingMeetDetails) {
-                return (
-                  <HostedRoundMeetDetailsInstrument
-                    trip={trip}
-                    currentUserId={currentUserId}
-                    supabase={supabase}
-                    activeGroupId={activeGroupId}
-                    onUpdate={(updatedTrip) => {
-                      setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-                      setEditingMeetDetails(false);
-                    }}
-                  />
-                );
-              }
-              
-              // Read-only view with edit button
-              const note = (trip.logistics?.notes)?.trim() || null;
-              return (
-                <>
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div className="text-sm font-medium text-foreground">Meet details</div>
-                    {hasMeetDetails && (
-                      <button
-                        type="button"
-                        onClick={() => setEditingMeetDetails(true)}
-                        className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface"
-                      >
-                        Edit meetup
-                      </button>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-xs text-muted">Meet time</div>
-                      <div className="mt-1 text-sm text-foreground">
-                        {meetTimeValue ? meetTimeValue : "—"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted">Where to meet</div>
-                      <div className="mt-1 text-sm text-foreground">
-                        {meetingPointValue ? meetingPointValue : "—"}
-                      </div>
-                    </div>
-                    {note && (
-                      <div>
-                        <div className="text-xs text-muted">Note</div>
-                        <div className="mt-1 text-sm text-foreground whitespace-pre-wrap">
-                          {note}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              );
-            })()}
-          </section>
-
-          {/* RSVP - hosted rounds */}
-          <section className="border-t border-border bg-transparent px-1 pt-4">
-            <div className="text-sm font-medium text-muted mb-2">RSVP</div>
-
-            {scoringStarted ? (
-              <div className="mt-2">
-                <div className="text-sm text-foreground">
-                  {myEntry?.status === "confirmed" ? "You're playing today." : "You're marked as not playing."}
-                </div>
-                <div className="mt-1 text-xs text-muted">
-                  Scoring has started.
-                </div>
-              </div>
-            ) : (
-              <TripRsvpActions
-                status={myEntry?.status}
-                onJoin={handleImIn}
-                onLeave={handleImOut}
-                joinDisabled={joinDisabled}
-                leaveDisabled={locked}
-                showJoin={trip.status === "open" && !isScheduled}
-                showMicrocopy={true}
-                neutralLeaveButton={true}
-              />
-            )}
-          </section>
         </>
       )}
 
-      {/* 3) Logistics block (single coherent group) - hidden for hosted rounds, also hidden for group trips when Zone C is disabled */}
-      {!isHostedRound(trip) && (isGroupTripPage ? SHOW_ZONE_C_GROUP_TRIPS : true) && (trip.logistics?.meetingPoint || trip.ferry || trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails || trip.logistics?.notes) && (
-        <section className="rounded-xl border bg-surface p-5 shadow-sm">
-          <div className="mb-3 text-sm font-medium text-muted">Logistics</div>
 
-          <div className="space-y-2 text-sm text-foreground">
-            {trip.logistics?.meetingPoint && (
-              <div>{trip.logistics.meetingPoint}</div>
-            )}
 
-            {trip.ferry && (
-              <div>{trip.ferry}</div>
-            )}
-
-            {(trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails) && (
-              <div className="text-sm text-foreground whitespace-pre-wrap">
-                {trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails}
-              </div>
-            )}
-
-            {trip.logistics?.notes && (
-              <div className="text-sm text-foreground whitespace-pre-wrap">
-                {trip.logistics.notes}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Results section - hidden for group trips when Zone C is disabled */}
-      {(!isGroupTripPage || SHOW_ZONE_C_GROUP_TRIPS) && (
-      <section className="border-t border-border bg-transparent px-1 pt-4">
-        <div className={`text-sm font-medium ${isHostedRoundTrip ? "text-muted mb-1.5" : "text-muted mb-2"}`}>Results</div>
-
-        {trip.result ? (
-          <div className="flex items-center justify-between gap-3">
-            <div className={`text-sm ${isHostedRoundTrip ? "text-muted" : "text-foreground"}`}>Published</div>
-            <Link
-              href={`/results/${tripIdSafe}`}
-              className={`rounded-md border px-3 py-2 text-sm hover:bg-background ${isHostedRoundTrip ? "bg-transparent text-muted border-border" : "bg-surface text-foreground"}`}
-            >
-              View Results →
-            </Link>
-          </div>
-        ) : (
-          <div className={`text-sm ${isHostedRoundTrip ? "text-muted" : "text-muted"}`}>Not published yet.</div>
-        )}
-      </section>
-      )}
-
-      {/* Attendees section - hidden for group trips when Zone C is disabled */}
-      {(!isGroupTripPage || SHOW_ZONE_C_GROUP_TRIPS) && (
-      <section className="border-t border-border bg-transparent px-1 pt-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-sm font-medium text-muted">Attendees</div>
-          
-          {/* Profile photo avatars (up to 4, overlapping slightly) */}
-          {attendeeProfilePhotos.length > 0 && (
-            <div className="flex items-center -space-x-2">
-              {attendeeProfilePhotos.slice(0, 4).map((attendee) => (
-                <div
-                  key={attendee.memberId}
-                  className="relative h-7 w-7 shrink-0 rounded-full border-2 border-surface bg-background overflow-hidden"
-                  title={attendee.name}
-                >
-                  {attendee.photoUrl ? (
-                    <img
-                      src={attendee.photoUrl}
-                      alt={attendee.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-muted">
-                      {getInitials(attendee.name)}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {isHostedRoundTrip ? (
-          <>
-            <div className="text-sm text-foreground mb-3">
-              <span className="font-semibold">{confirmed.length}</span> confirmed
-              {waitlist.length ? (
-                <>
-                  {" "}
-                  · <span className="font-semibold">{waitlist.length}</span> waitlist
-                </>
-              ) : null}
-            </div>
-
-            <div className="space-y-1.5">
-              {hostedRoundAttendees
-                .filter((a) => !a.isWaitlist)
-                .map((attendee) => {
-                  const handicap = attendee.handicap ?? attendee.handicapForTrip ?? null;
-                  const displayName = attendee.name;
-                  
-                  return (
-                    <div
-                      key={attendee.memberId || attendee.name}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"
-                    >
-                      {/* Left: Photo + Name */}
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        {attendee.photoUrl ? (
-                          <img
-                            src={attendee.photoUrl}
-                            alt={displayName}
-                            className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-border"
-                          />
-                        ) : (
-                          <div className="h-12 w-12 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-sm font-medium text-muted">
-                            {displayName.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium text-foreground truncate">
-                            {displayName}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right: Handicap */}
-                      <div className="flex-shrink-0">
-                        <div className="text-sm text-muted">
-                          {handicap !== null && handicap !== undefined ? `HCP ${handicap}` : "HCP —"}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              
-              {hostedRoundAttendees.filter((a) => a.isWaitlist).length > 0 && (
-                <>
-                  <div className="pt-2 text-sm font-medium text-muted">Waitlist</div>
-                  {hostedRoundAttendees
-                    .filter((a) => a.isWaitlist)
-                    .map((attendee) => {
-                      const handicap = attendee.handicap ?? attendee.handicapForTrip ?? null;
-                      const displayName = attendee.name;
-                      
-                      return (
-                        <div
-                          key={attendee.memberId || attendee.name}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"
-                        >
-                          {/* Left: Photo + Name */}
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            {attendee.photoUrl ? (
-                              <img
-                                src={attendee.photoUrl}
-                                alt={displayName}
-                                className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-border"
-                              />
-                            ) : (
-                              <div className="h-12 w-12 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-sm font-medium text-muted">
-                                {displayName.charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium text-foreground truncate">
-                                {displayName}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Right: Handicap */}
-                          <div className="flex-shrink-0">
-                            <div className="text-sm text-muted">
-                              {handicap !== null && handicap !== undefined ? `HCP ${handicap}` : "HCP —"}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </>
-              )}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="text-sm text-foreground">
-              <span className="font-semibold">{confirmed.length}</span> confirmed
-              {waitlist.length ? (
-                <>
-                  {" "}
-                  · <span className="font-semibold">{waitlist.length}</span> waitlist
-                </>
-              ) : null}
-            </div>
-
-            <div className="mt-3 grid gap-2">
-              {confirmed.map((a, idx) => (
-                <div key={a.name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                  <span>
-                    {idx + 1}. {a.name}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {a.handicapForTrip !== undefined && a.handicapForTrip !== null ? `HCP ${a.handicapForTrip}` : ""}
-                  </span>
-                </div>
-              ))}
-
-              {waitlist.length ? <div className="pt-2 text-sm font-medium text-muted">Waitlist</div> : null}
-
-              {waitlist.map((a, idx) => (
-                <div key={a.name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                  <span>
-                    {idx + 1}. {a.name}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {a.handicapForTrip !== undefined && a.handicapForTrip !== null ? `HCP ${a.handicapForTrip}` : ""}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </section>
-      )}
       </div>
 
       <ConfirmModal
@@ -3628,7 +1604,7 @@ export default function TripDetailPage() {
       />
 
       {/* Top anchor action sheet */}
-      {showTopAnchorSheet && canonicalPhase && (
+      {showTopAnchorSheet && event && event.state === "locked" && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
             <div className="mb-4 flex items-center justify-between">
@@ -3645,7 +1621,7 @@ export default function TripDetailPage() {
             </div>
 
             <div className="space-y-4">
-              {canonicalPhase === "locked" ? (
+              {event && event.state === "locked" ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -3663,7 +1639,7 @@ export default function TripDetailPage() {
       )}
 
       {/* Bottom anchor action sheet - scheduled phase (Open sign-ups now) */}
-      {showBottomAnchorSheet && canonicalPhase === "scheduled" && (
+      {showBottomAnchorSheet && event && event.state === "forming" && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
             <div className="mb-4 flex items-center justify-between">
@@ -3707,7 +1683,7 @@ export default function TripDetailPage() {
       )}
 
       {/* Bottom anchor action sheet - signups_open phase */}
-      {showBottomAnchorSheet && canonicalPhase === "signups_open" && (
+      {showBottomAnchorSheet && event && event.state === "signups_open" && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
             <div className="mb-4 flex items-center justify-between">
@@ -3716,7 +1692,6 @@ export default function TripDetailPage() {
                 type="button"
                 onClick={() => {
                   setShowBottomAnchorSheet(false);
-                  setSignupsCloseDateValue(signals?.signupsCloseDateYmd || "");
                 }}
                 className="text-muted hover:text-foreground"
               >
@@ -3727,43 +1702,7 @@ export default function TripDetailPage() {
             </div>
 
             <div className="space-y-4">
-              {/* Action 1: Change sign-ups close date */}
-              <div>
-                <label className="mb-2 block text-sm font-medium text-foreground">
-                  Change sign-ups close date
-                </label>
-                <input
-                  type="date"
-                  value={signupsCloseDateValue || signals?.signupsCloseDateYmd || ""}
-                  onChange={(e) => setSignupsCloseDateValue(e.target.value)}
-                  className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30"
-                />
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowBottomAnchorSheet(false);
-                      setSignupsCloseDateValue(signals?.signupsCloseDateYmd || "");
-                    }}
-                    className="flex-1 rounded-lg bg-transparent text-ink-600 px-4 py-2 text-sm font-medium hover:text-ink-900 hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/10"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!signupsCloseDateValue) return;
-                      setShowBottomAnchorSheet(false);
-                      setPendingAction({ kind: "set_signups_close_date", dateIso: signupsCloseDateValue });
-                    }}
-                    className="flex-1 rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              {/* Action 2: Close sign-ups now */}
+              {/* Action: Close sign-ups now */}
               <div className="border-t border-border pt-4">
                 <button
                   type="button"
@@ -3810,7 +1749,8 @@ export default function TripDetailPage() {
           pendingAction?.kind === "close_signups_now" ? "danger" : "primary"
         }
         onConfirm={async () => {
-          if (!pendingAction || !currentUserId || !activeGroupId || !trip) {
+          const groupIdForTrip = tripGroupId || activeGroupId;
+          if (!pendingAction || !trip || !groupIdForTrip) {
             setPendingAction(null);
             return;
           }
@@ -3819,7 +1759,7 @@ export default function TripDetailPage() {
             switch (pendingAction.kind) {
               case "open_signups_now": {
                 // Set signupsOpenedAt = now ISO
-                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
                   signupsOpenedAt: new Date().toISOString(),
                 });
                 
@@ -3827,7 +1767,7 @@ export default function TripDetailPage() {
                 setTrips(updatedTrips);
                 
                 // Reload trips to get fresh data
-                const freshTrips = await loadTrips(activeGroupId, true);
+                const freshTrips = await loadTrips(groupIdForTrip, true);
                 const updatedTrip = freshTrips.find(t => t.id === trip.id);
                 
                 if (updatedTrip) {
@@ -3839,7 +1779,7 @@ export default function TripDetailPage() {
                 // Set cutoffAt = now ISO
                 const cutoffAtValue = new Date().toISOString();
                 
-                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
                   cutoffAt: cutoffAtValue,
                 });
                 
@@ -3847,7 +1787,7 @@ export default function TripDetailPage() {
                 setTrips(updatedTrips);
                 
                 // Reload trips to get fresh data
-                const freshTrips = await loadTrips(activeGroupId, true);
+                const freshTrips = await loadTrips(groupIdForTrip, true);
                 const updatedTrip = freshTrips.find(t => t.id === trip.id);
                 
                 if (updatedTrip) {
@@ -3860,7 +1800,7 @@ export default function TripDetailPage() {
                 const todaySGT = todayInSGT(); // YYYY-MM-DD
                 const cutoffAtValue = new Date(`${todaySGT}T23:59:59+08:00`).toISOString();
                 
-                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
                   cutoffAt: cutoffAtValue,
                 });
                 
@@ -3868,7 +1808,7 @@ export default function TripDetailPage() {
                 setTrips(updatedTrips);
                 
                 // Reload trips to get fresh data
-                const freshTrips = await loadTrips(activeGroupId, true);
+                const freshTrips = await loadTrips(groupIdForTrip, true);
                 const updatedTrip = freshTrips.find(t => t.id === trip.id);
                 
                 if (updatedTrip) {
@@ -3882,7 +1822,7 @@ export default function TripDetailPage() {
                   ? new Date(`${pendingAction.dateIso}T23:59:59+08:00`).toISOString()
                   : null;
                 
-                const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
+                const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
                   cutoffAt: cutoffAtValue || undefined,
                 });
                 
@@ -3890,7 +1830,7 @@ export default function TripDetailPage() {
                 setTrips(updatedTrips);
                 
                 // Reload trips to get fresh data
-                const freshTrips = await loadTrips(activeGroupId, true);
+                const freshTrips = await loadTrips(groupIdForTrip, true);
                 const updatedTrip = freshTrips.find(t => t.id === trip.id);
                 
                 if (updatedTrip) {
@@ -3912,86 +1852,6 @@ export default function TripDetailPage() {
         }}
       />
 
-      {/* Travel outline sheet */}
-      {showTravelOutlineSheet && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
-          <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Travel</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTravelOutlineSheet(false);
-                  setTravelOutlineValue(signals?.travelOutline || "");
-                }}
-                className="text-muted hover:text-foreground"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <textarea
-                  value={travelOutlineValue || ""}
-                  onChange={(e) => setTravelOutlineValue(e.target.value)}
-                  className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30 min-h-[120px] resize-y"
-                  placeholder="Outline the travel plan..."
-                />
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowTravelOutlineSheet(false);
-                      setTravelOutlineValue(signals?.travelOutline || "");
-                    }}
-                    className="flex-1 rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!currentUserId || !activeGroupId || !trip) return;
-                      try {
-                        // Persist travel_outline (stored as travel_note in DB)
-                        const { error } = await supabase
-                          .from("trips")
-                          .update({
-                            travel_note: travelOutlineValue.trim() || null,
-                          })
-                          .eq("legacy_id", trip.id);
-
-                        if (error) {
-                          throw error;
-                        }
-
-                        // Reload trips to get fresh data
-                        const freshTrips = await loadTrips(activeGroupId, true);
-                        const updatedTrip = freshTrips.find(t => t.id === trip.id);
-                        
-                        if (updatedTrip) {
-                          setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-                        }
-                        
-                        setShowTravelOutlineSheet(false);
-                      } catch (error) {
-                        console.error("Failed to save travel outline:", error);
-                        alert(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
-                      }
-                    }}
-                    className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Zone A overflow action sheet */}
       {showZoneAOverflowSheet && trip && (
@@ -4017,8 +1877,11 @@ export default function TripDetailPage() {
                 type="button"
                 onClick={() => {
                   setShowZoneAOverflowSheet(false);
-                  setShowTripNameSheet(true);
-                  setTripNameValue(trip.tripName || "");
+                  // Scroll to trip_name instrument
+                  const tripNameAnchor = document.getElementById('trip-name');
+                  if (tripNameAnchor) {
+                    tripNameAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
                 }}
                 className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface text-left"
               >
@@ -4049,71 +1912,6 @@ export default function TripDetailPage() {
       )}
 
       {/* Trip name sheet */}
-      {showTripNameSheet && trip && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
-          <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Trip name</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTripNameSheet(false);
-                  setTripNameValue(trip.tripName || "");
-                }}
-                className="text-muted hover:text-foreground"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <input
-                type="text"
-                value={tripNameValue}
-                onChange={(e) => setTripNameValue(e.target.value)}
-                placeholder="Trip name"
-                className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-foreground/30"
-                autoFocus
-              />
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowTripNameSheet(false);
-                    setTripNameValue(trip.tripName || "");
-                  }}
-                  className="flex-1 rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!currentUserId || !activeGroupId) return;
-                    try {
-                      // Update via API (consistent with other trip updates)
-                      const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
-                        tripName: tripNameValue.trim() || undefined,
-                      });
-                      
-                      setTrips(updatedTrips);
-                      setShowTripNameSheet(false);
-                    } catch (error) {
-                      console.error("Failed to save trip name:", error);
-                      alert(`Failed to save trip name: ${error instanceof Error ? error.message : String(error)}`);
-                    }
-                  }}
-                  className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <PromptModal
         isOpen={promptModal.isOpen}

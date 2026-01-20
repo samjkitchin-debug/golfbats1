@@ -6,7 +6,8 @@ import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
 import { loadTrips, joinTrip, leaveTrip, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
-import { isTripUpcoming, pickDefaultExpandedTrip, getEffectiveTripPhase } from "../../lib/tripDates";
+import { isTripUpcoming, pickDefaultExpandedTrip, getEffectiveTripPhase, computeSignupOpenAt } from "../../lib/tripDates";
+import { resolveSignupPhase, getEffectiveSignupOpenAt } from "../../lib/tripPhase";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
@@ -88,6 +89,7 @@ export default function TripsListPage() {
 
   useEffect(() => {
     document.title = "DayForeIt - Trips";
+    perfMark("trips:nav_start");
   }, []);
 
   // Bootstrap: fetch user, member profile, and group data in one call
@@ -133,6 +135,34 @@ export default function TripsListPage() {
     loadBootstrap();
   }, []);
 
+  // Refetch function for polling and visibility-based updates
+  const refetchTrips = useCallback(async () => {
+    if (approvedGroups.length === 0) return;
+
+    try {
+      // Load trips from all approved groups in parallel, bypassing cache
+      const tripsPromises = approvedGroups.map(async (group) => {
+        const groupTrips = await loadTrips(group.id, true);
+        return groupTrips.map((trip) => ({ ...trip, groupName: group.name, groupId: group.id }));
+      });
+      const allTripsArrays = await Promise.all(tripsPromises);
+      
+      const allTripsWithGroupsData = allTripsArrays.flat();
+      setAllTripsWithGroups(allTripsWithGroupsData);
+      
+      // Set trips for active group (for backward compatibility with join/leave handlers)
+      if (activeGroupId) {
+        const activeGroupIndex = approvedGroups.findIndex((g) => g.id === activeGroupId);
+        if (activeGroupIndex >= 0) {
+          const activeGroupTrips = allTripsArrays[activeGroupIndex].map(({ groupName, groupId, ...trip }) => trip);
+          setTrips(activeGroupTrips);
+        }
+      }
+    } catch (error) {
+      perfLog("refetchTrips: error", { error: error instanceof Error ? error.message : String(error) });
+    }
+  }, [approvedGroups, activeGroupId]);
+
   // Load trips and courses from all approved groups
   useEffect(() => {
     if (approvedGroups.length === 0) return;
@@ -162,12 +192,43 @@ export default function TripsListPage() {
         }
         
         setCourses(coursesData);
+        
+        // Mark page as usable once trips and courses are loaded
+        perfMark("trips:usable");
+        perfMeasure("trips:nav_to_usable", "trips:nav_start", "trips:usable");
       } catch (error) {
         perfLog("loadData: error", { error: error instanceof Error ? error.message : String(error) });
       }
     }
     loadData();
   }, [approvedGroups, activeGroupId]);
+
+  // Polling and visibility-based refetch for self-healing
+  useEffect(() => {
+    if (!activeGroupId) return;
+
+    // Immediate refetch on mount
+    refetchTrips();
+
+    // Set up polling interval (15 seconds)
+    const intervalId = setInterval(() => {
+      refetchTrips();
+    }, 15000);
+
+    // Set up visibility change listener
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refetchTrips();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Cleanup
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeGroupId, refetchTrips]);
 
   async function handleJoinTrip(tripId: number, trip: Trip) {
     try {
@@ -508,23 +569,14 @@ export default function TripsListPage() {
     }
 
     const now = Date.now();
-    const tripDate = new Date(trip.date + "T00:00:00").getTime();
-    const signupOpenAt = tripDate - 30 * 24 * 60 * 60 * 1000; // 30 days before trip
-    const cutoffPassed = isCutoffPassed(trip.cutoffAt);
+    const phase = resolveSignupPhase(trip, now);
     
-    // Not open yet (scheduled or before signup window)
-    if (trip.status === "open" && Number.isFinite(signupOpenAt) && now < signupOpenAt) {
-      const daysUntil = Math.ceil((signupOpenAt - now) / (1000 * 60 * 60 * 24));
-      const opensDate = new Date(signupOpenAt).toISOString().slice(0, 10);
-      return {
-        status: "not_open",
-        message: daysUntil === 1 ? "Opens tomorrow" : `Opens in ${daysUntil} days`,
-        opensDate: formatTripDateLong(opensDate),
-      };
+    // Use canonical phase to determine status
+    if (phase === "locked") {
+      return { status: "locked", message: "Sign-ups closed" };
     }
-
-    // Open for signups
-    if (trip.status === "open" && !cutoffPassed) {
+    
+    if (phase === "signups_open") {
       const result: { status: "open"; message: string; closesDate?: string } = {
         status: "open",
         message: "Sign-ups open",
@@ -535,9 +587,20 @@ export default function TripsListPage() {
       }
       return result;
     }
-
-    // Locked (closed or cutoff passed)
-    return { status: "locked", message: "Sign-ups closed" };
+    
+    // Scheduled (not open yet)
+    const effectiveOpenAt = getEffectiveSignupOpenAt(trip, now);
+    if (effectiveOpenAt !== null && now < effectiveOpenAt) {
+      const daysUntil = Math.ceil((effectiveOpenAt - now) / (1000 * 60 * 60 * 24));
+      const opensDate = new Date(effectiveOpenAt).toISOString().slice(0, 10);
+      return {
+        status: "not_open",
+        message: daysUntil === 1 ? "Opens tomorrow" : `Opens in ${daysUntil} days`,
+        opensDate: formatTripDateLong(opensDate),
+      };
+    }
+    
+    return { status: "not_open", message: "Not open" };
   }
 
   // Helper to format date with day for rows (2 lines: weekday + date)

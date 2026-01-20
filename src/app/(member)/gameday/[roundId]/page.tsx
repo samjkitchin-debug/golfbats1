@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { loadCourses, type Course, loadCoursePack, type CoursePack } from "../../../lib/courseActions";
 import Link from "next/link";
 import { InlineNotice } from "@/app/components/InlineNotice";
 import { isLegacyNumericId, safeParseUUID } from "@/app/lib/invariants";
+import { resolveGameDayContext } from "../../../lib/domain/gameday/resolveGameDayContext";
+import { buildGameDayPolicy } from "../../../lib/domain/gameday/gamedayPolicy";
+import { gamedayRegistry } from "../../../lib/domain/gameday/instruments/gamedayRegistry";
+import type { GameDayInstrumentKey } from "../../../lib/domain/gameday/gamedayTypes";
+import InlineGameDayInstrumentSection from "../../../components/InlineGameDayInstrumentSection";
+import type { FlightsSnapshot } from "../../../lib/domain/flights/flightsTypes";
 
 // Helper to extract error message from API responses (handles both old and new formats)
 function extractErrorMessage(errorResponse: any): string {
@@ -18,15 +24,7 @@ function extractErrorMessage(errorResponse: any): string {
 import {
   gamedayHole,
   gamedayLanding,
-  tripFlightsApi,
-  tripFlightStartHoleApi,
-  gamedayFlightStartApi,
 } from "../../../lib/routes";
-import { apiJson } from "../../../lib/apiClient";
-import {
-  validateFlightsList,
-  validateFlightStart,
-} from "../../../lib/apiContracts";
 
 type GameDayData = {
   roundId: number;
@@ -48,26 +46,6 @@ type GameDayData = {
   };
 };
 
-type FlightSlot = {
-  id: string;
-  memberId: string;
-  memberName: string;
-  slotPosition: number;
-  isLocked: boolean;
-};
-
-type FlightExecutionStatus = "not_started" | "in_progress" | "finished";
-
-type Flight = {
-  id: string;
-  flightNumber: number;
-  executionStatus: FlightExecutionStatus;
-  startedAt: string | null;
-  finishedAt: string | null;
-  startHole: number;
-  slots: FlightSlot[];
-  isMember: boolean;
-};
 
 export default function GameDayPage() {
   const router = useRouter();
@@ -86,8 +64,6 @@ export default function GameDayPage() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
   const [canEditStartHole, setCanEditStartHole] = useState(false);
-  const [flights, setFlights] = useState<Flight[]>([]);
-  const [startingFlightId, setStartingFlightId] = useState<string | null>(null);
   const [updatingCourse, setUpdatingCourse] = useState(false);
   const [updatingTee, setUpdatingTee] = useState(false);
   const [managingParticipants, setManagingParticipants] = useState(false);
@@ -95,6 +71,7 @@ export default function GameDayPage() {
   const [savingScore, setSavingScore] = useState(false);
   const [closingRound, setClosingRound] = useState(false);
   const [publishingRound, setPublishingRound] = useState(false);
+  const [bootstrapData, setBootstrapData] = useState<any>(null);
   
   // Round setup state (for "Not Started")
   const [startHole, setStartHole] = useState<number>(1);
@@ -112,6 +89,9 @@ export default function GameDayPage() {
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: "", visible: false });
   const [undoState, setUndoState] = useState<{ holeNumber: number; snapshot: Record<string, number | null> } | null>(null);
   const [expandedScoreRows, setExpandedScoreRows] = useState<Set<string>>(new Set()); // memberId -> expanded
+  
+  // Flights snapshot state
+  const [flightsSnapshot, setFlightsSnapshot] = useState<FlightsSnapshot | null>(null);
 
   // Build play order helper
   function buildPlayOrder(startHole: number, holesToPlay: 9 | 18): number[] {
@@ -190,11 +170,12 @@ export default function GameDayPage() {
           throw new Error("Failed to load bootstrap data");
         }
         const bootstrap = await bootstrapRes.json();
+        setBootstrapData(bootstrap);
         setActiveGroupId(bootstrap.activeGroupId);
         const memberId: string | null = bootstrap.member?.id || null;
         setCurrentMemberId(memberId);
 
-        // Derive permissions for editing flight start holes
+        // Derive permissions for editing round start hole
         const isHost = Boolean(bootstrap.isTripHost);
         const isGroupAdmin = Boolean(bootstrap.isGroupAdmin);
         setCanEditStartHole(isHost || isGroupAdmin);
@@ -245,35 +226,20 @@ export default function GameDayPage() {
               setCoursePackError(null);
             }
 
-            // Load flights for this trip (if any)
+            // Load flights snapshot for pre-round micro-fix
             try {
-              const flightsJson = await apiJson<unknown>(tripFlightsApi(gameDayData.roundId));
-              const validated = validateFlightsList(flightsJson);
-              const rawFlights = validated.flights;
-              const flightsForMember: Flight[] = rawFlights.map((f: any) => {
-                const slots: FlightSlot[] = Array.isArray(f.slots) ? f.slots : [];
-                const isMember =
-                  !!memberId && slots.some((s) => s.memberId === memberId);
-                const execStatus: FlightExecutionStatus =
-                  f.executionStatus === "in_progress" ||
-                  f.executionStatus === "finished"
-                    ? f.executionStatus
-                    : "not_started";
-                return {
-                  id: f.id,
-                  flightNumber: f.flightNumber,
-                  executionStatus: execStatus,
-                  startedAt: f.startedAt ?? null,
-                  finishedAt: f.finishedAt ?? null,
-                  startHole: f.startHole ?? 1,
-                  slots,
-                  isMember,
-                };
+              const snapshotRes = await fetch(`/api/gameday/${roundId}/flights/snapshot`, {
+                credentials: "include",
               });
-              setFlights(flightsForMember);
-            } catch (flightsError) {
-              console.error("Failed to load flights for GameDay:", flightsError);
-              setFlights([]);
+              if (snapshotRes.ok) {
+                const snapshotData = await snapshotRes.json();
+                if (snapshotData.ok && snapshotData.snapshot) {
+                  setFlightsSnapshot(snapshotData.snapshot);
+                }
+              }
+            } catch (snapshotError) {
+              console.error("Failed to load flights snapshot:", snapshotError);
+              setFlightsSnapshot(null);
             }
           } else {
             setGameDayData(null);
@@ -918,23 +884,183 @@ export default function GameDayPage() {
     );
   }
 
-  return (
-    <div className="container mx-auto max-w-2xl px-4 py-8">
-      {/* Remove header/logo section when in_progress - scoring surface is the hero */}
-      {gameDayData.gameday && gameDayData.gameday.state !== "in_progress" && (
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">In play</h1>
-          <p className="mt-2 text-sm text-muted">
-            {(() => {
-              const course = gameDayData.courseId
-                ? courses.find((c) => c.id === gameDayData.courseId)
-                : null;
-              return course?.name || "Round";
-            })()}
-          </p>
-        </div>
-      )}
+  // Build GameDay context and policy
+  const ctx = useMemo(() => {
+    if (!gameDayData) return null;
+    return resolveGameDayContext({
+      round: gameDayData,
+      coursePack,
+    });
+  }, [gameDayData, coursePack]);
 
+  const policy = useMemo(() => {
+    if (!ctx || !bootstrapData) return null;
+    return buildGameDayPolicy(ctx, bootstrapData);
+  }, [ctx, bootstrapData]);
+
+  // Reload flights snapshot
+  async function reloadFlightsSnapshot() {
+    if (!roundId) return;
+    try {
+      const snapshotRes = await fetch(`/api/gameday/${roundId}/flights/snapshot`, {
+        credentials: "include",
+      });
+      if (snapshotRes.ok) {
+        const snapshotData = await snapshotRes.json();
+        if (snapshotData.ok && snapshotData.snapshot) {
+          setFlightsSnapshot(snapshotData.snapshot);
+        }
+      } else {
+        setFlightsSnapshot(null);
+      }
+    } catch (error) {
+      console.error("Failed to reload flights snapshot:", error);
+      setFlightsSnapshot(null);
+    }
+  }
+
+  // Open micro-fix (POST to microfix API)
+  async function openMicroFix(payload: {
+    action: "MOVE_ME" | "ADD_TO_MY_FLIGHT" | "REMOVE_FROM_MY_FLIGHT" | "UNDO";
+    targetMemberId?: string;
+    toFlightId?: string;
+    memberId?: string;
+  }): Promise<{
+    ok: boolean;
+    undo?: { memberId: string; toFlightId: string };
+    snapshot?: FlightsSnapshot;
+    error?: string;
+  }> {
+    if (!roundId) {
+      return { ok: false, error: "No round ID" };
+    }
+
+    try {
+      const res = await fetch(`/api/gameday/${roundId}/flights/microfix`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        return {
+          ok: false,
+          error: typeof data.error === "string" ? data.error : "Failed to update flights",
+        };
+      }
+
+      return {
+        ok: true,
+        undo: data.undo,
+        snapshot: data.snapshot,
+      };
+    } catch (error) {
+      console.error("Failed to call micro-fix API:", error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : "An error occurred",
+      };
+    }
+  }
+
+  // Define ordered instrument keys
+  const gameDayKeys: GameDayInstrumentKey[] = [
+    "round_header",
+    "setup_course_tee",
+    "setup_round",
+    "flight_check",
+    "in_play_hud",
+    "score_entry_premium",
+    "round_controls",
+    "legacy_rest",
+  ];
+
+  // Helper to render an instrument
+  function renderInstrument(key: GameDayInstrumentKey) {
+    if (!ctx || !policy) return null;
+    const def = gamedayRegistry[key];
+    if (!def || !def.isAvailable(ctx)) return null;
+
+    const renderProps = {
+      ctx,
+      policy,
+      // Pass through all existing state/handlers for legacy_rest
+      gameDayData,
+      courses,
+      coursePack,
+      coursePackError,
+      loading,
+      activeGroupId,
+      currentMemberId,
+      canEditStartHole,
+      updatingCourse,
+      updatingTee,
+      managingParticipants,
+      startingRound,
+      savingScore,
+      closingRound,
+      publishingRound,
+      startHole,
+      setStartHole,
+      holesToPlay,
+      setHolesToPlay,
+      selectedParticipant,
+      setSelectedParticipant,
+      selectedHole,
+      setSelectedHole,
+      strokes,
+      setStrokes,
+      draftScores,
+      setDraftScores,
+      savedScores,
+      setSavedScores,
+      isSavingHole,
+      setIsSavingHole,
+      toast,
+      setToast,
+      undoState,
+      setUndoState,
+      expandedScoreRows,
+      setExpandedScoreRows,
+      router,
+      roundId,
+      searchParams,
+      handleCourseSelect,
+      handleTeeSelect,
+      handleStartRound,
+      handleRemoveParticipant,
+      handleAddParticipant,
+      computeMyTotals,
+      handleConfirmHole,
+      handleUndo,
+      handleCloseRound,
+      handlePublishRound,
+      setGameDayData,
+      flightsSnapshot,
+      reloadFlightsSnapshot,
+      openMicroFix,
+    };
+
+    return (
+      <InlineGameDayInstrumentSection
+        key={key}
+        title={def.title}
+        helper={def.helper}
+        rightAction={def.RightAction ? <def.RightAction {...renderProps} /> : undefined}
+        showDivider={false}
+      >
+        <def.RenderBody {...renderProps} />
+      </InlineGameDayInstrumentSection>
+    );
+  }
+
+  // Wrap existing JSX in renderLegacy function for legacy_rest instrument
+  const renderLegacy = () => {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-8">
       {gameDayData.gameday && gameDayData.gameday.state !== "in_progress" && (
       <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
         <div>
@@ -944,807 +1070,8 @@ export default function GameDayPage() {
           </div>
         </div>
 
-        {/* Flights list (execution per flight) */}
-        {flights.length > 0 && (
-          <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-            <div className="text-sm font-medium text-foreground mb-1">Flights</div>
-            <div className="space-y-2">
-              {flights.map((flight) => {
-                const statusLabel =
-                  flight.executionStatus === "in_progress"
-                    ? "In progress"
-                    : flight.executionStatus === "finished"
-                    ? "Finished"
-                    : "Not started";
-
-                const statusColor =
-                  flight.executionStatus === "in_progress"
-                    ? "chip-success"
-                    : flight.executionStatus === "finished"
-                    ? "bg-muted/30 text-foreground"
-                    : "bg-warning/10 text-foreground";
-
-                const memberNames = flight.slots.map((s) => s.memberName).join(", ");
-
-                const handleFlightNavigate = (effectiveHole: number) => {
-                  const hole = Math.min(Math.max(effectiveHole, 1), 18);
-                  const url =
-                    hole && Number.isFinite(hole)
-                      ? gamedayHole(roundId, hole)
-                      : gamedayLanding(roundId);
-                  router.push(url);
-                };
-
-                const handleFlightStart = async () => {
-                  if (!flight.isMember) return;
-                  if (!roundId) return;
-                  setStartingFlightId(flight.id);
-                  try {
-                    try {
-                      const data = await apiJson(gamedayFlightStartApi(), {
-                        method: "POST",
-                        body: JSON.stringify({ flightId: flight.id }),
-                      });
-                      validateFlightStart(data);
-                    } catch (error) {
-                      // If 409 flight_finished, still refresh GameDay data
-                      if (error instanceof Error && error.message.includes("409")) {
-                        try {
-                          const res = await fetch(gamedayFlightStartApi(), {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            credentials: "include",
-                            body: JSON.stringify({ flightId: flight.id }),
-                          });
-                          if (res.status === 409) {
-                            const data = await res.json().catch(() => ({}));
-                            if (data.reason === "flight_finished") {
-                              // Flight already finished; just refresh GameDay data
-                              const gameDayRes = await fetch(`/api/gameday/${roundId}`, {
-                                credentials: "include",
-                              });
-                              if (gameDayRes.ok) {
-                                const gameDay = await gameDayRes.json();
-                                if (gameDay.ok && gameDay.data) {
-                                  setGameDayData(gameDay.data);
-                                }
-                              }
-                              return;
-                            }
-                          }
-                        } catch {
-                          // Fall through to error handling
-                        }
-                      }
-                      throw error;
-                    }
-
-                    // Refresh GameDay + flights after starting
-                    const [gameDayRes, flightsJson] = await Promise.all([
-                      fetch(`/api/gameday/${roundId}`, { credentials: "include" }),
-                      apiJson<unknown>(tripFlightsApi(gameDayData.roundId)),
-                    ]);
-
-                    if (gameDayRes.ok) {
-                      const gameDay = await gameDayRes.json();
-                      if (gameDay.ok && gameDay.data) {
-                        setGameDayData(gameDay.data);
-                      }
-                    }
-
-                    const validated = validateFlightsList(flightsJson);
-                    const rawFlights = validated.flights;
-                    const memberId = currentMemberId;
-                    const updatedFlights: Flight[] = rawFlights.map((f: any) => {
-                      const slots: FlightSlot[] = Array.isArray(f.slots) ? f.slots : [];
-                      const isMember =
-                        !!memberId && slots.some((s) => s.memberId === memberId);
-                      const execStatus: FlightExecutionStatus =
-                        f.executionStatus === "in_progress" ||
-                        f.executionStatus === "finished"
-                          ? f.executionStatus
-                          : "not_started";
-                      return {
-                        id: f.id,
-                        flightNumber: f.flightNumber,
-                        executionStatus: execStatus,
-                        startedAt: f.startedAt ?? null,
-                        finishedAt: f.finishedAt ?? null,
-                        startHole: f.startHole ?? 1,
-                        slots,
-                        isMember,
-                      };
-                    });
-                    setFlights(updatedFlights);
-
-                    // Determine hole to navigate to: use last known hole if available, else flight.startHole
-                    let holeToUse = flight.startHole ?? 1;
-                    try {
-                      const lastHoleKey = `gameday:last:${roundId}`;
-                      const raw = typeof window !== "undefined" ? localStorage.getItem(lastHoleKey) : null;
-                      if (raw) {
-                        const parsed = JSON.parse(raw);
-                        if (
-                          parsed &&
-                          typeof parsed.holeNumber === "number" &&
-                          parsed.holeNumber >= 1 &&
-                          parsed.holeNumber <= 18
-                        ) {
-                          holeToUse = parsed.holeNumber;
-                        }
-                      }
-                    } catch {
-                      // Ignore localStorage errors
-                    }
-
-                    handleFlightNavigate(holeToUse);
-                  } catch (error) {
-                    console.error("Failed to start flight:", error);
-                    alert(
-                      error instanceof Error
-                        ? error.message
-                        : "Failed to start flight. Please try again."
-                    );
-                  } finally {
-                    setStartingFlightId(null);
-                  }
-                };
-
-                const handleFlightResume = () => {
-                  if (!flight.isMember) return;
-                  // Determine last known hole, else default to flight.startHole
-                  let holeToUse = flight.startHole ?? 1;
-                  try {
-                    const lastHoleKey = `gameday:last:${roundId}`;
-                    const raw = typeof window !== "undefined" ? localStorage.getItem(lastHoleKey) : null;
-                    if (raw) {
-                      const parsed = JSON.parse(raw);
-                      if (
-                        parsed &&
-                        typeof parsed.holeNumber === "number" &&
-                        parsed.holeNumber >= 1 &&
-                        parsed.holeNumber <= 18
-                      ) {
-                        holeToUse = parsed.holeNumber;
-                      }
-                    }
-                  } catch {
-                    // Ignore localStorage errors
-                  }
-                  handleFlightNavigate(holeToUse);
-                };
-
-                const isStartingThisFlight = startingFlightId === flight.id;
-
-                return (
-                  <div
-                    key={flight.id}
-                    className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Flight {flight.flightNumber}
-                        </span>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor}`}
-                        >
-                          {statusLabel}
-                        </span>
-                      </div>
-                      {memberNames && (
-                        <div className="text-xs text-muted">
-                          {flight.isMember ? "Your flight: " : "Players: "}
-                          {memberNames}
-                        </div>
-                      )}
-
-                      {/* Start hole display / editor */}
-                      {canEditStartHole && flight.executionStatus !== "finished" ? (
-                        <div className="flex items-center gap-2 text-xs text-muted">
-                          <span>Start hole</span>
-                          <select
-                            value={flight.startHole}
-                            onChange={async (e) => {
-                              const newHole = parseInt(e.target.value, 10);
-                              if (Number.isNaN(newHole)) return;
-
-                              const prevHole = flight.startHole;
-
-                              // Optimistic update
-                              setFlights((prev) =>
-                                prev.map((f) =>
-                                  f.id === flight.id ? { ...f, startHole: newHole } : f
-                                )
-                              );
-
-                              try {
-                                const res = await fetch(
-                                  tripFlightStartHoleApi(gameDayData.roundId, flight.id),
-                                  {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    credentials: "include",
-                                    body: JSON.stringify({ startHole: newHole }),
-                                  }
-                                );
-
-                                if (!res.ok) {
-                                  // Revert on error
-                                  setFlights((prev) =>
-                                    prev.map((f) =>
-                                      f.id === flight.id ? { ...f, startHole: prevHole } : f
-                                    )
-                                  );
-                                  alert("Couldn't update start hole");
-                                }
-                              } catch (error) {
-                                console.error("Failed to update start hole:", error);
-                                // Revert on error
-                                setFlights((prev) =>
-                                  prev.map((f) =>
-                                    f.id === flight.id ? { ...f, startHole: prevHole } : f
-                                  )
-                                );
-                                alert("Couldn't update start hole");
-                              }
-                            }}
-                            className="rounded border border-border bg-surface px-2 py-1 text-xs text-foreground"
-                          >
-                            {Array.from({ length: 18 }, (_, i) => i + 1).map((hole) => (
-                              <option key={hole} value={hole}>
-                                {hole}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted">
-                          Start hole {flight.startHole}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* CTA for flights where the current member is assigned */}
-                    {flight.isMember ? (
-                      flight.executionStatus === "not_started" ? (
-                        <button
-                          type="button"
-                          onClick={handleFlightStart}
-                          disabled={isStartingThisFlight}
-                          className="ml-3 rounded-lg btn-anticipation px-3 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isStartingThisFlight ? "Starting…" : "Start scoring"}
-                        </button>
-                      ) : flight.executionStatus === "in_progress" ? (
-                        <button
-                          type="button"
-                          onClick={handleFlightResume}
-                          className="ml-3 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-background"
-                        >
-                          Resume
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled
-                          className="ml-3 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted cursor-not-allowed"
-                        >
-                          View
-                        </button>
-                      )
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Course pack summary (if loaded) - only show when not in_progress */}
-        {coursePack && gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
-          <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
-            <div className="text-sm font-medium text-foreground">{coursePack.course.name}</div>
-            <div className="text-xs text-muted">
-              {coursePack.tee.label} · Par {coursePack.tee.par} · Slope {coursePack.tee.slope}
-              {coursePack.tee.rating !== null && ` · Rating ${coursePack.tee.rating}`}
-            </div>
-            <div className="text-xs text-muted">{coursePack.holes.length} holes loaded</div>
-          </div>
-        )}
-
-        {/* Course selected - show course name - only show when not in_progress */}
-        {gameDayData.courseId && gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
-          <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-            <div>
-              <div className="text-sm font-medium text-foreground mb-1">
-                {(() => {
-                  const selectedCourse = courses.find((c) => c.id === gameDayData.courseId);
-                  return selectedCourse?.name || "Course selected";
-                })()}
-              </div>
-            </div>
-
-            {/* Tee selection */}
-            {!gameDayData.teeId ? (
-              <div>
-                <div className="text-sm font-medium text-foreground mb-2">Tee not selected</div>
-                <p className="text-xs text-muted mb-3">Set a tee before scoring can begin.</p>
-                <select
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                  disabled={updatingTee}
-                  onChange={(e) => {
-                    const teeId = e.target.value;
-                    if (teeId) {
-                      handleTeeSelect(teeId);
-                    }
-                  }}
-                >
-                  <option value="">Select a tee</option>
-                  {(() => {
-                    const selectedCourse = courses.find((c) => c.id === gameDayData.courseId);
-                    const tees = selectedCourse?.tees ?? [];
-                    return tees.map((tee) => (
-                      <option key={tee.id} value={tee.id}>
-                        {tee.label}
-                        {tee.par && ` · Par ${tee.par}`}
-                        {tee.slope && ` · Slope ${tee.slope}`}
-                        {tee.meters && ` · ${tee.meters}m`}
-                      </option>
-                    ));
-                  })()}
-                </select>
-                {updatingTee && (
-                  <p className="text-xs text-muted mt-2">Updating tee…</p>
-                )}
-              </div>
-            ) : (
-              <div>
-                <div className="text-sm font-medium text-foreground mb-1">Tee</div>
-                <div className="text-xs text-muted">
-                  {(() => {
-                    const selectedCourse = courses.find((c) => c.id === gameDayData.courseId);
-                    const selectedTee = selectedCourse?.tees.find((t) => t.id === gameDayData.teeId);
-                    return selectedTee?.label || "Tee selected";
-                  })()}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Round setup and Start round button - only show when not in_progress */}
-        {gameDayData.teeId && gameDayData.gameday?.state === "not_started" && (
-          <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-4">
-            <div>
-              <div className="text-sm font-medium text-foreground mb-3">Round setup</div>
-              
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs text-muted mb-1">Start hole</label>
-                  <select
-                    value={startHole}
-                    onChange={(e) => setStartHole(parseInt(e.target.value, 10))}
-                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                  >
-                    {Array.from({ length: 18 }, (_, i) => i + 1).map((hole) => (
-                      <option key={hole} value={hole}>
-                        Hole {hole}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-xs text-muted mb-2">Holes to play</label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setHolesToPlay(9)}
-                      className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
-                        holesToPlay === 9
-                          ? "btn-anticipation border-warning/30"
-                          : "border-border bg-surface text-foreground hover:bg-muted/50"
-                      }`}
-                    >
-                      9
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHolesToPlay(18)}
-                      className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
-                        holesToPlay === 18
-                          ? "btn-anticipation border-warning/30"
-                          : "border-border bg-surface text-foreground hover:bg-muted/50"
-                      }`}
-                    >
-                      18
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <button
-              onClick={handleStartRound}
-              disabled={startingRound}
-                  className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {startingRound ? "Starting…" : "Start round"}
-            </button>
-          </div>
-        )}
       </div>
       )}
-
-        {/* Premium scoring UI (when in_progress) */}
-        {gameDayData.gameday?.state === "in_progress" && (() => {
-          const startHoleVal = gameDayData.gameday?.startHole ?? 1;
-          const holesToPlayVal = (gameDayData.gameday?.holesToPlay ?? 18) as 9 | 18;
-          const currentHoleIndexVal = gameDayData.gameday?.currentHoleIndex ?? 0;
-          const playOrder = buildPlayOrder(startHoleVal, holesToPlayVal);
-          const currentHoleNumber = playOrder[currentHoleIndexVal] ?? playOrder[0] ?? 1;
-          
-          const canGoPrev = currentHoleIndexVal > 0;
-          const canGoNext = currentHoleIndexVal < playOrder.length - 1;
-          
-          // Get current hole info from coursePack
-          const currentHoleInfo = coursePack?.holes.find((h) => h.holeNumber === currentHoleNumber);
-          const holePar = currentHoleInfo?.par ?? null;
-          const holeSI = currentHoleInfo?.strokeIndex ?? null;
-          const teeLabel = coursePack?.tee.label ?? null;
-          const courseName = coursePack?.course.name ?? null;
-          
-          // Get next hole info
-          const nextHoleIndex = currentHoleIndexVal + 1;
-          const nextHoleNumber = nextHoleIndex < playOrder.length ? playOrder[nextHoleIndex] : null;
-          const nextHoleInfo = nextHoleNumber ? coursePack?.holes.find((h) => h.holeNumber === nextHoleNumber) : null;
-          const nextHolePar = nextHoleInfo?.par ?? null;
-          
-          // Compute my totals
-          const myTotals = computeMyTotals(playOrder, currentHoleIndexVal, coursePack);
-          const myToParSigned = myTotals.toPar === null 
-            ? "—" 
-            : myTotals.toPar === 0 
-              ? "E" 
-              : myTotals.toPar > 0 
-                ? `+${myTotals.toPar}` 
-                : `${myTotals.toPar}`;
-          
-          // Check if there are changes or existing scores to confirm
-          const hasChanges = gameDayData.participants.some((p) => {
-            const draft = draftScores[p.id];
-            const saved = savedScores[p.id]?.[currentHoleNumber];
-            return draft !== null && draft !== saved;
-          });
-          const hasExistingScores = gameDayData.participants.some((p) => {
-            return savedScores[p.id]?.[currentHoleNumber] !== undefined;
-          });
-          const canConfirm = hasChanges || hasExistingScores;
-          
-          return (
-            <>
-              {/* In-Round HUD */}
-              <div className="mb-6 space-y-3">
-                {/* Top row: Hole context + Player snapshot */}
-                <div className="flex items-start justify-between gap-4">
-                  {/* Left: Hole context */}
-                  <div className="flex-1">
-                    <div className="text-2xl font-bold text-foreground">Hole {currentHoleNumber}</div>
-                    <div className="text-xs text-muted mt-1">
-                      {holePar !== null ? `Par ${holePar}` : "Par —"}
-                      {holeSI !== null && ` • Handicap Index ${holeSI}`}
-                      {teeLabel && ` • ${teeLabel}`}
-                      {courseName && teeLabel && ` • ${courseName}`}
-                      {courseName && !teeLabel && ` • Course: ${courseName}`}
-                    </div>
-                  </div>
-                  
-                  {/* Right: Player snapshot */}
-                  <div className="text-right">
-                    <div className="text-sm text-muted">Today: {myTotals.strokesTotal ?? "—"}</div>
-                    <div className={`text-2xl font-bold mt-1 text-foreground`}>
-                      To par: {myToParSigned}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Next hole line */}
-                <div className="text-xs text-muted">
-                  {nextHoleNumber ? (
-                    <>Next: Hole {nextHoleNumber}{nextHolePar !== null ? ` (Par ${nextHolePar})` : ""}</>
-                  ) : (
-                    <>Next: Finish</>
-                  )}
-                </div>
-              </div>
-
-              {/* Quick-tap scorecard strip */}
-              <div className="space-y-4 mb-6">
-                {gameDayData.participants.map((participant) => {
-                  const currentScore = draftScores[participant.id] ?? null;
-                  const isExpanded = expandedScoreRows.has(participant.id);
-                  const defaultPar = holePar ?? 4;
-                  const scoreRange = [
-                    Math.max(1, defaultPar - 1),
-                    defaultPar,
-                    defaultPar + 1,
-                    defaultPar + 2,
-                    defaultPar + 3,
-                  ];
-                  
-                  return (
-                    <div key={participant.id} className="space-y-2">
-                      {/* Player name + quick-tap pills */}
-                      <div className="flex items-center gap-3">
-                        <div className="flex-shrink-0 w-20 text-sm font-medium text-foreground truncate">
-                          {participant.displayName}
-                        </div>
-                        
-                        <div className="flex-1 flex items-center gap-2 flex-wrap">
-                          {scoreRange.map((score) => (
-                            <button
-                              key={score}
-                              type="button"
-                              onClick={() => {
-                                setDraftScores((prev) => ({
-                                  ...prev,
-                                  [participant.id]: score,
-                                }));
-                              }}
-                              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                currentScore === score
-                                  ? "bg-anticipation text-anticipation-fg"
-                                  : "bg-surface border border-border text-foreground hover:bg-muted/50"
-                              }`}
-                            >
-                              {score}
-                            </button>
-                          ))}
-                          
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setExpandedScoreRows((prev) => {
-                                const next = new Set(prev);
-                                if (isExpanded) {
-                                  next.delete(participant.id);
-                                } else {
-                                  next.add(participant.id);
-                                }
-                                return next;
-                              });
-                            }}
-                            className="px-3 py-2 rounded-lg text-sm font-medium bg-surface border border-border text-foreground hover:bg-muted/50"
-                          >
-                            {isExpanded ? "Less" : "More"}
-                          </button>
-                        </div>
-                      </div>
-                      
-                      {/* Expanded row with full 1..12 options */}
-                      {isExpanded && (
-                        <div className="flex items-center gap-2 flex-wrap pl-20">
-                          {Array.from({ length: 12 }, (_, i) => i + 1).map((score) => (
-                            <button
-                              key={score}
-                              type="button"
-                              onClick={() => {
-                                setDraftScores((prev) => ({
-                                  ...prev,
-                                  [participant.id]: score,
-                                }));
-                              }}
-                              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                currentScore === score
-                                  ? "bg-anticipation text-anticipation-fg"
-                                  : "bg-surface border border-border text-foreground hover:bg-muted/50"
-                              }`}
-                            >
-                              {score}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Toast / Undo */}
-              {(toast.visible || undoState) && (
-                <div className="mb-4 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-3">
-                  <span className="text-sm text-foreground">{toast.message}</span>
-                  {undoState && (
-                    <button
-                      type="button"
-                      onClick={handleUndo}
-                      className="text-sm font-medium text-anticipation hover:underline"
-                    >
-                      Undo
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Sticky bottom: Confirm hole button */}
-              <div className="sticky bottom-0 bg-surface border-t border-border -mx-4 px-4 py-4 pb-4">
-                <button
-                  type="button"
-                  onClick={handleConfirmHole}
-                  disabled={isSavingHole || !canConfirm}
-                  className="w-full rounded-lg btn-anticipation px-4 py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSavingHole 
-                    ? "Saving…" 
-                    : currentHoleNumber === 18 && !canGoNext
-                      ? "Finish round"
-                      : "Confirm hole"}
-                </button>
-              </div>
-
-              {/* Secondary: Prev/Next and Close */}
-              <div className="mt-6 space-y-3">
-                {/* Prev/Next navigation */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!canGoPrev || !roundId) return;
-                      const newIndex = currentHoleIndexVal - 1;
-                      const newHole = playOrder[newIndex];
-                      
-                      try {
-                        await fetch(`/api/gameday/${roundId}/scorecard`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          credentials: "include",
-                          body: JSON.stringify({ cursor: { currentHoleIndex: newIndex } }),
-                        });
-                        const res = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
-                        if (res.ok) {
-                          const data = await res.json();
-                          if (data.ok && data.data) {
-                            setGameDayData(data.data);
-                            setSelectedHole(newHole);
-                          }
-                        }
-                      } catch (error) {
-                        console.error("Failed to update hole cursor:", error);
-                      }
-                    }}
-                    disabled={!canGoPrev}
-                    className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    ← Prev
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!canGoNext || !roundId) return;
-                      const newIndex = currentHoleIndexVal + 1;
-                      const newHole = playOrder[newIndex];
-                      
-                      try {
-                        await fetch(`/api/gameday/${roundId}/scorecard`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          credentials: "include",
-                          body: JSON.stringify({ cursor: { currentHoleIndex: newIndex } }),
-                        });
-                        const res = await fetch(`/api/gameday/${roundId}`, { credentials: "include" });
-                        if (res.ok) {
-                          const data = await res.json();
-                          if (data.ok && data.data) {
-                            setGameDayData(data.data);
-                            setSelectedHole(newHole);
-                          }
-                        }
-                      } catch (error) {
-                        console.error("Failed to update hole cursor:", error);
-                      }
-                    }}
-                    disabled={!canGoNext}
-                    className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next →
-                  </button>
-                </div>
-
-                {/* Close scorecard (secondary) */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm("Are you sure you want to close the scorecard? This will end scoring for this round.")) {
-                      handleCloseRound();
-                    }
-                  }}
-                  disabled={closingRound}
-                  className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {closingRound ? "Closing…" : "Close scorecard"}
-                </button>
-              </div>
-            </>
-          );
-        })()}
-
-        {/* Publish results CTA (when closed) */}
-        {gameDayData.gameday?.state === "closed" && (
-          <div className="rounded-lg border border-border bg-muted/30 p-4">
-            <button
-              onClick={handlePublishRound}
-              disabled={publishingRound}
-                  className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {publishingRound ? "Publishing…" : "Publish results"}
-            </button>
-          </div>
-        )}
-
-        {/* Published state (when published) */}
-        {gameDayData.gameday?.state === "published" && (
-          <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium text-foreground">Published</div>
-                {gameDayData.gameday.publishedAt && (
-                  <div className="text-xs text-muted mt-1">
-                    {new Date(gameDayData.gameday.publishedAt).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-            <Link
-              href={`/results/${gameDayData.roundId}`}
-              className="block w-full rounded-lg btn-ghost px-4 py-2 text-sm font-medium text-center hover:opacity-80"
-            >
-              View results
-            </Link>
-          </div>
-        )}
-
-        {!gameDayData.courseId && (
-          <div className="rounded-lg border border-border bg-muted/30 p-4">
-            <div className="text-sm font-medium text-foreground mb-2">Select course</div>
-            <p className="text-xs text-muted mb-3">Choose a course before scoring</p>
-            <select
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground"
-              disabled={updatingCourse}
-              onChange={async (e) => {
-                const courseId = e.target.value;
-                if (courseId) {
-                  await handleCourseSelect(courseId);
-                }
-              }}
-            >
-              <option value="">Select a course</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.name} {course.location ? `- ${course.location}` : ""}
-                </option>
-              ))}
-            </select>
-            {updatingCourse && (
-              <p className="text-xs text-muted mt-2">Updating course…</p>
-            )}
-          </div>
-        )}
-
-        {gameDayData.courseId && gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
-          <div>
-            <div className="text-sm text-muted mb-1">Course</div>
-            <div className="text-sm text-foreground">
-              {courses.find((c) => c.id === gameDayData.courseId)?.name || "Course selected"}
-            </div>
-          </div>
-        )}
 
         {gameDayData.gameday && (gameDayData.gameday.state as string) !== "in_progress" && (
         <>
@@ -1791,6 +1118,42 @@ export default function GameDayPage() {
         </div>
         </>
         )}
+      </div>
+    );
+  };
+
+  // Render instruments via registry
+  if (!ctx || !policy) {
+    // Fallback: render legacy if context/policy not ready
+    return renderLegacy();
+  }
+
+  return (
+    <div className="container mx-auto max-w-2xl px-4 py-8">
+      {gameDayKeys.map((key) => {
+        if (key === "legacy_rest") {
+          // Pass renderLegacy to legacy_rest instrument
+          const def = gamedayRegistry[key];
+          if (!def || !def.isAvailable(ctx)) return null;
+          const renderProps = {
+            ctx,
+            policy,
+            renderLegacy,
+          };
+          return (
+            <InlineGameDayInstrumentSection
+              key={key}
+              title={def.title}
+              helper={def.helper}
+              rightAction={def.RightAction ? <def.RightAction {...renderProps} /> : undefined}
+              showDivider={false}
+            >
+              <def.RenderBody {...renderProps} />
+            </InlineGameDayInstrumentSection>
+          );
+        }
+        return renderInstrument(key);
+      })}
     </div>
   );
 }

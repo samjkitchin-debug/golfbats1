@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { logApiTiming } from "@/app/lib/serverPerf";
+
+// TODO: Add server-side performance logging to other API routes using logApiTiming()
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +12,7 @@ export const dynamic = "force-dynamic";
  * Includes: user info, member profile, approved group memberships, and computed values.
  */
 export async function GET(req: Request) {
+  const startMs = Date.now();
   try {
     const supabase = await createSupabaseServerClient();
 
@@ -18,6 +22,7 @@ export async function GET(req: Request) {
     } = await supabase.auth.getUser();
 
     if (userErr || !user) {
+      logApiTiming("GET /api/me/bootstrap", startMs, 401, { method: "GET" });
       return NextResponse.json({ error: "Unauthorized" }, { 
         status: 401,
         headers: { "Cache-Control": "no-store" },
@@ -103,7 +108,7 @@ export async function GET(req: Request) {
     }
 
     // Build response
-    return NextResponse.json({
+    const response = NextResponse.json({
       userId: user.id,
       member: member
         ? {
@@ -124,14 +129,18 @@ export async function GET(req: Request) {
       status: 200,
       headers: { "Cache-Control": "no-store" },
     });
+    logApiTiming("GET /api/me/bootstrap", startMs, 200, { method: "GET" });
+    return response;
   } catch (error) {
     console.error("[bootstrap API] Error:", error);
-    return NextResponse.json(
+    const response = NextResponse.json(
       { error: "An error occurred while loading bootstrap data." },
       { 
         status: 500,
         headers: { "Cache-Control": "no-store" },
       }
     );
+    logApiTiming("GET /api/me/bootstrap", startMs, 500, { method: "GET" });
+    return response;
   }
 }

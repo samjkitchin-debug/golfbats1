@@ -13,6 +13,15 @@ export default function LoginClient() {
   const [busy, setBusy] = useState<null | "email" | "google" | "facebook" | "reset">(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Get canonical origin (prefer env var, fallback to current origin)
+  function getCanonicalOrigin(): string {
+    const canonical = process.env.NEXT_PUBLIC_SITE_URL;
+    if (canonical) {
+      return canonical.replace(/\/$/, "");
+    }
+    return window.location.origin.replace(/\/$/, "");
+  }
+
   async function handleEmailAuth() {
     setError(null);
     setResetSuccess(false);
@@ -45,6 +54,9 @@ export default function LoginClient() {
 
         if (error) throw error;
       }
+
+      // Force full navigation to ensure SSR sees the cookie/session immediately
+      window.location.assign("/");
     } catch (e: any) {
       const errorMessage = e?.message?.toLowerCase() || "";
       
@@ -85,7 +97,7 @@ export default function LoginClient() {
     setBusy("reset");
 
     try {
-      const origin = window.location.origin.replace(/\/$/, "");
+      const origin = getCanonicalOrigin();
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${origin}/reset-password`,
       });
@@ -104,7 +116,7 @@ export default function LoginClient() {
     setBusy(provider);
 
     try {
-      const origin = window.location.origin.replace(/\/$/, "");
+      const origin = getCanonicalOrigin();
       const redirectTo = `${origin}/auth/callback?next=/`;
 
       const { error } = await supabase.auth.signInWithOAuth({
