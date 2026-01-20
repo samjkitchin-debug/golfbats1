@@ -1,10 +1,19 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { EventContext } from "../event/eventTypes";
 import type { InstrumentRenderProps } from "./instrumentTypes";
-import { joinTrip, leaveTrip, loadTrips } from "../../tripActions";
+import { joinTrip, leaveTrip, loadTrips, updateTrip } from "../../tripActions";
 import type { Trip } from "../../tripActions";
+
+// Helper function to get initials from name
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
 
 /**
  * Roster Body Component
@@ -19,8 +28,10 @@ export function RosterBody({
   onTripUpdate,
 }: InstrumentRenderProps) {
   const rosterData = event.instruments.roster.data;
+  const isDone = event.instruments.roster.status === "done";
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [markingComplete, setMarkingComplete] = useState(false);
 
   // Find current user's entry in attendees
   const myEntry = useMemo(() => {
@@ -133,6 +144,104 @@ export function RosterBody({
     }
   }
 
+  // Get confirmed and waitlist attendees
+  const confirmed = useMemo(() => {
+    return event.trip.attendees
+      .filter((a) => a.status === "confirmed")
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+  }, [event.trip.attendees]);
+
+  const waitlist = useMemo(() => {
+    return event.trip.attendees
+      .filter((a) => a.status === "waitlist")
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+  }, [event.trip.attendees]);
+
+  // Full attendee data (avatar + handicap) for display
+  const [attendeeData, setAttendeeData] = useState<
+    Array<{
+      memberId: string | null;
+      name: string;
+      photoUrl: string | null;
+      handicap: number | null;
+      handicapForTrip: number | null | undefined;
+      isWaitlist: boolean;
+    }>
+  >([]);
+
+  const isHostedRound = event.isHostedRound;
+
+  // Fetch attendee data (avatars + handicaps)
+  useEffect(() => {
+    async function loadAttendeeData() {
+      const allAttendees = [...confirmed, ...waitlist];
+      if (allAttendees.length === 0) {
+        setAttendeeData([]);
+        return;
+      }
+
+      const attendeesWithMemberIds = allAttendees.filter((a) => a.memberId);
+
+      if (attendeesWithMemberIds.length === 0) {
+        // If no memberIds, still show attendees with names and handicapForTrip
+        setAttendeeData(
+          allAttendees.map((a) => ({
+            memberId: a.memberId || null,
+            name: a.name,
+            photoUrl: null,
+            handicap: null,
+            handicapForTrip: a.handicapForTrip,
+            isWaitlist: a.status === "waitlist",
+          }))
+        );
+        return;
+      }
+
+      try {
+        const { data: memberData } = await supabase
+          .from("members")
+          .select("id,profile_photo_path,display_name,full_name,declared_handicap")
+          .in(
+            "id",
+            attendeesWithMemberIds.map((a) => a.memberId!)
+          );
+
+        if (memberData) {
+          const attendees = allAttendees.map((attendee) => {
+            const member = memberData.find((m: any) => m.id === attendee.memberId);
+            const photoPath = member?.profile_photo_path;
+            const photoUrl = photoPath
+              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${photoPath}`
+              : null;
+            return {
+              memberId: attendee.memberId || null,
+              name: attendee.name,
+              photoUrl,
+              handicap: member?.declared_handicap ?? null,
+              handicapForTrip: attendee.handicapForTrip,
+              isWaitlist: attendee.status === "waitlist",
+            };
+          });
+          setAttendeeData(attendees);
+        }
+      } catch (error) {
+        // Fallback to basic data
+        setAttendeeData(
+          allAttendees.map((a) => ({
+            memberId: a.memberId || null,
+            name: a.name,
+            photoUrl: null,
+            handicap: null,
+            handicapForTrip: a.handicapForTrip,
+            isWaitlist: a.status === "waitlist",
+          }))
+        );
+      }
+    }
+
+    loadAttendeeData();
+  }, [confirmed, waitlist, supabase, isHostedRound]);
+
   // Summary line
   const summaryParts: string[] = [];
   if (rosterData.confirmedCount > 0) {
@@ -177,27 +286,153 @@ export function RosterBody({
         </div>
       )}
 
-      {/* Actions */}
-      {canJoin && (
-        <button
-          onClick={handleJoin}
-          disabled={joining}
-          className="w-full rounded px-4 py-2 text-sm font-medium btn-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {joining ? "Joining..." : "Join"}
-        </button>
+      {/* Actions (hidden for host - host RSVPs via Chroma toggle) */}
+      {!policy.isHost && (
+        <>
+          {canJoin && (
+            <button
+              onClick={handleJoin}
+              disabled={joining}
+              className="w-full rounded px-4 py-2 text-sm font-medium btn-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {joining ? "Joining..." : "Join"}
+            </button>
+          )}
+
+          {canLeave && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleLeave}
+                disabled={leaving}
+                className="shrink-0 rounded border border-border bg-transparent px-3 py-1.5 text-sm font-medium text-foreground hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {leaving ? "Leaving..." : "Can't make it"}
+              </button>
+              <div className="text-xs text-muted">You're on the attendee list</div>
+            </div>
+          )}
+        </>
       )}
 
-      {canLeave && (
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleLeave}
-            disabled={leaving}
-            className="shrink-0 rounded border border-border bg-transparent px-3 py-1.5 text-sm font-medium text-foreground hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {leaving ? "Leaving..." : "Can't make it"}
-          </button>
-          <div className="text-xs text-muted">You're on the attendee list</div>
+      {/* Attendee list */}
+      {attendeeData.length > 0 && (
+        <div className="pt-2 border-t border-border">
+          {isHostedRound ? (
+            <div className="space-y-1.5">
+              {attendeeData
+                .filter((a) => !a.isWaitlist)
+                .map((attendee) => {
+                  const handicap = attendee.handicap ?? attendee.handicapForTrip ?? null;
+                  const displayName = attendee.name;
+                  
+                  return (
+                    <div
+                      key={attendee.memberId || attendee.name}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"
+                    >
+                      {/* Left: Photo + Name */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {attendee.photoUrl ? (
+                          <img
+                            src={attendee.photoUrl}
+                            alt={displayName}
+                            className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-border"
+                          />
+                        ) : (
+                          <div className="h-12 w-12 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-sm font-medium text-muted">
+                            {displayName.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-foreground truncate">
+                            {displayName}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Handicap */}
+                      <div className="flex-shrink-0">
+                        <div className="text-sm text-muted">
+                          {handicap !== null && handicap !== undefined ? `HCP ${handicap}` : "HCP —"}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            
+              {attendeeData.filter((a) => a.isWaitlist).length > 0 && (
+                <>
+                  <div className="pt-2 text-sm font-medium text-muted">Waitlist</div>
+                  {attendeeData
+                    .filter((a) => a.isWaitlist)
+                    .map((attendee) => {
+                      const handicap = attendee.handicap ?? attendee.handicapForTrip ?? null;
+                      const displayName = attendee.name;
+                      
+                      return (
+                        <div
+                          key={attendee.memberId || attendee.name}
+                          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"
+                        >
+                          {/* Left: Photo + Name */}
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            {attendee.photoUrl ? (
+                              <img
+                                src={attendee.photoUrl}
+                                alt={displayName}
+                                className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-border"
+                              />
+                            ) : (
+                              <div className="h-12 w-12 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-sm font-medium text-muted">
+                                {displayName.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium text-foreground truncate">
+                                {displayName}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right: Handicap */}
+                          <div className="flex-shrink-0">
+                            <div className="text-sm text-muted">
+                              {handicap !== null && handicap !== undefined ? `HCP ${handicap}` : "HCP —"}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-2">
+              {confirmed.map((a, idx) => (
+                <div key={a.name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>
+                    {idx + 1}. {a.name}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {a.handicapForTrip !== undefined && a.handicapForTrip !== null ? `HCP ${a.handicapForTrip}` : ""}
+                  </span>
+                </div>
+              ))}
+
+              {waitlist.length ? <div className="pt-2 text-sm font-medium text-muted">Waitlist</div> : null}
+
+              {waitlist.map((a, idx) => (
+                <div key={a.name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>
+                    {idx + 1}. {a.name}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {a.handicapForTrip !== undefined && a.handicapForTrip !== null ? `HCP ${a.handicapForTrip}` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -217,6 +452,57 @@ export function RosterBody({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Host-only: Mark complete button (if not done) */}
+      {policy.canApproveRoster && !isDone && (
+        <div className="pt-2 border-t border-border">
+          <button
+            onClick={async () => {
+              if (markingComplete || !activeGroupId) return;
+              setMarkingComplete(true);
+              try {
+                const updatedTrips = await updateTrip(
+                  [event.trip],
+                  event.trip.id,
+                  activeGroupId,
+                  {
+                    decisionLogistics: {
+                      ...(event.trip.decisionLogistics ?? {}),
+                      rosterConfirmed: true,
+                    },
+                  }
+                );
+
+                // Update local trip state immediately
+                const immediateUpdate: Trip = {
+                  ...event.trip,
+                  decisionLogistics: {
+                    ...(event.trip.decisionLogistics ?? {}),
+                    rosterConfirmed: true,
+                  },
+                };
+                onTripUpdate(immediateUpdate);
+
+                // Reload trips to get fresh data
+                const freshTrips = await loadTrips(activeGroupId, true);
+                const freshTrip = freshTrips.find(t => t.id === event.trip.id);
+                if (freshTrip) {
+                  onTripUpdate(freshTrip);
+                }
+              } catch (error) {
+                console.error("Failed to mark roster complete:", error);
+                alert(`Failed to mark complete: ${error instanceof Error ? error.message : String(error)}`);
+              } finally {
+                setMarkingComplete(false);
+              }
+            }}
+            disabled={markingComplete}
+            className="rounded-xl btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {markingComplete ? "Saving..." : "Mark complete"}
+          </button>
         </div>
       )}
     </div>

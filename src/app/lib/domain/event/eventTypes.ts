@@ -7,12 +7,12 @@
 
 import type { BaseCampPhase } from "../lifecycle/phaseDefinitions";
 
-export type EventKind = "group_trip" | "hosted_round" | "quick_round";
-
 // EventState is now an alias for BaseCampPhase to maintain backward compatibility
 export type EventState = BaseCampPhase;
 
-export type InstrumentKey = "meet_details" | "signups_window" | "roster" | "flights_plan" | "trip_name" | "results_publish" | "gameday_entry" | "participants" | "logistics";
+export type EventKind = "hosted_round" | "group_trip";
+
+export type InstrumentKey = "meet_details" | "signups_window" | "roster" | "flights_plan" | "trip_name" | "results_publish" | "gameday_entry" | "participants" | "logistics" | "capacity" | "export_docs";
 
 export type EventInstrument<T> = {
   key: InstrumentKey;
@@ -79,6 +79,14 @@ export type FlightsPlanData = {
   // Empty for now - snapshot is loaded via API in instrument body
 };
 
+export type CapacityData = {
+  capacityLimit: number | null;
+};
+
+export type ExportDocsData = {
+  hasOpenedPreview: boolean;
+};
+
 export type EventContext = {
   id: number;
   kind: EventKind;
@@ -99,6 +107,8 @@ export type EventContext = {
     gameday_entry: EventInstrument<GameDayEntryData>;
     participants: EventInstrument<ParticipantsData>;
     logistics: EventInstrument<LogisticsData>;
+    capacity: EventInstrument<CapacityData>;
+    export_docs: EventInstrument<ExportDocsData>;
   };
   trip: import("../../tripActions").Trip; // keep full trip for now
 };

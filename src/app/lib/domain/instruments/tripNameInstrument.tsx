@@ -53,33 +53,61 @@ export function TripNameBody({
 
     try {
       // Update via API (consistent with other trip updates)
+      // Set tripNameConfirmed flag in decisionLogistics to mark as done
       const updatedTrips = await updateTrip(
         [event.trip],
         event.trip.id,
         activeGroupId,
         {
           tripName: trimmedName,
+          name: trimmedName, // Also update legacy field
+          decisionLogistics: {
+            ...(event.trip.decisionLogistics ?? {}),
+            tripNameConfirmed: true,
+          },
         }
       );
 
-      // Update local trip state immediately with canonical field
-      const updatedTrip = updatedTrips.find((t) => t.id === event.trip.id);
-      if (updatedTrip) {
-        // Ensure canonical field is set for immediate UI consistency
-        const tripWithCanonical = {
-          ...updatedTrip,
-          tripName: trimmedName,
-          name: trimmedName, // Also set legacy field for parity
-        };
-        onTripUpdate(tripWithCanonical);
+      // Update local trip state immediately (before reload) to ensure UI updates instantly
+      // This causes the instrument to re-render as DONE without requiring page refresh
+      const immediateUpdate: Trip = {
+        ...event.trip,
+        tripName: trimmedName,
+        name: trimmedName, // Also set legacy field for parity
+        decisionLogistics: {
+          ...(event.trip.decisionLogistics ?? {}),
+          tripNameConfirmed: true,
+        },
+      };
+      onTripUpdate(immediateUpdate);
+
+      // Reload trips to get fresh data from API (ensures consistency)
+      const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
+      const updatedTrip = freshTrips.find(t => t.id === event.trip.id);
+      
+      // Debug logging (dev only)
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[tripNameInstrument] save succeeded:", {
+          updatePayload: {
+            tripName: trimmedName,
+            name: trimmedName,
+            decisionLogistics: {
+              ...(event.trip.decisionLogistics ?? {}),
+              tripNameConfirmed: true,
+            },
+          },
+          returnedTrip: updatedTrip ? {
+            id: updatedTrip.id,
+            tripName: updatedTrip.tripName,
+            name: updatedTrip.name,
+            decisionLogistics: updatedTrip.decisionLogistics,
+          } : null,
+        });
       }
-
-      // Reload trips to get fresh data
-      const freshTrips = await loadTrips(activeGroupId, true);
-      const freshTrip = freshTrips.find((t) => t.id === event.trip.id);
-
-      if (freshTrip) {
-        onTripUpdate(freshTrip);
+      
+      if (updatedTrip) {
+        // Update again with API-normalized data to ensure consistency
+        onTripUpdate(updatedTrip);
       }
 
       setSaved(true);
@@ -98,24 +126,22 @@ export function TripNameBody({
   }
 
   // Done state: show compact view with Change link (if editable)
+  // Trip name value is shown only in Chroma, not here
   if (isDone && !isEditing) {
-    // Read from canonical field first to ensure consistency
-    const explicitName = (event.trip.tripName ?? event.trip.name ?? "").trim();
-    const displayName = explicitName || tripNameData.displayName;
+    if (!policy.canEditTripName) {
+      // Non-editable: return empty fragment (value shown in Chroma only)
+      return <></>;
+    }
     
+    // Minimal compact layout: just the Change button
     return (
-      <div className="space-y-1">
-        <div className="text-sm text-muted-foreground">{displayName}</div>
-        {policy.canEditTripName && (
-          <button
-            type="button"
-            onClick={() => setIsEditing(true)}
-            className="text-xs text-muted-foreground hover:underline"
-          >
-            Change
-          </button>
-        )}
-      </div>
+      <button
+        type="button"
+        onClick={() => setIsEditing(true)}
+        className="text-xs text-muted-foreground hover:underline -mt-1"
+      >
+        Change
+      </button>
     );
   }
 

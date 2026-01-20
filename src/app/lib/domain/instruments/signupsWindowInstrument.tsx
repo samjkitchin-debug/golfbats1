@@ -169,7 +169,13 @@ export function SignupsWindowBody({
         [event.trip],
         event.trip.id,
         activeGroupId,
-        updatePayload
+        {
+          ...updatePayload,
+          decisionLogistics: {
+            ...(event.trip.decisionLogistics ?? {}),
+            signupsWindowConfirmed: true,
+          },
+        }
       );
 
       // Optimistic UI update
@@ -218,20 +224,30 @@ export function SignupsWindowBody({
         activeGroupId,
         {
           cutoffAt: cutoffAtValue || undefined,
+          decisionLogistics: {
+            ...(event.trip.decisionLogistics ?? {}),
+            signupsWindowConfirmed: true,
+          },
         }
       );
 
-      // Optimistic UI update
-      const updatedTrip = updatedTrips.find(t => t.id === event.trip.id);
-      if (updatedTrip) {
-        onTripUpdate(updatedTrip);
-      }
+      // Update local trip state immediately (before reload) to ensure UI updates instantly
+      const immediateUpdate: Trip = {
+        ...event.trip,
+        cutoffAt: cutoffAtValue || undefined,
+        decisionLogistics: {
+          ...(event.trip.decisionLogistics ?? {}),
+          signupsWindowConfirmed: true,
+        },
+      };
+      onTripUpdate(immediateUpdate);
 
-      // Reload trips to get fresh data
-      const freshTrips = await loadTrips(activeGroupId, true);
+      // Reload trips to get fresh data from API (ensures consistency)
+      const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
       const freshTrip = freshTrips.find(t => t.id === event.trip.id);
-
+      
       if (freshTrip) {
+        // Update again with API-normalized data to ensure consistency
         onTripUpdate(freshTrip);
       }
 
@@ -263,20 +279,30 @@ export function SignupsWindowBody({
         activeGroupId,
         {
           cutoffAt: cutoffAtValue,
+          decisionLogistics: {
+            ...(event.trip.decisionLogistics ?? {}),
+            signupsWindowConfirmed: true,
+          },
         }
       );
 
-      // Optimistic UI update
-      const updatedTrip = updatedTrips.find(t => t.id === event.trip.id);
-      if (updatedTrip) {
-        onTripUpdate(updatedTrip);
-      }
+      // Update local trip state immediately (before reload) to ensure UI updates instantly
+      const immediateUpdate: Trip = {
+        ...event.trip,
+        cutoffAt: cutoffAtValue,
+        decisionLogistics: {
+          ...(event.trip.decisionLogistics ?? {}),
+          signupsWindowConfirmed: true,
+        },
+      };
+      onTripUpdate(immediateUpdate);
 
-      // Reload trips to get fresh data
-      const freshTrips = await loadTrips(activeGroupId, true);
+      // Reload trips to get fresh data from API (ensures consistency)
+      const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
       const freshTrip = freshTrips.find(t => t.id === event.trip.id);
-
+      
       if (freshTrip) {
+        // Update again with API-normalized data to ensure consistency
         onTripUpdate(freshTrip);
       }
     } catch (error) {

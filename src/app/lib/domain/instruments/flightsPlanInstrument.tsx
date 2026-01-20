@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import type { InstrumentRenderProps } from "./instrumentTypes";
 import type { FlightsSnapshot } from "../flights/flightsTypes";
+import { updateTrip, loadTrips } from "../../tripActions";
+import type { Trip } from "../../tripActions";
 import Link from "next/link";
 
 /**
@@ -14,11 +16,14 @@ export function FlightsPlanBody({
   event,
   policy,
   currentUserId,
+  activeGroupId,
   onTripUpdate,
 }: InstrumentRenderProps) {
+  const isDone = event.instruments.flights_plan.status === "done";
   const [snapshot, setSnapshot] = useState<FlightsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const tripId = event.trip.id;
   const tripLegacyId = (event.trip as any).legacy_id || tripId;
@@ -242,13 +247,60 @@ export function FlightsPlanBody({
           One flight has too many players.
         </p>
       )}
-      <div className="pt-2">
+      <div className="pt-2 flex items-center gap-3">
         <Link
           href={`/trips/${tripLegacyId}/flights`}
           className="text-sm text-anticipation hover:underline"
         >
           Edit flights →
         </Link>
+        {!isDone && policy.canEditFlightsPlan && (
+          <button
+            onClick={async () => {
+              if (saving || !activeGroupId) return;
+              setSaving(true);
+              try {
+                const updatedTrips = await updateTrip(
+                  [event.trip],
+                  event.trip.id,
+                  activeGroupId,
+                  {
+                    decisionLogistics: {
+                      ...(event.trip.decisionLogistics ?? {}),
+                      flightsConfirmed: true,
+                    },
+                  }
+                );
+
+                // Update local trip state immediately
+                const immediateUpdate: Trip = {
+                  ...event.trip,
+                  decisionLogistics: {
+                    ...(event.trip.decisionLogistics ?? {}),
+                    flightsConfirmed: true,
+                  },
+                };
+                onTripUpdate(immediateUpdate);
+
+                // Reload trips to get fresh data
+                const freshTrips = await loadTrips(activeGroupId, true);
+                const freshTrip = freshTrips.find(t => t.id === event.trip.id);
+                if (freshTrip) {
+                  onTripUpdate(freshTrip);
+                }
+              } catch (error) {
+                console.error("Failed to save flights:", error);
+                alert(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
+              } finally {
+                setSaving(false);
+              }
+            }}
+            disabled={saving}
+            className="rounded-xl btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? "Saving..." : "Save flights"}
+          </button>
+        )}
       </div>
     </div>
   );

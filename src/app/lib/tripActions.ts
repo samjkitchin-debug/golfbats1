@@ -38,16 +38,25 @@ export type TripLogistics = {
   /** Legacy: ferryDetails kept for backward compatibility, maps to itineraryDetails when transportMode='ferry' */
   ferryDetails?: string;
   notes?: string;
+  capacityLimit?: number | null;
+  capacityConfirmed?: boolean;
+  meetConfirmed?: boolean;
+  transportConfirmed?: boolean;
 };
 
 /**
  * Decision logistics - information needed for members to decide whether to RSVP.
  * Editable while signups are open.
- * Fields: meeting point, meet time/tee time
+ * Fields: meeting point, meet time/tee time, confirmation flags
  */
 export type DecisionLogistics = {
   meetingPoint?: string;
   meetTime?: string;
+  tripNameConfirmed?: boolean;
+  signupsWindowConfirmed?: boolean;
+  rosterConfirmed?: boolean;
+  flightsConfirmed?: boolean;
+  exportDocsConfirmed?: boolean;
 };
 
 export type TripResult = {

@@ -8,7 +8,7 @@ import { computeSignupOpenAt, todayInSGT } from "../../tripDates";
 import { formatTripDateLong } from "../../tripDisplay";
 import { deriveEventState } from "../lifecycle/lifecycleEngine";
 import { getResultSnapshot } from "../results/resultsEngine";
-import type { EventContext, EventKind, MeetDetailsData, SignupsWindowData, RosterData, FlightsPlanData, TripNameData, ResultsPublishData, GameDayEntryData, ParticipantsData, LogisticsData } from "./eventTypes";
+import type { EventContext, EventKind, MeetDetailsData, SignupsWindowData, RosterData, FlightsPlanData, TripNameData, ResultsPublishData, GameDayEntryData, ParticipantsData, LogisticsData, CapacityData, ExportDocsData } from "./eventTypes";
 import type { Trip } from "../../tripActions";
 
 export function resolveEventContext(args: {
@@ -37,8 +37,9 @@ export function resolveEventContext(args: {
     meetingPoint: meetingPointTrimmed || undefined,
   };
 
-  const meetDetailsStatus: "todo" | "done" = 
-    (meetTimeTrimmed.length > 0 || meetingPointTrimmed.length > 0) ? "done" : "todo";
+  // Status is "done" ONLY when trip.logistics.meetConfirmed === true
+  // NOT based on presence of meetTime/meetingPoint values
+  const meetDetailsStatus: "todo" | "done" = (trip.logistics as any)?.meetConfirmed === true ? "done" : "todo";
 
   // Build signups_window instrument
   // Compute default open moment: trip_date - 30 days
@@ -152,14 +153,25 @@ export function resolveEventContext(args: {
   const displayName = hasExplicitName ? explicitName : generatedName;
   const isDefaultGenerated = !hasExplicitName;
   
-  // Status is "done" when trip.tripName OR trip.name is explicitly set (non-empty),
-  // "todo" only when using generated fallback
-  const tripNameStatus: "todo" | "done" = hasExplicitName ? "done" : "todo";
+  // Status is "done" ONLY when trip.decisionLogistics.tripNameConfirmed === true
+  // Do NOT treat existence of trip.name as done (default creation preset name does NOT mark instrument done)
+  const tripNameStatus: "todo" | "done" = trip.decisionLogistics?.tripNameConfirmed === true ? "done" : "todo";
   
   const tripNameData: TripNameData = {
     displayName,
     isDefaultGenerated,
   };
+
+  // Debug logging (dev only)
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[resolveEventContext] trip_name status:", {
+      tripId: trip.id,
+      tripName: trip.tripName,
+      name: trip.name,
+      decisionLogistics: trip.decisionLogistics,
+      tripNameStatus,
+    });
+  }
 
   // Build results_publish instrument
   // Get canonical result snapshot
@@ -185,6 +197,31 @@ export function resolveEventContext(args: {
     canViewResults,
   };
 
+  // Build capacity instrument
+  // Read capacityLimit from trip.logistics.capacityLimit (new field only, no legacy fallback)
+  const capacityFromLogistics = (trip.logistics as any)?.capacityLimit;
+  const capacityLimit: number | null | undefined = capacityFromLogistics !== undefined
+    ? (capacityFromLogistics === null ? null : Number(capacityFromLogistics))
+    : undefined;
+  
+  // Status is "done" ONLY when trip.logistics.capacityConfirmed === true
+  // NOT based on capacityLimit value
+  // If capacityLimit exists but capacityConfirmed !== true → status = "todo" (allows prefilling)
+  const capacityConfirmed = (trip.logistics as any)?.capacityConfirmed === true;
+  const capacityStatus: "todo" | "done" = capacityConfirmed ? "done" : "todo";
+  
+  const capacityData: CapacityData = {
+    capacityLimit: capacityLimit ?? null,
+  };
+
+  // Build export_docs instrument
+  // Status is "done" ONLY when trip.decisionLogistics.exportDocsConfirmed === true
+  // NOT based on localStorage (replaced with DB flag)
+  const exportDocsStatus: "todo" | "done" = (trip.decisionLogistics as any)?.exportDocsConfirmed === true ? "done" : "todo";
+  const exportDocsData: ExportDocsData = {
+    hasOpenedPreview: exportDocsStatus === "done",
+  };
+
   return {
     id: trip.id,
     kind,
@@ -205,19 +242,19 @@ export function resolveEventContext(args: {
       signups_window: {
         key: "signups_window",
         title: "Sign-ups",
-        status: "done", // Always has derived values
+        status: (trip.decisionLogistics as any)?.signupsWindowConfirmed === true ? "done" : "todo",
         data: signupsWindowData,
       },
       roster: {
         key: "roster",
         title: "Roster",
-        status: "done", // Always has counts
+        status: (trip.decisionLogistics as any)?.rosterConfirmed === true ? "done" : "todo",
         data: rosterData,
       },
       flights_plan: {
         key: "flights_plan",
         title: "Flights",
-        status: "todo", // Will be determined by snapshot in instrument
+        status: (trip.decisionLogistics as any)?.flightsConfirmed === true ? "done" : "todo",
         data: {} as FlightsPlanData, // Empty - snapshot loaded via API
       },
       trip_name: {
@@ -285,8 +322,20 @@ export function resolveEventContext(args: {
       logistics: {
         key: "logistics",
         title: "Logistics",
-        status: "done", // Always "done" if available (isAvailable will control visibility)
+        status: (trip.logistics as any)?.transportConfirmed === true ? "done" : "todo",
         data: {} as LogisticsData, // Empty data - derived from event.trip.logistics and event.trip.ferry
+      },
+      capacity: {
+        key: "capacity",
+        title: "Capacity",
+        status: capacityStatus,
+        data: capacityData,
+      },
+      export_docs: {
+        key: "export_docs",
+        title: "Export documents",
+        status: exportDocsStatus,
+        data: exportDocsData,
       },
     },
     trip, // keep full trip attached for now

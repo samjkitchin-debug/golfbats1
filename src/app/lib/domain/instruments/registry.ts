@@ -15,6 +15,8 @@ import { GameDayEntryBody } from "./gamedayEntryInstrument";
 import { ParticipantsBody, ParticipantsRightAction } from "./participantsInstrument";
 import { LogisticsBody } from "./logisticsInstrument";
 import { FlightsPlanBody } from "./flightsPlanInstrument";
+import { CapacityBody } from "./capacityInstrument";
+import { ExportDocsBody } from "./exportDocsInstrument";
 
 export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentDefinition> {
   return {
@@ -24,26 +26,52 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       helper: undefined,
       kind: "job",
       compactWhenDone: true,
-      isAvailable: () => true,
+      isAvailable: (event: EventContext) => {
+        // Available ONLY in forming phase
+        return event.state === "forming";
+      },
       isDone: (event: EventContext) => event.instruments.trip_name.status === "done",
       RenderBody: TripNameBody,
+    },
+    capacity: {
+      key: "capacity",
+      title: "Capacity",
+      helper: undefined,
+      kind: "job",
+      compactWhenDone: true,
+      isAvailable: (event: EventContext) => {
+        // Available ONLY in forming phase
+        return event.state === "forming";
+      },
+      isDone: (event: EventContext) => event.instruments.capacity.status === "done",
+      RenderBody: CapacityBody,
     },
     signups_window: {
       key: "signups_window",
       title: "",
       helper: undefined,
-      kind: "status_control",
-      isAvailable: () => true,
-      isDone: () => true, // Always has derived values
+      kind: "job",
+      compactWhenDone: true,
+      isAvailable: (event: EventContext) => {
+        // Available ONLY in signups_open phase
+        // NOT available in forming, locked, gameday, in_play, or completed
+        // (In locked phase, the phase anchor label "Sign-ups closed" is sufficient)
+        return event.state === "signups_open";
+      },
+      isDone: (event: EventContext) => event.instruments.signups_window.status === "done",
       RenderBody: SignupsWindowBody,
     },
     roster: {
       key: "roster",
-      title: "Roster",
+      title: "Attendees",
       helper: "See who's joining and manage your RSVP.",
-      kind: "status_control",
-      isAvailable: () => true,
-      isDone: () => true, // Always has counts
+      kind: "job",
+      compactWhenDone: true,
+      isAvailable: (event: EventContext) => {
+        // Available ONLY in signups_open phase
+        return event.state === "signups_open";
+      },
+      isDone: (event: EventContext) => event.instruments.roster.status === "done",
       RenderBody: RosterBody,
     },
     flights_plan: {
@@ -51,25 +79,12 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       title: "Flights",
       helper: "Set tee groups before the day. GameDay allows tiny tee-box fixes only.",
       kind: "job",
+      compactWhenDone: true,
       isAvailable: (event: EventContext) => {
-        // Available for group trips when roster exists (has confirmed members)
-        if (!event.isGroupTrip) return false;
-        const hasConfirmedMembers = event.trip.attendees.some((a) => a.status === "confirmed");
-        if (!hasConfirmedMembers) return false;
-        // Only available in forming, signups_open, locked, gameday
-        // Hide in in_play and completed
-        return (
-          event.state === "forming" ||
-          event.state === "signups_open" ||
-          event.state === "locked" ||
-          event.state === "gameday"
-        );
+        // Available ONLY in locked phase
+        return event.state === "locked";
       },
-      isDone: () => {
-        // Neutral until snapshot-derived completion is wired into context
-        // Always return false to avoid showing done tick
-        return false;
-      },
+      isDone: (event: EventContext) => event.instruments.flights_plan.status === "done",
       RenderBody: FlightsPlanBody,
     },
     meet_details: {
@@ -78,7 +93,10 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       helper: "Set the time and place so everyone's ready.",
       kind: "job",
       compactWhenDone: true,
-      isAvailable: () => true,
+      isAvailable: (event: EventContext) => {
+        // Available ONLY in locked phase
+        return event.state === "locked";
+      },
       isDone: (event: EventContext) => event.instruments.meet_details.status === "done",
       RenderBody: MeetDetailsBody,
     },
@@ -87,7 +105,10 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       title: "Results",
       helper: "Publish results when the round is complete.",
       kind: "job",
-      isAvailable: () => true,
+      isAvailable: (event: EventContext) => {
+        // Available ONLY in completed phase
+        return event.state === "completed";
+      },
       isDone: (event: EventContext) => event.instruments.results_publish.status === "done",
       RenderBody: ResultsPublishBody,
     },
@@ -96,7 +117,10 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       title: "GameDay",
       helper: "Enter scoring when the round begins.",
       kind: "status_control",
-      isAvailable: () => true,
+      isAvailable: (event: EventContext) => {
+        // Available ONLY in gameday phase
+        return event.state === "gameday";
+      },
       isDone: () => true,
       RenderBody: GameDayEntryBody,
     },
@@ -105,7 +129,7 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       title: "Participants",
       helper: undefined,
       kind: "status_control",
-      isAvailable: () => true,
+      isAvailable: () => false, // Not in BaseCamp phase ownership mapping
       isDone: () => true,
       RenderBody: ParticipantsBody,
       RightAction: ParticipantsRightAction,
@@ -114,19 +138,27 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       key: "logistics",
       title: "Logistics",
       helper: undefined,
-      kind: "status_control",
+      kind: "job",
+      compactWhenDone: true,
       isAvailable: (event: EventContext) => {
-        const trip = event.trip;
-        return Boolean(
-          trip.logistics?.meetingPoint ||
-          trip.ferry ||
-          trip.logistics?.itineraryDetails ||
-          trip.logistics?.ferryDetails ||
-          trip.logistics?.notes
-        );
+        // Available ONLY in locked phase
+        return event.state === "locked";
       },
-      isDone: () => true,
+      isDone: (event: EventContext) => event.instruments.logistics.status === "done",
       RenderBody: LogisticsBody,
+    },
+    export_docs: {
+      key: "export_docs",
+      title: "Export documents",
+      helper: undefined,
+      kind: "job",
+      compactWhenDone: true,
+      isAvailable: (event: EventContext) => {
+        // Available ONLY in locked phase
+        return event.state === "locked";
+      },
+      isDone: (event: EventContext) => event.instruments.export_docs.status === "done",
+      RenderBody: ExportDocsBody,
     },
   };
 }

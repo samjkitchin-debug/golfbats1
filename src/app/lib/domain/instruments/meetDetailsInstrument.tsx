@@ -6,7 +6,7 @@ import type { EventPolicy } from "../policy/eventPolicy";
 import type { InstrumentRenderProps } from "./instrumentTypes";
 import { TimeDialPicker } from "../../../components/TimeDialPicker";
 import { InlineNotice } from "../../../components/InlineNotice";
-import { loadTrips } from "../../tripActions";
+import { loadTrips, updateTrip } from "../../tripActions";
 import type { Trip } from "../../tripActions";
 
 /**
@@ -64,8 +64,8 @@ export function MeetDetailsBody({
   const rawMeetTime = initialMeetTime.trim();
   const rawMeetingPoint = initialMeetingPoint.trim();
   
-  // Compute done using canonical rule (same as resolveEventContext)
-  const isDone = Boolean(rawMeetTime || rawMeetingPoint);
+  // Compute done using confirmation flag (same as resolveEventContext)
+  const isDone = event.instruments.meet_details.status === "done";
   
   const [meetTime, setMeetTime] = useState(parseTimeToHHMM(rawMeetTime));
   const [meetingPoint, setMeetingPoint] = useState(rawMeetingPoint);
@@ -96,33 +96,41 @@ export function MeetDetailsBody({
     setSaved(false);
 
     try {
-      // Update trip in database by legacy_id (Trip.id is numeric legacy_id)
-      const { error } = await supabase
-        .from("trips")
-        .update({
-          meet_time: meetTime.trim() || null,
-          meeting_point: meetingPoint.trim() || null,
-        })
-        .eq("legacy_id", event.trip.id);
-
-      if (error) {
-        throw error;
-      }
-
-      // Update local trip state immediately (before reload) to ensure UI updates instantly
       const trimmedMeetTime = meetTime.trim() || undefined;
       const trimmedMeetingPoint = meetingPoint.trim() || undefined;
       
-      // Update both decisionLogistics and logistics to match API normalization
+      // Update trip via updateTrip (RLS-safe)
+      // Update both decisionLogistics and logistics, and set meetConfirmed flag
+      const updatedTrips = await updateTrip(
+        [event.trip],
+        event.trip.id,
+        activeGroupId,
+        {
+          logistics: {
+            ...(event.trip.logistics ?? {}),
+            meetTime: trimmedMeetTime,
+            meetingPoint: trimmedMeetingPoint,
+            meetConfirmed: true,
+          },
+          decisionLogistics: {
+            ...(event.trip.decisionLogistics ?? {}),
+            meetTime: trimmedMeetTime,
+            meetingPoint: trimmedMeetingPoint,
+          },
+        }
+      );
+
+      // Update local trip state immediately (before reload) to ensure UI updates instantly
       const immediateUpdate: Trip = {
         ...event.trip,
         logistics: {
-          ...event.trip.logistics,
+          ...(event.trip.logistics ?? {}),
           meetTime: trimmedMeetTime,
           meetingPoint: trimmedMeetingPoint,
+          meetConfirmed: true,
         },
         decisionLogistics: {
-          ...event.trip.decisionLogistics,
+          ...(event.trip.decisionLogistics ?? {}),
           meetTime: trimmedMeetTime,
           meetingPoint: trimmedMeetingPoint,
         },
@@ -163,18 +171,18 @@ export function MeetDetailsBody({
   }
 
   /**
-   * Format completed summary line
+   * Format completed summary line (ledger format: time · place, no labels)
    */
   function formatSummaryLine(meetTime: string, meetingPoint: string): string {
     const hasTime = Boolean(meetTime.trim());
     const hasPoint = Boolean(meetingPoint.trim());
     
     if (hasTime && hasPoint) {
-      return `Meet at ${formatTime12Hour(meetTime)} — ${meetingPoint}`;
+      return `${formatTime12Hour(meetTime)} · ${meetingPoint}`;
     } else if (hasTime) {
-      return `Meet at ${formatTime12Hour(meetTime)}`;
+      return formatTime12Hour(meetTime);
     } else if (hasPoint) {
-      return `Meet at ${meetingPoint}`;
+      return meetingPoint;
     }
     return "";
   }
