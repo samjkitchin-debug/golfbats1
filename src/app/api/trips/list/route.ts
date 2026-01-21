@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/trips/list
  * Lightweight trips list endpoint with pagination
@@ -18,7 +20,7 @@ export async function GET(req: Request) {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
     }
 
     const { searchParams } = new URL(req.url);
@@ -29,17 +31,17 @@ export async function GET(req: Request) {
     if (!groupId) {
       return NextResponse.json(
         { error: "groupId query parameter is required." },
-        { status: 400 }
+        { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
 
     // Validate and parse limit
     const limit = Math.min(Math.max(parseInt(limitParam || "20", 10) || 20, 1), 50);
 
-    // Verify group exists and is active
+    // Verify group exists and is active, and fetch group name for hosted_by_label
     const { data: group } = await supabase
       .from("groups")
-      .select("id")
+      .select("id, name")
       .eq("id", groupId)
       .eq("is_active", true)
       .single();
@@ -47,9 +49,11 @@ export async function GET(req: Request) {
     if (!group) {
       return NextResponse.json(
         { error: "Group not found or inactive." },
-        { status: 404 }
+        { status: 404, headers: { "Cache-Control": "no-store" } }
       );
     }
+
+    const groupName = group.name;
 
     // Get current member ID for filtering member trips visibility
     // In canonical schema: members.id == auth.user.id
@@ -118,7 +122,7 @@ export async function GET(req: Request) {
     const tripsToReturn = hasMore ? tripsData.slice(0, limit) : tripsData;
 
     if (tripsToReturn.length === 0) {
-      return NextResponse.json({ ok: true, trips: [], nextCursor: undefined });
+      return NextResponse.json({ ok: true, trips: [], nextCursor: undefined }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const tripIds = tripsToReturn.map((t) => t.id);
@@ -208,6 +212,19 @@ export async function GET(req: Request) {
       const capacity = trip.capacity || 0;
       const openSpots = Math.max(0, capacity - confirmedCount);
 
+      // Compute canonical hosted_by_label
+      const tripOrigin = (trip as any).trip_origin || 'group';
+      const createdByMemberName = (trip as any).created_by_member_id 
+        ? (creatorsById[(trip as any).created_by_member_id] || null)
+        : null;
+      
+      let hostedByLabel: string | undefined;
+      if (tripOrigin === 'group') {
+        hostedByLabel = `Hosted by ${groupName}`;
+      } else if (createdByMemberName) {
+        hostedByLabel = `Hosted by ${createdByMemberName}`;
+      }
+
       return {
         id: numericId,
         name: trip.name || undefined,
@@ -216,11 +233,10 @@ export async function GET(req: Request) {
         teeId: trip.tee_id,
         capacity,
         status: trip.status as "open" | "closed" | "archived",
-        tripOrigin: (trip as any).trip_origin || 'group',
+        tripOrigin,
         isPostedToGroup: (trip as any).is_posted_to_group !== undefined ? (trip as any).is_posted_to_group : true,
-        createdByMemberName: (trip as any).created_by_member_id 
-          ? (creatorsById[(trip as any).created_by_member_id] || null)
-          : null,
+        createdByMemberName,
+        hostedByLabel,
         attendeeCount,
         openSpots,
         hasPublishedResults: hasPublishedResults[trip.id] || false,
@@ -233,12 +249,12 @@ export async function GET(req: Request) {
       console.log(`[trips/list] Payload size: ${payloadSize} bytes for ${trips.length} trips`);
     }
 
-    return NextResponse.json({ ok: true, trips, nextCursor });
+    return NextResponse.json({ ok: true, trips, nextCursor }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Get trips/list error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "An error occurred." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

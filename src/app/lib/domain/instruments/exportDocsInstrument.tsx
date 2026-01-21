@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import type { EventContext } from "../event/eventTypes";
 import type { InstrumentRenderProps } from "./instrumentTypes";
-import { updateTrip, loadTrips } from "../../tripActions";
-import type { Trip, Attendee } from "../../tripActions";
+import type { Attendee } from "../../tripActions";
 
 /**
  * Export Docs Body Component
@@ -17,6 +16,7 @@ export function ExportDocsBody({
   supabase,
   activeGroupId,
   onTripUpdate,
+  saveTripPatch,
 }: InstrumentRenderProps) {
   const exportDocsData = event.instruments.export_docs.data;
   const isDone = event.instruments.export_docs.status === "done";
@@ -33,7 +33,6 @@ export function ExportDocsBody({
     passportNationality: string | null;
     passportDateOfBirth: string | null;
     passportExpiryDate: string | null;
-    passportPhotoPath: string | null;
   }>>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
 
@@ -65,14 +64,15 @@ export function ExportDocsBody({
         .in("id", memberIds);
 
       // Load passport data from member_profiles
+      // Note: passport_photo_path does not exist in member_profiles schema
       const { data: profilesData } = await supabase
         .from("member_profiles")
-        .select("user_id, passport_full_name, passport_number, passport_nationality, passport_date_of_birth, passport_expiry_date, passport_photo_path")
-        .in("user_id", memberIds);
+        .select("member_id, passport_full_name, passport_number, passport_nationality, passport_date_of_birth, passport_expiry_date")
+        .in("member_id", memberIds);
 
       const profiles = confirmed.map((attendee) => {
         const member = membersData?.find((m: any) => m.id === attendee.memberId);
-        const profile = profilesData?.find((p: any) => p.user_id === attendee.memberId);
+        const profile = profilesData?.find((p: any) => p.member_id === attendee.memberId);
         
         return {
           memberId: attendee.memberId || "",
@@ -83,7 +83,6 @@ export function ExportDocsBody({
           passportNationality: profile?.passport_nationality || null,
           passportDateOfBirth: profile?.passport_date_of_birth || null,
           passportExpiryDate: profile?.passport_expiry_date || null,
-          passportPhotoPath: profile?.passport_photo_path || null,
         };
       });
 
@@ -97,37 +96,20 @@ export function ExportDocsBody({
 
   async function handleOpenTravelAgent() {
     setShowTravelAgentPreview(true);
-    if (!isDone && activeGroupId) {
+    if (!isDone) {
       // Set exportDocsConfirmed flag when preview is opened for the first time
       try {
-        const updatedTrips = await updateTrip(
-          [event.trip],
-          event.trip.id,
-          activeGroupId,
-          {
-            decisionLogistics: {
-              ...(event.trip.decisionLogistics ?? {}),
-              exportDocsConfirmed: true,
-            },
-          }
-        );
-
-        // Update local trip state immediately
-        const immediateUpdate: Trip = {
-          ...event.trip,
+        const result = await saveTripPatch({
           decisionLogistics: {
             ...(event.trip.decisionLogistics ?? {}),
             exportDocsConfirmed: true,
           },
-        };
-        onTripUpdate(immediateUpdate);
+        });
 
-        // Reload trips to get fresh data
-        const freshTrips = await loadTrips(activeGroupId, true);
-        const freshTrip = freshTrips.find(t => t.id === event.trip.id);
-        if (freshTrip) {
-          onTripUpdate(freshTrip);
+        if (!result.ok) {
+          console.error("Failed to mark export docs complete:", result.error);
         }
+        // saveTripPatch already updated local state
       } catch (error) {
         console.error("Failed to mark export docs complete:", error);
       }
@@ -136,37 +118,20 @@ export function ExportDocsBody({
 
   async function handleOpenGolfCourse() {
     setShowGolfCoursePreview(true);
-    if (!isDone && activeGroupId) {
+    if (!isDone) {
       // Set exportDocsConfirmed flag when preview is opened for the first time
       try {
-        const updatedTrips = await updateTrip(
-          [event.trip],
-          event.trip.id,
-          activeGroupId,
-          {
-            decisionLogistics: {
-              ...(event.trip.decisionLogistics ?? {}),
-              exportDocsConfirmed: true,
-            },
-          }
-        );
-
-        // Update local trip state immediately
-        const immediateUpdate: Trip = {
-          ...event.trip,
+        const result = await saveTripPatch({
           decisionLogistics: {
             ...(event.trip.decisionLogistics ?? {}),
             exportDocsConfirmed: true,
           },
-        };
-        onTripUpdate(immediateUpdate);
+        });
 
-        // Reload trips to get fresh data
-        const freshTrips = await loadTrips(activeGroupId, true);
-        const freshTrip = freshTrips.find(t => t.id === event.trip.id);
-        if (freshTrip) {
-          onTripUpdate(freshTrip);
+        if (!result.ok) {
+          console.error("Failed to mark export docs complete:", result.error);
         }
+        // saveTripPatch already updated local state
       } catch (error) {
         console.error("Failed to mark export docs complete:", error);
       }
@@ -325,9 +290,6 @@ export function ExportDocsBody({
                           <div><span className="text-muted">Passport Nationality:</span> {profile.passportNationality || "Not set"}</div>
                           <div><span className="text-muted">Date of Birth:</span> {profile.passportDateOfBirth || "Not set"}</div>
                           <div><span className="text-muted">Passport Expiry:</span> {profile.passportExpiryDate || "Not set"}</div>
-                          {profile.passportPhotoPath && (
-                            <div><span className="text-muted">Passport Photo:</span> Available</div>
-                          )}
                         </div>
                         {!isComplete && (
                           <div className="text-xs text-muted">Profile incomplete</div>

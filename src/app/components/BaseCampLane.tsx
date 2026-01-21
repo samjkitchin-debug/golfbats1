@@ -5,8 +5,8 @@ import type { EventContext, InstrumentKey } from "../lib/domain/event/eventTypes
 import type { EventPolicy } from "../lib/domain/policy/eventPolicy";
 import type { Trip } from "../lib/tripActions";
 import type { InlineInstrumentDefinition } from "../lib/domain/instruments/instrumentTypes";
-import { getPhaseStatusLine } from "../lib/domain/lifecycle/phaseCopy";
 import InlineInstrumentSection from "./InlineInstrumentSection";
+import { getPhaseLabel, getNextPhasePreview, formatDateForAnchor } from "../lib/domain/event/phaseDisplay";
 
 type BaseCampInstrument = {
   id: string;
@@ -25,10 +25,11 @@ type BaseCampLaneProps = {
   supabase: any;
   activeGroupId: string | null;
   onTripUpdate: (updatedTrip: Trip) => void;
+  saveTripPatch: (patch: Partial<Trip>) => Promise<{ ok: true; trip: Trip } | { ok: false; error: string }>;
   canEdit: boolean;
   trip: Trip;
   isGroupTripPage: boolean;
-  onShowBottomAnchorSheet: () => void;
+  onOpenSignupsRequested: () => void;
 };
 
 export default function BaseCampLane({
@@ -40,40 +41,35 @@ export default function BaseCampLane({
   supabase,
   activeGroupId,
   onTripUpdate,
+  saveTripPatch,
   canEdit,
   trip,
   isGroupTripPage,
-  onShowBottomAnchorSheet,
+  onOpenSignupsRequested,
 }: BaseCampLaneProps) {
-  // Domain instruments rendered inline in BaseCamp lane (ordered list)
-  const baseCampDomainInstrumentKeys: InstrumentKey[] = [
-    "trip_name",
-    "logistics",
-    "signups_window",
-    "roster",
-    "flights_plan",
-    "participants",
-    "meet_details",
-    "gameday_entry",
-    "results_publish",
-    // add more as migrated: ...
-  ];
-
-  // Derive ordered domain keys (pin signups_window to top during sign-ups phase)
-  const orderedDomainKeys = useMemo(() => {
-    const keys = [...baseCampDomainInstrumentKeys];
-
-    // During sign-ups window: pin signups_window to the top
-    if (event?.state === "signups_open" || event?.state === "forming") {
-      const idx = keys.indexOf("signups_window");
-      if (idx > -1) {
-        keys.splice(idx, 1);
-        keys.unshift("signups_window");
-      }
+  // Phase-scoped instrument ordering (deterministic per phase)
+  const getOrderedKeysForPhase = (phase: EventContext["state"] | null): InstrumentKey[] => {
+    switch (phase) {
+      case "forming":
+        return ["trip_name", "capacity" as InstrumentKey];
+      case "signups_open":
+        return ["roster"];
+      case "locked":
+        return ["flights_plan", "logistics", "export_docs" as InstrumentKey, "meet_details"];
+      case "gameday":
+        return ["gameday_entry"];
+      case "completed":
+        return ["results_publish"];
+      default:
+        return [];
     }
+  };
 
-    return keys;
-  }, [event?.state, baseCampDomainInstrumentKeys]);
+  // Get ordered keys for current phase
+  const orderedDomainKeys = useMemo(() => {
+    if (!event) return [];
+    return getOrderedKeysForPhase(event.state);
+  }, [event?.state]);
 
   // Helper to render an instrument with InlineInstrumentSection wrapper
   function renderInstrument(
@@ -104,6 +100,7 @@ export default function BaseCampLane({
       supabase,
       activeGroupId,
       onTripUpdate,
+      saveTripPatch,
     };
 
     return (
@@ -123,17 +120,10 @@ export default function BaseCampLane({
     );
   }
 
-  // Format date helper for anchors
-  const formatDateForAnchor = (ymd: string): string => {
-    const [year, month, day] = ymd.split('-').map(Number);
-    const dateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-    const dayName = dateObj.toLocaleDateString("en-GB", { weekday: "short" });
-    const dayNum = dateObj.getUTCDate();
-    const mon = dateObj.toLocaleDateString("en-GB", { month: "short" });
-    return `${dayName} ${dayNum} ${mon}`;
-  };
+  // Phase labels and previews now come from centralized phaseDisplay module
 
-  if (!isGroupTripPage) {
+  // BaseCamp is organiser-only: require both group trip AND basecamp access permission
+  if (!isGroupTripPage || !policy?.canAccessBaseCamp) {
     return null;
   }
 
@@ -145,26 +135,34 @@ export default function BaseCampLane({
         {/* Left cell: Current phase node + tick (spine starts here, no spine above) */}
         <div className="relative flex items-start">
           <div className="relative z-10 flex items-center pt-[0.375rem]">
-            <div className="h-2.5 w-2.5 rounded-full bg-ink-700 ring-2 ring-ink-700/20 -translate-x-1/2" />
+            <div className="h-2.5 w-2.5 rounded-full bg-anticipation ring-2 ring-anticipation/20 -translate-x-1/2" />
             <div className="absolute left-0 w-3 h-px bg-border translate-x-1/2" style={{ top: "6px" }} />
           </div>
           {/* Spine segment from top node down (connects to Row 2) */}
           <div className="absolute left-0 top-[1.125rem] bottom-0 w-px bg-border" />
         </div>
-        {/* Right cell: Top anchor (system-owned statement) */}
+            {/* Right cell: Top anchor (system-owned statement) */}
         <div id="base-camp-top-anchor" className="pt-[0.375rem]">
-          {(() => {
-            if (!event) return null;
-
-            const statusLine = getPhaseStatusLine(event.state, {
-              opensAtText: event.instruments.signups_window.data.opensAtText,
-              closesAtText: event.instruments.signups_window.data.closesAtText,
-            });
-
-            if (!statusLine) return null;
-
+          {event && (() => {
+            const topLabel = getPhaseLabel(event.state);
+            
+            // Dev-only invariant check for anchor consistency
+            if (process.env.NODE_ENV !== "production") {
+              // Top label must match current state
+              const expectedTopLabel = getPhaseLabel(event.state);
+              if (topLabel !== expectedTopLabel) {
+                console.error("[BaseCamp] Top anchor label mismatch:", {
+                  state: event.state,
+                  label: topLabel,
+                  expected: expectedTopLabel,
+                });
+              }
+            }
+            
             return (
-              <p className="text-sm text-muted-foreground">{statusLine}</p>
+              <div className="text-sm text-foreground font-medium">
+                {topLabel}
+              </div>
             );
           })()}
         </div>
@@ -176,27 +174,21 @@ export default function BaseCampLane({
         </div>
         {/* Right cell: Between-anchor content (instrument slots) - extra horizontal padding for breathing room */}
         <div className="mt-10 pb-10 pl-5">
-          {event && event.state !== "gameday" && event.state !== "in_play" && event.state !== "completed" && (() => {
-            // Filter legacy instruments (exclude domain instruments)
-            const legacyActiveInstruments = baseCampInstruments
-              .filter(i => i.isRelevant)
-              .slice(0, 3)
-              .filter(
-                (instrument) =>
-                  !baseCampDomainInstrumentKeys.includes(
-                    instrument.id as InstrumentKey
-                  )
-              );
-
-            // Filter domain instruments to only include available ones
+          {event && (() => {
+            // Filter domain instruments: only render if:
+            // 1. Key is in the ordering list for current phase, AND
+            // 2. Registry isAvailable(event) returns true
             const availableDomainKeys = orderedDomainKeys.filter((key) => {
               const def = instruments[key];
-              return Boolean(def) && def.isAvailable(event);
+              if (!def) return false; // Instrument doesn't exist in registry yet (e.g., capacity, export_docs)
+              return def.isAvailable(event);
             });
+
+            if (availableDomainKeys.length === 0) return null;
 
             return (
               <div className="space-y-6">
-                {/* Domain instruments: render via domain instrument system (inline lane) - independent of activeInstruments */}
+                {/* Domain instruments: render via domain instrument system (inline lane) */}
                 {availableDomainKeys.map((key, idx) => (
                   <Fragment key={key}>
                     {renderInstrument(key, {
@@ -215,38 +207,17 @@ export default function BaseCampLane({
                           ? "gameday-entry"
                           : key === "results_publish"
                           ? "results-publish"
-                          : key === "participants"
-                          ? "participants"
                           : key === "logistics"
                           ? "logistics"
+                          : key === "capacity"
+                          ? "capacity"
+                          : key === "export_docs"
+                          ? "export-docs"
                           : key,
                       showDivider: idx < availableDomainKeys.length - 1,
                     })}
                   </Fragment>
                 ))}
-
-                {/* Legacy instruments */}
-                {legacyActiveInstruments.map((instrument) => {
-                  // Fallback: non-actionable instruments (should not happen in normal flow)
-                  // Consistency: if done, show tick; if not done and not actionable, still show (read-only)
-                  return (
-                    <div key={instrument.id}>
-                      <div className={`text-sm ${instrument.isDone ? "text-muted opacity-60" : "text-foreground"} flex items-center justify-between gap-2`}>
-                        <span>{instrument.label}</span>
-                        {instrument.isDone && (
-                          <div className="shrink-0">
-                            <svg className="h-4 w-4 text-muted opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        )}
-                        {!instrument.isDone && instrument.renderLink && instrument.renderLink()}
-                      </div>
-                    </div>
-                  );
-                })}
-                {/* Instrument-driven muted past lines (only show after moment state changes) */}
-                {/* Note: completed instruments stay in-lane until moment change, so past lines are minimal */}
               </div>
             );
           })()}
@@ -266,55 +237,96 @@ export default function BaseCampLane({
               </div>
               {/* Spine stops at bottom node (no continuation below) */}
             </div>
-            {/* Right cell: Bottom anchor (next moment statement, may be actionable) */}
+            {/* Right cell: Bottom anchor (next phase preview with date) */}
             <div id="base-camp-bottom-anchor" className="pt-[0.375rem]">
               {event && (() => {
+                // Compute next phase preview from centralized mapping
+                const phaseCtx = {
+                  opensAtText: event.instruments.signups_window.data.opensAtText,
+                  closesAtText: event.instruments.signups_window.data.closesAtText,
+                  tripDate: event.date,
+                  tripDateText: formatDateForAnchor(event.date),
+                };
+
+                const nextPreview = getNextPhasePreview(event.state, phaseCtx);
+
+                // If no next phase (completed), render nothing
+                if (!nextPreview) return null;
+
+                // Dev-only invariant check: catch mixed-state anchor bugs
+                if (process.env.NODE_ENV !== "production") {
+                  const bottomPreviewLine = nextPreview.line;
+                  
+                  // forming state must never show "Sign-ups close" preview
+                  if (event.state === "forming" && bottomPreviewLine?.includes("Sign-ups close")) {
+                    console.error("[BaseCamp] Invalid anchor preview: forming cannot show sign-ups close preview", {
+                      state: event.state,
+                      previewLine: bottomPreviewLine,
+                      opensAtText: phaseCtx.opensAtText,
+                      closesAtText: phaseCtx.closesAtText,
+                    });
+                  }
+                  
+                  // signups_open state must never show "Sign-ups open" preview (that's for forming)
+                  if (event.state === "signups_open" && bottomPreviewLine?.includes("Sign-ups open on")) {
+                    console.error("[BaseCamp] Invalid anchor preview: signups_open cannot show sign-ups open preview", {
+                      state: event.state,
+                      previewLine: bottomPreviewLine,
+                    });
+                  }
+                  
+                  // Bottom preview must correspond to next state from current state
+                  const expectedNextState = (() => {
+                    switch (event.state) {
+                      case "forming": return "signups_open";
+                      case "signups_open": return "locked";
+                      case "locked": return "gameday";
+                      case "gameday": return "in_play";
+                      case "in_play": return "completed";
+                      default: return null;
+                    }
+                  })();
+                  
+                  if (expectedNextState && nextPreview.label !== getPhaseLabel(expectedNextState)) {
+                    console.error("[BaseCamp] Bottom preview label mismatch:", {
+                      currentState: event.state,
+                      expectedNextState,
+                      previewLabel: nextPreview.label,
+                      expectedLabel: getPhaseLabel(expectedNextState),
+                    });
+                  }
+                }
+
                 // Compute anchor actionability (host/admin only)
                 const bottomAnchorIsActionable =
                   canEdit && (event.state === "forming" || event.state === "signups_open");
 
-                // Bottom anchor text mapping
-                let bottomAnchorText: string | null = null;
-                switch (event.state) {
-                  case "forming":
-                    bottomAnchorText = null; // Sign-ups info now shown in signups_window instrument
-                    break;
-                  case "signups_open":
-                    bottomAnchorText = null; // Sign-ups info now shown in signups_window instrument
-                    break;
-                  case "locked":
-                    bottomAnchorText = `GameDay on ${formatDateForAnchor(trip.date)}.`;
-                    break;
-                  case "gameday":
-                  case "in_play":
-                    // GameDay entry now handled by gameday_entry instrument
-                    bottomAnchorText = null;
-                    break;
-                  default:
-                    bottomAnchorText = null;
-                }
-
-                if (!bottomAnchorText) return null;
-
+                // Render next phase preview line
+                // When actionable (forming state), clicking directly triggers AlertDialog
                 return bottomAnchorIsActionable ? (
                   <div
                     role="button"
                     tabIndex={0}
                     onClick={() => {
                       if (!bottomAnchorIsActionable) return;
-                      onShowBottomAnchorSheet();
+                      // Directly trigger AlertDialog for open sign-ups
+                      if (event.state === "forming") {
+                        onOpenSignupsRequested();
+                      }
                     }}
                     onKeyDown={(e) => {
                       if ((e.key === "Enter" || e.key === " ") && bottomAnchorIsActionable) {
                         e.preventDefault();
-                        onShowBottomAnchorSheet();
+                        if (event.state === "forming") {
+                          onOpenSignupsRequested();
+                        }
                       }
                     }}
-                    className="w-full text-sm text-muted opacity-60 font-medium flex items-center justify-between gap-3 hover:opacity-80 cursor-pointer"
+                    className="w-full text-sm text-foreground font-medium flex items-center justify-between gap-3 hover:opacity-80 cursor-pointer"
                   >
-                    <span>{bottomAnchorText}</span>
+                    <span>{nextPreview.line}</span>
                     {bottomAnchorIsActionable && (
-                      <div className="shrink-0 opacity-60">
+                      <div className="shrink-0">
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
@@ -322,8 +334,8 @@ export default function BaseCampLane({
                     )}
                   </div>
                 ) : (
-                  <div className="text-sm text-muted opacity-60 font-medium">
-                    {bottomAnchorText}
+                  <div className="text-sm text-foreground font-medium">
+                    {nextPreview.line}
                   </div>
                 );
               })()}

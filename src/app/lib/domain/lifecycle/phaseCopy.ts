@@ -21,7 +21,7 @@ export function getPhaseStatusLine(phase: BaseCampPhase, ctx?: {
       return "Sign-ups are open now.";
 
     case "locked":
-      return "All set.";
+      return null;
 
     case "gameday":
       return "Today's the day.";

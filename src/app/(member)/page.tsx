@@ -1096,16 +1096,15 @@ export default function HomePage() {
     const getPeoplePresence = (): string | null => {
       if (!nextGameTrip) return null;
       const confirmedCount = nextGameTrip.attendees.filter((a) => a.status === "confirmed").length;
-      const hostName = nextGameTrip.createdByMemberName;
       
-      if (confirmedCount > 0 && hostName) {
-        // Extract first name from host name
-        const hostFirstName = hostName.split(" ")[0];
-        return `${confirmedCount} playing · ${hostFirstName} hosting`;
+      if (confirmedCount > 0 && nextGameTrip.hostedByLabel) {
+        // Extract host label without "Hosted by " prefix for compact display
+        const hostLabel = nextGameTrip.hostedByLabel.replace(/^Hosted by /, "");
+        return `${confirmedCount} playing · ${hostLabel}`;
       }
-      if (hostName) {
-        const hostFirstName = hostName.split(" ")[0];
-        return `${hostFirstName} hosting`;
+      if (nextGameTrip.hostedByLabel) {
+        const hostLabel = nextGameTrip.hostedByLabel.replace(/^Hosted by /, "");
+        return hostLabel;
       }
       if (confirmedCount > 0) {
         return `${confirmedCount} playing`;

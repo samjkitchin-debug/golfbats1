@@ -167,6 +167,6 @@ curl --request GET \
 ```
 
 **To delete courses by country:**
-- Use the SQL migration: `docs/migrations/delete-australia-courses.sql`
+- Use the SQL migration: `docs/sql/migrations/delete-australia-courses.sql`
 - Modify the WHERE clause for different countries
 

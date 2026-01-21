@@ -129,7 +129,7 @@ This document outlines the performance optimization strategy for the GolfBats ap
 
 ### 3.1 Indexes Added
 
-**Migration File:** `docs/migrations/add-performance-indexes.sql`
+**Migration File:** `docs/sql/migrations/add-performance-indexes.sql`
 
 #### Trips Table
 - `idx_trips_trip_date` - For sorting/filtering by date
@@ -378,7 +378,7 @@ const result = await timeFn("[trips API] Fetch", async () => {
 
 ### New Files
 - `src/app/lib/perf.ts` - Performance instrumentation utilities
-- `docs/migrations/add-performance-indexes.sql` - Database indexes migration
+- `docs/sql/migrations/add-performance-indexes.sql` - Database indexes migration
 - `docs/PERFORMANCE_PLAN.md` - This document
 
 ### Modified Files

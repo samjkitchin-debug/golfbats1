@@ -556,7 +556,7 @@ CREATE INDEX idx_gameday_hole_commits_trip
 ---
 
 **See also:**
-- [GameDay Mode (v1) Design](./v1.md#gameday-mode-v1--final-locked-design)
+- [GameDay Mode (v1) Design](./canon/v1.md#gameday-mode-v1--final-locked-design)
 - [Database Schema](./schema.md#publicgameday_rounds)
 
 ---

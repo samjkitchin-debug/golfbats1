@@ -4,6 +4,8 @@ import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 import { isEmailAdmin } from "@/app/lib/auth";
 import { requireNonEmptyString, optionalNonEmptyString } from "@/app/lib/validation";
 
+export const dynamic = "force-dynamic";
+
 const CACHE_TAG = "trips";
 
 /**
@@ -12,7 +14,8 @@ const CACHE_TAG = "trips";
  */
 async function fetchTripsData(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  groupId: string
+  groupId: string,
+  groupName: string
 ) {
   // Get today's date in local timezone (YYYY-MM-DD format)
   // Use UTC date but compare as date strings (YYYY-MM-DD) to avoid timezone issues
@@ -24,7 +27,7 @@ async function fetchTripsData(
   const { data: tripsDataRaw, error: tripsError } = await supabase
     .from("trips")
     .select(
-      "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,signups_opened_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,created_by"
+      "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,signups_opened_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,decision_logistics,logistics,created_at,updated_at,group_id,created_by"
     )
     .eq("group_id", groupId)
     .gte("trip_date", todayYmd) // Only trips with date >= today (upcoming only)
@@ -102,20 +105,21 @@ async function fetchTripsData(
   const membersById: Record<string, { 
     display_name: string | null; 
     full_name: string | null;
+    nationality: string | null;
     passport_full_name: string | null;
     passport_number: string | null;
     passport_nationality: string | null;
     passport_date_of_birth: string | null;
     passport_expiry_date: string | null;
+    passport_photo_path: string | null;
   }> = {};
   if (memberIds.length > 0) {
     // Fetch members with their passport data from member_profiles
-    const { data: membersData, error: membersError } = await supabase
-      .from("members")
-      .select(`
+    const selectQuery = `
         id,
         display_name,
         full_name,
+        nationality,
         member_profiles(
           passport_full_name,
           passport_number,
@@ -123,22 +127,28 @@ async function fetchTripsData(
           passport_date_of_birth,
           passport_expiry_date
         )
-      `)
+      `;
+    const { data: membersData, error: membersError } = await supabase
+      .from("members")
+      .select(selectQuery)
       .in("id", memberIds);
 
     if (membersError) {
-      console.warn("[trips API] Failed to fetch members for attendees:", membersError);
+      console.error("[trips API] Failed to fetch members for attendees:", membersError);
+      console.error("[trips API] Select query that failed:", selectQuery);
     } else if (membersData) {
       for (const m of membersData) {
         const profile = (m.member_profiles as any)?.[0] || null;
         membersById[m.id] = { 
           display_name: m.display_name, 
           full_name: m.full_name,
+          nationality: m.nationality,
           passport_full_name: profile?.passport_full_name ?? null,
           passport_number: profile?.passport_number ?? null,
           passport_nationality: profile?.passport_nationality ?? null,
           passport_date_of_birth: profile?.passport_date_of_birth ?? null,
           passport_expiry_date: profile?.passport_expiry_date ?? null,
+          passport_photo_path: null, // Not available in member_profiles
         };
       }
     }
@@ -158,12 +168,17 @@ async function fetchTripsData(
           joinedAt: new Date(a.joined_at).getTime(),
           handicapForTrip: a.handicap_snapshot ?? null,
           memberId: a.member_id,
+          // Include member profile fields for completeness checks
+          fullName: member.full_name || null,
+          displayName: member.display_name || null,
+          nationality: member.nationality || null,
           // Include passport fields from member_profiles
           passportFullName: member.passport_full_name,
           passportNumber: member.passport_number,
           passportNationality: member.passport_nationality,
           passportDateOfBirth: member.passport_date_of_birth,
           passportExpiryDate: member.passport_expiry_date,
+          passportPhotoPath: member.passport_photo_path,
         };
       });
 
@@ -204,6 +219,55 @@ async function fetchTripsData(
       numericId = Math.abs(hash) % 1000000 + 1000000; // Range: 1000000-1999999
     }
 
+    // Parse decision_logistics JSON column (authoritative)
+    let decisionLogistics: any = undefined;
+    if ((trip as any).decision_logistics) {
+      try {
+        decisionLogistics = typeof (trip as any).decision_logistics === 'string'
+          ? JSON.parse((trip as any).decision_logistics)
+          : (trip as any).decision_logistics;
+      } catch (e) {
+        console.warn("[trips API] Failed to parse decision_logistics:", e);
+      }
+    }
+    // Fallback to legacy flat columns only if JSON is missing
+    if (!decisionLogistics && trip.meeting_point && !trip.ferry_details) {
+      decisionLogistics = {
+        meetingPoint: trip.meeting_point || undefined,
+        meetTime: trip.meet_time || undefined,
+      };
+    }
+
+    // Parse logistics JSON column (authoritative)
+    let logistics: any = undefined;
+    if ((trip as any).logistics) {
+      try {
+        logistics = typeof (trip as any).logistics === 'string'
+          ? JSON.parse((trip as any).logistics)
+          : (trip as any).logistics;
+      } catch (e) {
+        console.warn("[trips API] Failed to parse logistics:", e);
+      }
+    }
+    // Fallback to legacy flat columns only if JSON is missing
+    if (!logistics) {
+      logistics = {
+        meetingPoint: trip.meeting_point || undefined,
+        meetTime: trip.meet_time || undefined,
+        ferryDetails: trip.ferry_details || undefined,
+        notes: trip.notes || undefined,
+      };
+    } else {
+      // Merge missing fields from legacy flat columns (preserve existing keys like capacityConfirmed)
+      logistics = {
+        ...logistics,
+        meetingPoint: logistics.meetingPoint ?? trip.meeting_point ?? undefined,
+        meetTime: logistics.meetTime ?? trip.meet_time ?? undefined,
+        ferryDetails: logistics.ferryDetails ?? trip.ferry_details ?? undefined,
+        notes: logistics.notes ?? trip.notes ?? undefined,
+      };
+    }
+
     return {
       id: numericId,
       name: trip.name || undefined,
@@ -221,18 +285,9 @@ async function fetchTripsData(
       teeId: trip.tee_id,
       // scenario_key not in schema - provide null default
       scenarioKey: null,
-      // Decision logistics: meeting_point/meet_time when ferry_details is null (decision-grade only)
-      // Operational logistics: full logistics object when ferry_details exists
-      decisionLogistics: trip.meeting_point && !trip.ferry_details ? {
-        meetingPoint: trip.meeting_point || undefined,
-        meetTime: trip.meet_time || undefined,
-      } : undefined,
-      logistics: {
-        meetingPoint: trip.meeting_point || undefined,
-        meetTime: trip.meet_time || undefined,
-        ferryDetails: trip.ferry_details || undefined,
-        notes: trip.notes || undefined,
-      },
+      // Use parsed JSON columns as authoritative
+      decisionLogistics,
+      logistics,
       attendees: tripAttendees,
       result: result && result.published && leaderboard
         ? {
@@ -256,6 +311,11 @@ async function fetchTripsData(
            memberCreatorsById[(trip as any).created_by]?.full_name || 
            null)
         : null,
+      // Compute canonical hosted_by_label
+      hostedByLabel: (() => {
+        // All trips from this endpoint are group trips (have group_id)
+        return `Hosted by ${groupName}`;
+      })(),
       // Travel fields not in schema - provide undefined defaults
       travelInvolved: undefined,
       travelType: null,
@@ -284,7 +344,7 @@ export async function GET(req: Request) {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
     }
 
     // Require groupId query parameter
@@ -294,14 +354,14 @@ export async function GET(req: Request) {
     if (!groupId) {
       return NextResponse.json(
         { error: "groupId query parameter is required." },
-        { status: 400 }
+        { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    // Verify group exists and is active
+    // Verify group exists and is active, and fetch group name for hosted_by_label
     const { data: group } = await supabase
       .from("groups")
-      .select("id")
+      .select("id, name")
       .eq("id", groupId)
       .eq("is_active", true)
       .single();
@@ -309,17 +369,18 @@ export async function GET(req: Request) {
     if (!group) {
       return NextResponse.json(
         { error: "Group not found or inactive." },
-        { status: 404 }
+        { status: 404, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    const result = await fetchTripsData(supabase, groupId);
-    return NextResponse.json(result);
+    const groupName = group.name;
+    const result = await fetchTripsData(supabase, groupId, groupName);
+    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Get trips error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "An error occurred." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
@@ -347,13 +408,13 @@ export async function POST(req: Request) {
     const { trip, groupId, id } = body as { trip: any; groupId?: string; id?: number };
 
     if (!trip) {
-      return NextResponse.json({ error: "Trip data is required." }, { status: 400 });
+      return NextResponse.json({ error: "Trip data is required." }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
 
     if (!groupId || typeof groupId !== "string") {
       return NextResponse.json(
         { error: "groupId is required and must be a string." },
-        { status: 400 }
+        { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -398,14 +459,14 @@ export async function POST(req: Request) {
     if (tripOrigin === 'group' && !isGroupAdmin) {
       return NextResponse.json(
         { error: "You must be an approved admin of this group to create group trips." },
-        { status: 403 }
+        { status: 403, headers: { "Cache-Control": "no-store" } }
       );
     }
 
     if (tripOrigin === 'member' && !isApprovedMember) {
       return NextResponse.json(
         { error: "You must be an approved member of this group to create member trips." },
-        { status: 403 }
+        { status: 403, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -420,14 +481,14 @@ export async function POST(req: Request) {
         .single();
 
       if (!existingTrip) {
-        return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+        return NextResponse.json({ error: "Trip not found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
       }
 
       // Ensure trip belongs to the specified group
       if (existingTrip.group_id !== groupId) {
         return NextResponse.json(
           { error: "Trip does not belong to the specified group." },
-          { status: 403 }
+          { status: 403, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -452,7 +513,7 @@ export async function POST(req: Request) {
         if (!isTripGroupAdmin) {
           return NextResponse.json(
             { error: "You must be an approved admin of this group to edit group trips." },
-            { status: 403 }
+            { status: 403, headers: { "Cache-Control": "no-store" } }
           );
         }
       }
@@ -473,7 +534,7 @@ export async function POST(req: Request) {
         } catch (err) {
           return NextResponse.json(
             { error: err instanceof Error ? err.message : "Trip name cannot be null or empty" },
-            { status: 400 }
+            { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
       }
@@ -496,7 +557,7 @@ export async function POST(req: Request) {
           } catch (err) {
             return NextResponse.json(
               { error: err instanceof Error ? err.message : "Trip name cannot be null or empty for hosted rounds" },
-              { status: 400 }
+              { status: 400, headers: { "Cache-Control": "no-store" } }
             );
           }
         }
@@ -507,7 +568,7 @@ export async function POST(req: Request) {
         if (typeof trip.date !== "string" || !trip.date.match(/^\d{4}-\d{2}-\d{2}$/)) {
           return NextResponse.json(
             { error: "Trip date must be in YYYY-MM-DD format" },
-            { status: 400 }
+            { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
         updateData.trip_date = trip.date;
@@ -531,7 +592,7 @@ export async function POST(req: Request) {
         if (!isGroupTrip) {
           return NextResponse.json(
             { error: "signupsOpenedAt is not allowed for hosted rounds" },
-            { status: 400 }
+            { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
         
@@ -541,7 +602,7 @@ export async function POST(req: Request) {
         if (signupsOpenedAtValue === null || signupsOpenedAtValue === undefined) {
           return NextResponse.json(
             { error: "Cannot clear signups_opened_at. It can only be set once." },
-            { status: 400 }
+            { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
         
@@ -549,7 +610,7 @@ export async function POST(req: Request) {
         if (existingTrip.signups_opened_at) {
           return NextResponse.json(
             { error: "signups_opened_at can only be set once. It cannot be changed." },
-            { status: 400 }
+            { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
         
@@ -558,7 +619,7 @@ export async function POST(req: Request) {
         if (isNaN(parsed.getTime())) {
           return NextResponse.json(
             { error: "signupsOpenedAt must be a valid ISO timestamp" },
-            { status: 400 }
+            { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
         
@@ -571,7 +632,7 @@ export async function POST(req: Request) {
         if (nowTime >= derivedOpenTime) {
           return NextResponse.json(
             { error: "Cannot set signups_opened_at. Trip is no longer in scheduled phase." },
-            { status: 400 }
+            { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
         
@@ -588,7 +649,7 @@ export async function POST(req: Request) {
             if (isNaN(parsed.getTime())) {
               return NextResponse.json(
                 { error: "cutoffAt must be a valid ISO timestamp" },
-                { status: 400 }
+                { status: 400, headers: { "Cache-Control": "no-store" } }
               );
             }
             updateData.cutoff_at = parsed.toISOString();
@@ -602,7 +663,7 @@ export async function POST(req: Request) {
             if (isNaN(parsed.getTime())) {
               return NextResponse.json(
                 { error: "cutoffAt must be a valid ISO timestamp" },
-                { status: 400 }
+                { status: 400, headers: { "Cache-Control": "no-store" } }
               );
             }
             updateData.cutoff_at = parsed.toISOString();
@@ -673,7 +734,7 @@ export async function POST(req: Request) {
           } else {
             return NextResponse.json(
               { error: `phaseOverride must be one of: ${allowedValues.join(', ')}, or null` },
-              { status: 400 }
+              { status: 400, headers: { "Cache-Control": "no-store" } }
             );
           }
         }
@@ -688,7 +749,7 @@ export async function POST(req: Request) {
       if (updateError) {
         return NextResponse.json(
           { error: updateError.message || "Failed to update trip." },
-          { status: 400 }
+          { status: 400, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -700,7 +761,7 @@ export async function POST(req: Request) {
         // Cache will expire via TTL if revalidation fails
       }
 
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
     } else {
       // Create new trip
       // Get next legacy_id (globally unique - constraint requires uniqueness across all trips)
@@ -726,7 +787,7 @@ export async function POST(req: Request) {
       if (!clubData) {
         return NextResponse.json(
           { error: `Default club not found. Please ensure a club with slug '${clubSlug}' exists in the database.` },
-          { status: 500 }
+          { status: 500, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -740,7 +801,7 @@ export async function POST(req: Request) {
       } catch (err) {
         return NextResponse.json(
           { error: err instanceof Error ? err.message : "Trip name is required" },
-          { status: 400 }
+          { status: 400, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -748,7 +809,7 @@ export async function POST(req: Request) {
       if (!trip.date || typeof trip.date !== "string") {
         return NextResponse.json(
           { error: "Trip date is required" },
-          { status: 400 }
+          { status: 400, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -756,7 +817,7 @@ export async function POST(req: Request) {
       if (!dateMatch) {
         return NextResponse.json(
           { error: "Trip date must be in YYYY-MM-DD format" },
-          { status: 400 }
+          { status: 400, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -777,7 +838,7 @@ export async function POST(req: Request) {
       if (!memberData) {
         return NextResponse.json(
           { error: "Member record not found. Please complete onboarding first." },
-          { status: 409 }
+          { status: 409, headers: { "Cache-Control": "no-store" } }
         );
       }
       const createdByMemberId = memberData.id;
@@ -830,7 +891,7 @@ export async function POST(req: Request) {
         trip_name: tripName, // Auto-generated default name
         trip_date: validatedDate,
         // Other fields with defaults
-        format: trip.format || "Stableford",
+        format: trip.format || "Stroke", // Use DB default when not explicitly set
         ferry: trip.ferry || null,
         capacity: trip.capacity || 16,
         status: trip.status || "open",
@@ -853,7 +914,7 @@ export async function POST(req: Request) {
         console.error("Trip insert error:", insertError);
         return NextResponse.json(
           { error: insertError.message || "Failed to create trip." },
-          { status: 400 }
+          { status: 400, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -879,7 +940,7 @@ export async function POST(req: Request) {
           // This is required for GameDay visibility, so return error
           return NextResponse.json(
             { error: "Trip created but failed to add creator as attendee. Please try again." },
-            { status: 400 }
+            { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
       }
@@ -892,13 +953,13 @@ export async function POST(req: Request) {
         // Cache will expire via TTL if revalidation fails
       }
 
-      return NextResponse.json({ ok: true, id: nextLegacyId });
+      return NextResponse.json({ ok: true, id: nextLegacyId }, { headers: { "Cache-Control": "no-store" } });
     }
   } catch (error) {
     console.error("Post trips error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "An error occurred." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
@@ -919,20 +980,20 @@ export async function DELETE(req: Request) {
     } = await supabase.auth.getUser();
 
     if (userErr || !user) {
-      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+      return NextResponse.json({ error: "Not signed in." }, { status: 401, headers: { "Cache-Control": "no-store" } });
     }
 
     const body = await req.json();
     const { id, groupId } = body as { id?: number; groupId?: string };
 
     if (!id) {
-      return NextResponse.json({ error: "Trip ID is required." }, { status: 400 });
+      return NextResponse.json({ error: "Trip ID is required." }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
 
     if (!groupId || typeof groupId !== "string") {
       return NextResponse.json(
         { error: "groupId is required and must be a string." },
-        { status: 400 }
+        { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -947,7 +1008,7 @@ export async function DELETE(req: Request) {
     if (!group) {
       return NextResponse.json(
         { error: "Group not found or inactive." },
-        { status: 404 }
+        { status: 404, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -969,7 +1030,7 @@ export async function DELETE(req: Request) {
     if (!isGroupAdmin) {
       return NextResponse.json(
         { error: "You must be an approved admin of this group to delete trips." },
-        { status: 403 }
+        { status: 403, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -981,14 +1042,14 @@ export async function DELETE(req: Request) {
       .single();
 
     if (!trip) {
-      return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+      return NextResponse.json({ error: "Trip not found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
 
     // Ensure trip belongs to the specified group
     if (trip.group_id !== groupId) {
       return NextResponse.json(
         { error: "Trip does not belong to the specified group." },
-        { status: 403 }
+        { status: 403, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -1002,7 +1063,7 @@ export async function DELETE(req: Request) {
     if (deleteError) {
       return NextResponse.json(
         { error: deleteError.message || "Failed to delete trip." },
-        { status: 400 }
+        { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -1014,12 +1075,12 @@ export async function DELETE(req: Request) {
         // Cache will expire via TTL if revalidation fails
       }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Delete trips error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "An error occurred." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

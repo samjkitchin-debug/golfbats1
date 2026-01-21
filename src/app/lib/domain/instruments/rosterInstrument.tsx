@@ -1,22 +1,13 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import type { EventContext } from "../event/eventTypes";
 import type { InstrumentRenderProps } from "./instrumentTypes";
-import { joinTrip, leaveTrip, loadTrips, updateTrip } from "../../tripActions";
+import { joinTrip, leaveTrip, loadTrips } from "../../tripActions";
 import type { Trip } from "../../tripActions";
 
-// Helper function to get initials from name
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
-}
-
 /**
- * Roster Body Component
+ * Roster Body Component (v1.1 - Manage by Exception)
  * Renders only the body content (no title/helper wrapper, no card container)
  */
 export function RosterBody({
@@ -26,12 +17,21 @@ export function RosterBody({
   supabase,
   activeGroupId,
   onTripUpdate,
+  saveTripPatch,
 }: InstrumentRenderProps) {
-  const rosterData = event.instruments.roster.data;
-  const isDone = event.instruments.roster.status === "done";
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [markingComplete, setMarkingComplete] = useState(false);
+  const [showAllAttendees, setShowAllAttendees] = useState(false);
+
+  // Travel docs required from requirements (or fallback to trip data)
+  const travelDocsRequired = event.requirements?.travelDocsRequired ?? event.trip.logistics?.travelDocsRequired ?? false;
+
+  // Compliance summary from event (centralized)
+  const complianceSummary = event.compliance ?? {
+    okCount: 0,
+    missingProfileIds: [],
+    missingDocsIds: [],
+  };
 
   // Find current user's entry in attendees
   const myEntry = useMemo(() => {
@@ -43,13 +43,6 @@ export function RosterBody({
 
   // Determine current user status
   const currentUserStatus = myEntry?.status || null;
-
-  // Get waitlist members (for host approval)
-  const waitlistMembers = useMemo(() => {
-    return event.trip.attendees
-      .filter((a) => a.status === "waitlist")
-      .sort((a, b) => a.joinedAt - b.joinedAt);
-  }, [event.trip.attendees]);
 
   // Can join: policy allows AND user is not already confirmed/waitlist
   const canJoin = policy.canJoinRoster && currentUserStatus !== "confirmed" && currentUserStatus !== "waitlist";
@@ -63,19 +56,8 @@ export function RosterBody({
     setJoining(true);
 
     try {
-      // Fetch current handicap from members table
-      const { data: memberData } = await supabase
-        .from("members")
-        .select("declared_handicap")
-        .eq("id", currentUserId)
-        .maybeSingle();
-
-      const existingHandicap =
-        memberData && typeof memberData.declared_handicap === "number"
-          ? memberData.declared_handicap
-          : null;
-
-      // Join trip with existing handicap (or null)
+      // Join trip with null handicap
+      const existingHandicap = null;
       const updatedTrips = await joinTrip(
         [event.trip],
         event.trip.id,
@@ -144,145 +126,108 @@ export function RosterBody({
     }
   }
 
-  // Get confirmed and waitlist attendees
+  // Get confirmed and waitlist attendees (exclude "out" status)
+  const allAttendees = useMemo(() => {
+    return event.trip.attendees
+      .filter((a) => a.status === "confirmed" || a.status === "waitlist")
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+  }, [event.trip.attendees]);
+
   const confirmed = useMemo(() => {
-    return event.trip.attendees
-      .filter((a) => a.status === "confirmed")
-      .sort((a, b) => a.joinedAt - b.joinedAt);
-  }, [event.trip.attendees]);
+    return allAttendees.filter((a) => a.status === "confirmed");
+  }, [allAttendees]);
 
-  const waitlist = useMemo(() => {
-    return event.trip.attendees
-      .filter((a) => a.status === "waitlist")
-      .sort((a, b) => a.joinedAt - b.joinedAt);
-  }, [event.trip.attendees]);
+  // Build needs attention list from compliance summary
+  // Map missing IDs back to attendees for display
+  const needsAttention = useMemo(() => {
+    const missingIds = new Set([
+      ...complianceSummary.missingProfileIds,
+      ...(travelDocsRequired ? complianceSummary.missingDocsIds : []),
+    ]);
+    return allAttendees.filter((a) => {
+      const memberId = a.memberId || a.name;
+      return missingIds.has(memberId);
+    });
+  }, [allAttendees, complianceSummary, travelDocsRequired]);
 
-  // Full attendee data (avatar + handicap) for display
-  const [attendeeData, setAttendeeData] = useState<
-    Array<{
-      memberId: string | null;
-      name: string;
-      photoUrl: string | null;
-      handicap: number | null;
-      handicapForTrip: number | null | undefined;
-      isWaitlist: boolean;
-    }>
-  >([]);
+  // Build completeness map from compliance (for display in all attendees section)
+  // Create a map of memberId -> compliance data for quick lookup
+  const complianceMap = useMemo(() => {
+    // We don't have full compliance data here, so we'll compute on-the-fly for display
+    // But use the summary for counts
+    return new Map<string, { profileComplete: boolean; docsComplete: boolean }>();
+  }, []);
 
-  const isHostedRound = event.isHostedRound;
+  // Helper to check if attendee has missing items
+  const getAttendeeCompliance = (attendee: typeof allAttendees[0]) => {
+    const memberId = attendee.memberId || attendee.name;
+    const profileComplete = !complianceSummary.missingProfileIds.includes(memberId);
+    const docsComplete = !complianceSummary.missingDocsIds.includes(memberId);
+    return { profileComplete, docsComplete };
+  };
 
-  // Fetch attendee data (avatars + handicaps)
-  useEffect(() => {
-    async function loadAttendeeData() {
-      const allAttendees = [...confirmed, ...waitlist];
-      if (allAttendees.length === 0) {
-        setAttendeeData([]);
-        return;
+  // Counts from compliance summary
+  const confirmedCount = confirmed.length;
+  const profileMissingCount = complianceSummary.missingProfileIds.length;
+  const docsMissingCount = travelDocsRequired ? complianceSummary.missingDocsIds.length : 0;
+
+  // Sort needs attention: docs missing first (when enabled), then profile missing
+  const sortedNeedsAttention = useMemo(() => {
+    return [...needsAttention].sort((a, b) => {
+      const aComp = getAttendeeCompliance(a);
+      const bComp = getAttendeeCompliance(b);
+      if (travelDocsRequired) {
+        // Docs missing first
+        if (!aComp.docsComplete && bComp.docsComplete) return -1;
+        if (aComp.docsComplete && !bComp.docsComplete) return 1;
       }
+      // Then profile missing
+      if (!aComp.profileComplete && bComp.profileComplete) return -1;
+      if (aComp.profileComplete && !bComp.profileComplete) return 1;
+      return 0;
+    });
+  }, [needsAttention, travelDocsRequired]);
 
-      const attendeesWithMemberIds = allAttendees.filter((a) => a.memberId);
-
-      if (attendeesWithMemberIds.length === 0) {
-        // If no memberIds, still show attendees with names and handicapForTrip
-        setAttendeeData(
-          allAttendees.map((a) => ({
-            memberId: a.memberId || null,
-            name: a.name,
-            photoUrl: null,
-            handicap: null,
-            handicapForTrip: a.handicapForTrip,
-            isWaitlist: a.status === "waitlist",
-          }))
-        );
-        return;
-      }
-
-      try {
-        const { data: memberData } = await supabase
-          .from("members")
-          .select("id,profile_photo_path,display_name,full_name,declared_handicap")
-          .in(
-            "id",
-            attendeesWithMemberIds.map((a) => a.memberId!)
-          );
-
-        if (memberData) {
-          const attendees = allAttendees.map((attendee) => {
-            const member = memberData.find((m: any) => m.id === attendee.memberId);
-            const photoPath = member?.profile_photo_path;
-            const photoUrl = photoPath
-              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${photoPath}`
-              : null;
-            return {
-              memberId: attendee.memberId || null,
-              name: attendee.name,
-              photoUrl,
-              handicap: member?.declared_handicap ?? null,
-              handicapForTrip: attendee.handicapForTrip,
-              isWaitlist: attendee.status === "waitlist",
-            };
-          });
-          setAttendeeData(attendees);
-        }
-      } catch (error) {
-        // Fallback to basic data
-        setAttendeeData(
-          allAttendees.map((a) => ({
-            memberId: a.memberId || null,
-            name: a.name,
-            photoUrl: null,
-            handicap: null,
-            handicapForTrip: a.handicapForTrip,
-            isWaitlist: a.status === "waitlist",
-          }))
-        );
-      }
+  // Handle travel docs toggle
+  async function handleTravelDocsToggle(newValue: boolean) {
+    const result = await saveTripPatch({
+      logistics: {
+        ...(event.trip.logistics ?? {}),
+        travelDocsRequired: newValue,
+      },
+    });
+    if (!result.ok) {
+      alert(`Failed to update: ${result.error}`);
     }
-
-    loadAttendeeData();
-  }, [confirmed, waitlist, supabase, isHostedRound]);
-
-  // Summary line
-  const summaryParts: string[] = [];
-  if (rosterData.confirmedCount > 0) {
-    summaryParts.push(`${rosterData.confirmedCount} confirmed`);
   }
-  if (rosterData.waitlistCount > 0) {
-    summaryParts.push(`${rosterData.waitlistCount} waitlist`);
-  }
-  if (rosterData.declinedCount > 0) {
-    summaryParts.push(`${rosterData.declinedCount} declined`);
-  }
-  const summaryText = summaryParts.length > 0 ? summaryParts.join(" · ") : "No attendees yet";
 
   return (
-    <div className="space-y-3">
-      {/* Summary line */}
-      <div className="text-sm text-foreground">{summaryText}</div>
-
-      {/* Current user status */}
-      {currentUserStatus === "confirmed" && (
-        <div className="flex items-center gap-1.5 rounded-full bg-anticipation/10 border border-anticipation/30 px-3 py-1.5 w-fit">
-          <svg
-            className="h-4 w-4 text-anticipation"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+    <div className="space-y-4">
+      {/* Travel docs required toggle (organiser only) - compact + de-emphasised */}
+      {policy.canApproveRoster && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-foreground">Travel docs required</div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Turn on if your concierge needs passport details.
+            </div>
+          </div>
+          <button
+            onClick={() => handleTravelDocsToggle(!travelDocsRequired)}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full bg-surface ring-1 shadow-sm transition-colors ${
+              travelDocsRequired 
+                ? "ring-anticipation/30 bg-anticipation" 
+                : "ring-border"
+            }`}
+            role="switch"
+            aria-checked={travelDocsRequired}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-surface shadow-sm transition-transform ${
+                travelDocsRequired ? "translate-x-6" : "translate-x-1"
+              }`}
             />
-          </svg>
-          <span className="text-sm font-medium text-anticipation">Confirmed</span>
-        </div>
-      )}
-
-      {currentUserStatus === "waitlist" && (
-        <div className="flex items-center gap-1.5 rounded-full bg-muted/10 border border-border px-3 py-1.5 w-fit">
-          <span className="text-sm font-medium text-muted">Waitlist</span>
+          </button>
         </div>
       )}
 
@@ -314,195 +259,112 @@ export function RosterBody({
         </>
       )}
 
-      {/* Attendee list */}
-      {attendeeData.length > 0 && (
-        <div className="pt-2 border-t border-border">
-          {isHostedRound ? (
-            <div className="space-y-1.5">
-              {attendeeData
-                .filter((a) => !a.isWaitlist)
-                .map((attendee) => {
-                  const handicap = attendee.handicap ?? attendee.handicapForTrip ?? null;
-                  const displayName = attendee.name;
-                  
-                  return (
-                    <div
-                      key={attendee.memberId || attendee.name}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"
-                    >
-                      {/* Left: Photo + Name */}
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        {attendee.photoUrl ? (
-                          <img
-                            src={attendee.photoUrl}
-                            alt={displayName}
-                            className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-border"
-                          />
-                        ) : (
-                          <div className="h-12 w-12 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-sm font-medium text-muted">
-                            {displayName.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium text-foreground truncate">
-                            {displayName}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right: Handicap */}
-                      <div className="flex-shrink-0">
-                        <div className="text-sm text-muted">
-                          {handicap !== null && handicap !== undefined ? `HCP ${handicap}` : "HCP —"}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-            
-              {attendeeData.filter((a) => a.isWaitlist).length > 0 && (
-                <>
-                  <div className="pt-2 text-sm font-medium text-muted">Waitlist</div>
-                  {attendeeData
-                    .filter((a) => a.isWaitlist)
-                    .map((attendee) => {
-                      const handicap = attendee.handicap ?? attendee.handicapForTrip ?? null;
-                      const displayName = attendee.name;
-                      
-                      return (
-                        <div
-                          key={attendee.memberId || attendee.name}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"
-                        >
-                          {/* Left: Photo + Name */}
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            {attendee.photoUrl ? (
-                              <img
-                                src={attendee.photoUrl}
-                                alt={displayName}
-                                className="h-12 w-12 flex-shrink-0 rounded-full object-cover border border-border"
-                              />
-                            ) : (
-                              <div className="h-12 w-12 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-sm font-medium text-muted">
-                                {displayName.charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium text-foreground truncate">
-                                {displayName}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Right: Handicap */}
-                          <div className="flex-shrink-0">
-                            <div className="text-sm text-muted">
-                              {handicap !== null && handicap !== undefined ? `HCP ${handicap}` : "HCP —"}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="mt-3 grid gap-2">
-              {confirmed.map((a, idx) => (
-                <div key={a.name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                  <span>
-                    {idx + 1}. {a.name}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {a.handicapForTrip !== undefined && a.handicapForTrip !== null ? `HCP ${a.handicapForTrip}` : ""}
-                  </span>
-                </div>
-              ))}
-
-              {waitlist.length ? <div className="pt-2 text-sm font-medium text-muted">Waitlist</div> : null}
-
-              {waitlist.map((a, idx) => (
-                <div key={a.name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                  <span>
-                    {idx + 1}. {a.name}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {a.handicapForTrip !== undefined && a.handicapForTrip !== null ? `HCP ${a.handicapForTrip}` : ""}
-                  </span>
-                </div>
-              ))}
-            </div>
+      {/* Needs attention section - visual hero */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="text-sm font-medium text-foreground">Needs attention</div>
+          {needsAttention.length > 0 && (
+            <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-warning/10 text-warning">
+              {needsAttention.length}
+            </span>
           )}
         </div>
-      )}
 
-      {/* Host-only: Pending approvals (waitlist) */}
-      {policy.canApproveRoster && waitlistMembers.length > 0 && (
-        <div className="pt-2 border-t border-border">
-          <div className="text-sm font-medium text-muted mb-2">Waitlist</div>
+        {sortedNeedsAttention.length === 0 ? (
+          <div className="text-sm text-muted-foreground">
+            All attendee profiles are complete.
+            {travelDocsRequired && " All travel docs are complete."}
+          </div>
+        ) : (
           <div className="space-y-2">
-            {waitlistMembers.map((member, idx) => (
+            {sortedNeedsAttention.map((attendee) => (
               <div
-                key={idx}
-                className="flex items-center justify-between gap-3 text-sm"
+                key={attendee.memberId || attendee.name}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"
               >
-                <span className="text-foreground">{member.name}</span>
-                {/* Note: Approval functionality would require API endpoint */}
-                {/* For now, just show the waitlist members */}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-foreground truncate">
+                    {attendee.name}
+                  </div>
+                  {attendee.status === "waitlist" && (
+                    <div className="text-xs text-muted-foreground mt-0.5">Waitlist</div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {(() => {
+                    const compliance = getAttendeeCompliance(attendee);
+                    return (
+                      <>
+                        {!compliance.profileComplete && (
+                          <span className="text-xs text-warning">Profile missing</span>
+                        )}
+                        {travelDocsRequired && !compliance.docsComplete && (
+                          <span className="text-xs text-warning">Docs missing</span>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Host-only: Mark complete button (if not done) */}
-      {policy.canApproveRoster && !isDone && (
-        <div className="pt-2 border-t border-border">
+      {/* All attendees section (collapsed by default, visually secondary) */}
+      {allAttendees.length > 0 && (
+        <div className="pt-4">
           <button
-            onClick={async () => {
-              if (markingComplete || !activeGroupId) return;
-              setMarkingComplete(true);
-              try {
-                const updatedTrips = await updateTrip(
-                  [event.trip],
-                  event.trip.id,
-                  activeGroupId,
-                  {
-                    decisionLogistics: {
-                      ...(event.trip.decisionLogistics ?? {}),
-                      rosterConfirmed: true,
-                    },
-                  }
-                );
-
-                // Update local trip state immediately
-                const immediateUpdate: Trip = {
-                  ...event.trip,
-                  decisionLogistics: {
-                    ...(event.trip.decisionLogistics ?? {}),
-                    rosterConfirmed: true,
-                  },
-                };
-                onTripUpdate(immediateUpdate);
-
-                // Reload trips to get fresh data
-                const freshTrips = await loadTrips(activeGroupId, true);
-                const freshTrip = freshTrips.find(t => t.id === event.trip.id);
-                if (freshTrip) {
-                  onTripUpdate(freshTrip);
-                }
-              } catch (error) {
-                console.error("Failed to mark roster complete:", error);
-                alert(`Failed to mark complete: ${error instanceof Error ? error.message : String(error)}`);
-              } finally {
-                setMarkingComplete(false);
-              }
-            }}
-            disabled={markingComplete}
-            className="rounded-xl btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => setShowAllAttendees(!showAllAttendees)}
+            className="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            {markingComplete ? "Saving..." : "Mark complete"}
+            <span>All attendees ({allAttendees.length})</span>
+            <svg
+              className={`h-3 w-3 transition-transform ${showAllAttendees ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
+
+          {showAllAttendees && (
+            <div className="mt-3 space-y-2">
+              {allAttendees.map((attendee) => {
+                const compliance = getAttendeeCompliance(attendee);
+                return (
+                  <div
+                    key={attendee.memberId || attendee.name}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-2"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">
+                        {attendee.name}
+                      </div>
+                      {attendee.status === "waitlist" && (
+                        <div className="text-xs text-muted-foreground mt-0.5">Waitlist</div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {!compliance.profileComplete && (
+                        <span className="text-xs text-warning">Profile missing</span>
+                      )}
+                      {compliance.profileComplete && (
+                        <span className="text-xs text-muted-foreground">Profile complete</span>
+                      )}
+                      {travelDocsRequired && !compliance.docsComplete && (
+                        <span className="text-xs text-warning">Docs missing</span>
+                      )}
+                      {travelDocsRequired && compliance.docsComplete && (
+                        <span className="text-xs text-muted-foreground">Docs complete</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

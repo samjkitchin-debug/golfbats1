@@ -43,6 +43,10 @@ export function SignupsWindowBody({
 
   const canEdit = policy.isHost && event.state !== "in_play" && event.state !== "completed";
 
+  // Get readiness blockers for closing sign-ups
+  const readyToLockBlockers = event.readiness?.readyToLockBlockers ?? [];
+  const canCloseSignups = canEdit && readyToLockBlockers.length === 0;
+
   // Build primary sentence based on state
   const primarySentence = (() => {
     if (event.state === "signups_open") {
@@ -334,10 +338,51 @@ export function SignupsWindowBody({
           <button
             onClick={handleCloseSignupsNow}
             className="hover:underline"
-            disabled={editingCloseDate || closingSignups || editingDates}
+            disabled={!canCloseSignups || editingCloseDate || closingSignups || editingDates}
           >
             {closingSignups ? "Closing..." : "Close sign-ups now"}
           </button>
+          {readyToLockBlockers.length > 0 && (
+            <div className="mt-2 text-xs text-warning">
+              <div className="font-medium mb-1">Cannot close sign-ups yet:</div>
+              <ul className="list-disc list-inside space-y-0.5">
+                {readyToLockBlockers.map((blocker, idx) => (
+                  <li key={idx}>{blocker.message}</li>
+                ))}
+              </ul>
+              {readyToLockBlockers.some((b) => b.affectedMemberIds && b.affectedMemberIds.length > 0) && (
+                <div className="mt-2">
+                  {readyToLockBlockers
+                    .filter((b) => b.affectedMemberIds && b.affectedMemberIds.length > 0)
+                    .map((blocker, idx) => {
+                      // Map affected member IDs to attendee names
+                      const affectedAttendees = blocker.affectedMemberIds!
+                        .map((id) => {
+                          const attendee = event.trip.attendees.find(
+                            (a) => (a.memberId || a.name) === id
+                          );
+                          return attendee?.name || id;
+                        })
+                        .filter(Boolean);
+                      return (
+                        <div key={idx} className="text-xs text-muted-foreground mt-1">
+                          <details>
+                            <summary className="cursor-pointer hover:text-foreground">
+                              {blocker.affectedMemberIds!.length} {blocker.affectedMemberIds!.length === 1 ? "person" : "people"} affected
+                            </summary>
+                            <ul className="list-disc list-inside mt-1 ml-2">
+                              {affectedAttendees.map((name, nameIdx) => (
+                                <li key={nameIdx}>{name}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       );
     } else if (event.state === "forming") {

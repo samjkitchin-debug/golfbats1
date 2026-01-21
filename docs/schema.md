@@ -2,8 +2,25 @@
 
 ## Authoritative schema artifacts
 
-- `docs/schema_snapshot/public_functions.sql` is authoritative for public schema SQL function definitions.
-- Full schema tables/columns/constraints/indexes/policies must be captured via `docs/schema_snapshot/schema_snapshot_supabase.sql` exports.
+- `docs/sql/schema_snapshot/public_functions.sql` is authoritative for public schema SQL function definitions.
+- Full schema tables/columns/constraints/indexes/policies must be captured via `docs/sql/schema_snapshot/schema_snapshot_supabase.sql` exports.
+
+## Schema Migrations History
+
+### 2026-01 — Introduced JSON persistence for BaseCamp instruments
+
+**Changes:**
+- Added `trips.decision_logistics jsonb NOT NULL DEFAULT '{}'::jsonb`
+- Added `trips.logistics jsonb NOT NULL DEFAULT '{}'::jsonb`
+- Backfilled from legacy flat columns (`meeting_point`, `meet_time`, `ferry_details`, `notes`, `capacity`)
+- Legacy columns deprecated for writes (read-only for backward compatibility)
+
+**Rationale:**
+- Enables persistent confirmation flags for BaseCamp instruments
+- Provides structured storage for instrument state
+- Maintains backward compatibility via fallback hydration
+
+**Migration:** `add_trip_json_columns`
 
 ## Current DB Tables (relevant)
 
@@ -61,6 +78,8 @@ meeting_point | text | YES |
 meet_time | text | YES | 
 ferry_details | text | YES | 
 notes | text | YES | 
+decision_logistics | jsonb | NO | '{}'::jsonb
+logistics | jsonb | NO | '{}'::jsonb
 status | USER-DEFINED | NO | 'draft'::trip_status
 coordination_status | USER-DEFINED | NO | 'forming'::trip_coordination_status
 cutoff_at | timestamp with time zone | YES | 
@@ -78,7 +97,7 @@ phase_override | text | YES |
 
 **Note:** `phase_override` (deprecated) - Not used by the app. Phase is derived from canonical moments only.
 
-**Note:** `public.group_members` RLS: Single canonical SELECT policy (`group members can read group members`) allows approved members or group admins to read membership rows. Recursive policy removed (see `docs/migrations/rebase_rls_group_members_select.sql`).
+**Note:** `public.group_members` RLS: Single canonical SELECT policy (`group members can read group members`) allows approved members or group admins to read membership rows. Recursive policy removed (see `docs/sql/migrations/rebase_rls_group_members_select.sql`).
 
 **Note:** `signups_opened_at` (timestamptz, nullable) - For group trips only. One-way gate: can be set once during Scheduled phase, never cleared. When set, makes sign-ups considered open regardless of derived open date (trip_date - 30 days). Written by group admins via base camp "Open sign-ups now" action (Scheduled bottom anchor). Cannot be set if already set, cannot be set to null, cannot be set if trip is no longer in Scheduled phase. 
 
@@ -273,8 +292,8 @@ differential | numeric | YES |
 created_at | timestamp with time zone | NO | now()
 UNIQUE (trip_id, member_id)
 
-**Note:** GameDay migration: run `docs/migrations/gameday_rounds_and_scores.sql` manually in Supabase SQL Editor (consolidates phase3 and phase3.1)  
-**Note:** Phase 4 migration: run `docs/migrations/phase4_handicap_tables.sql` manually in Supabase SQL Editor
+**Note:** GameDay migration: run `docs/sql/migrations/gameday_rounds_and_scores.sql` manually in Supabase SQL Editor (consolidates phase3 and phase3.1)  
+**Note:** Phase 4 migration: run `docs/sql/migrations/phase4_handicap_tables.sql` manually in Supabase SQL Editor
 
 **Note:** GameDay requires `tee_id` set on trips before scoring; GameDay page allows tee selection via `/api/trips` PATCH.
 

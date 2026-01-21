@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import type { EventContext } from "../event/eventTypes";
 import type { InstrumentRenderProps } from "./instrumentTypes";
-import { updateTrip, loadTrips } from "../../tripActions";
-import type { Trip } from "../../tripActions";
 
 /**
  * Capacity Body Component
@@ -17,6 +15,7 @@ export function CapacityBody({
   supabase,
   activeGroupId,
   onTripUpdate,
+  saveTripPatch,
 }: InstrumentRenderProps) {
   const capacityData = event.instruments.capacity.data;
   const isDone = event.instruments.capacity.status === "done";
@@ -63,44 +62,23 @@ export function CapacityBody({
         capacityValue = parsed;
       }
 
-      // Update trip via updateTrip (RLS-safe)
+      // Use shared saveTripPatch pathway
       // Only write to trip.logistics.capacityLimit and trip.logistics.capacityConfirmed
       // Do NOT write to legacy trip.capacity field
       const existingLogistics = event.trip.logistics ?? {};
-      const updatedTrips = await updateTrip(
-        [event.trip],
-        event.trip.id,
-        activeGroupId,
-        {
-          logistics: {
-            ...existingLogistics,
-            capacityLimit: capacityValue,
-            capacityConfirmed: true,
-          },
-        }
-      );
-
-      // Update local trip state immediately (before reload) to ensure UI updates instantly
-      // This causes the instrument to re-render as DONE without requiring page refresh
-      const immediateUpdate: Trip = {
-        ...event.trip,
+      const result = await saveTripPatch({
         logistics: {
-          ...(event.trip.logistics ?? {}),
+          ...existingLogistics,
           capacityLimit: capacityValue,
           capacityConfirmed: true,
         },
-      };
-      onTripUpdate(immediateUpdate);
+      });
 
-      // Reload trips to get fresh data from API (ensures consistency)
-      const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
-      const updatedTrip = freshTrips.find(t => t.id === event.trip.id);
-      
-      if (updatedTrip) {
-        // Update again with API-normalized data to ensure consistency
-        onTripUpdate(updatedTrip);
+      if (!result.ok) {
+        throw new Error(result.error);
       }
 
+      // saveTripPatch already updated local state, so instrument will re-render as DONE
       setSaved(true);
       setIsEditing(false);
       

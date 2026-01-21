@@ -743,14 +743,13 @@ export default function TripsListPage() {
             <span className="text-sm font-medium text-primary break-words sm:truncate">{tripName}</span>
             <span className="text-[11px] sm:text-xs text-secondary break-words sm:truncate leading-tight">
               {(() => {
-                // Group events: show group name
+                // Use canonical hosted_by_label if available
+                if (trip.hostedByLabel) {
+                  return `${trip.hostedByLabel} • ${courseName}`;
+                }
+                // Fallback for older trips without hostedByLabel
                 if (eventKind === 'group_event' && groupName) {
                   return `${groupName} • ${courseName}`;
-                }
-                // Hosted rounds: show host name
-                if (eventKind === 'hosted_round' && trip.createdByMemberName) {
-                  const hostName = trip.createdByMemberName.split(' ')[0];
-                  return `Hosted by ${hostName} • ${courseName}`;
                 }
                 return courseName;
               })()}
@@ -849,12 +848,19 @@ export default function TripsListPage() {
                 </span>
               </div>
               {/* Format */}
-              {trip.format && (
-                <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                  <span className="text-secondary">Format</span>
-                  <span className="text-primary">{trip.format}</span>
-                </div>
-              )}
+              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
+                <span className="text-secondary">Format</span>
+                <span className="text-primary">
+                  {(() => {
+                    // Show format only if explicitly set and not the DB default
+                    const format = trip.format?.trim();
+                    if (!format || format === 'Stroke') {
+                      return '—';
+                    }
+                    return format;
+                  })()}
+                </span>
+              </div>
               {/* Spots */}
               {maxAttendees > 0 && (
                 <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">

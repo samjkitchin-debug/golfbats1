@@ -8,6 +8,10 @@ import { computeSignupOpenAt, todayInSGT } from "../../tripDates";
 import { formatTripDateLong } from "../../tripDisplay";
 import { deriveEventState } from "../lifecycle/lifecycleEngine";
 import { getResultSnapshot } from "../results/resultsEngine";
+import { resolveViewerRole } from "../roles/roleEngine";
+import { getTripRequirements } from "../requirements/requirementsEngine";
+import { computeAttendeeCompliance, summariseCompliance } from "../compliance/complianceEngine";
+import { getReadyToLockBlockers, getReadyForAgentPackBlockers } from "../readiness/readinessEngine";
 import type { EventContext, EventKind, MeetDetailsData, SignupsWindowData, RosterData, FlightsPlanData, TripNameData, ResultsPublishData, GameDayEntryData, ParticipantsData, LogisticsData, CapacityData, ExportDocsData } from "./eventTypes";
 import type { Trip } from "../../tripActions";
 
@@ -15,8 +19,10 @@ export function resolveEventContext(args: {
   trip: Trip;
   scoringStarted: boolean;
   now?: number;
+  currentMemberId?: string | null;
+  isGroupAdmin?: boolean;
 }): EventContext {
-  const { trip, scoringStarted, now = Date.now() } = args;
+  const { trip, scoringStarted, now = Date.now(), currentMemberId = null, isGroupAdmin = false } = args;
 
   // Determine kind
   const isHostedRound = trip.scenarioKey === "hosted_round" || trip.tripOrigin === "member";
@@ -24,6 +30,30 @@ export function resolveEventContext(args: {
 
   // Derive state using lifecycle engine
   const state = deriveEventState({ trip, scoringStarted, now });
+
+  // Compute contract outputs: requirements, compliance, readiness
+  const requirements = getTripRequirements(trip);
+  const compliancePerAttendee = (trip.attendees || []).map(attendee =>
+    computeAttendeeCompliance({ attendee, requirements })
+  );
+  const complianceSummary = summariseCompliance(compliancePerAttendee);
+
+  // Resolve viewer role
+  const viewerRole = resolveViewerRole({ currentMemberId, trip, isGroupAdmin });
+
+  // Compute blockers
+  const readyToLockBlockers = getReadyToLockBlockers({
+    role: viewerRole,
+    trip,
+    state,
+    complianceSummary,
+  });
+  const readyForAgentPackBlockers = getReadyForAgentPackBlockers({
+    role: viewerRole,
+    trip,
+    state,
+    complianceSummary,
+  });
 
   // Build meet_details instrument
   const meetTime = trip.decisionLogistics?.meetTime || trip.logistics?.meetTime;
@@ -339,5 +369,13 @@ export function resolveEventContext(args: {
       },
     },
     trip, // keep full trip attached for now
+    // Contract outputs
+    viewerRole,
+    requirements,
+    compliance: complianceSummary,
+    readiness: {
+      readyToLockBlockers,
+      readyForAgentPackBlockers,
+    },
   };
 }

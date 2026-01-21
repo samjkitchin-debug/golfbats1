@@ -6,6 +6,8 @@
  */
 
 import type { BaseCampPhase } from "../lifecycle/phaseDefinitions";
+import type { ViewerRole } from "../roles/roleEngine";
+import type { TripRequirements } from "../requirements/requirementsEngine";
 
 // EventState is now an alias for BaseCampPhase to maintain backward compatibility
 export type EventState = BaseCampPhase;
@@ -111,4 +113,16 @@ export type EventContext = {
     export_docs: EventInstrument<ExportDocsData>;
   };
   trip: import("../../tripActions").Trip; // keep full trip for now
+  // Contract outputs (optional for backward compatibility)
+  viewerRole?: ViewerRole;
+  requirements?: TripRequirements;
+  compliance?: {
+    okCount: number;
+    missingProfileIds: string[];
+    missingDocsIds: string[];
+  };
+  readiness?: {
+    readyToLockBlockers: import("../readiness/readinessEngine").Blocker[];
+    readyForAgentPackBlockers: import("../readiness/readinessEngine").Blocker[];
+  };
 };

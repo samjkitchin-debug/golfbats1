@@ -231,7 +231,7 @@ This audit identifies code quality issues, performance bottlenecks, and cleanup 
    - Index on `slug` (should be unique, verify unique constraint exists)
    - **Impact:** MEDIUM - Slug lookups are common but may already be indexed via unique constraint
 
-**Note:** Check if `docs/migrations/add-performance-indexes.sql` already includes these indexes.
+**Note:** Check if `docs/sql/migrations/add-performance-indexes.sql` already includes these indexes.
 
 ### 6.2 Existing Indexes (from add-performance-indexes.sql)
 
@@ -367,7 +367,7 @@ WHERE user_id = (SELECT auth.uid())
 ### High Priority (Correctness & Performance)
 
 1. ✅ **Consolidate trip phase logic** - Replaced local `getTripPhase()` with `getEffectiveTripPhase()` (COMPLETED)
-2. ✅ **Add missing database indexes** - Migration created: `docs/migrations/add-group-members-indexes.sql` (COMPLETED)
+2. ✅ **Add missing database indexes** - Migration created: `docs/sql/migrations/add-group-members-indexes.sql` (COMPLETED)
 3. ✅ **Remove orphaned routes** - Deleted `src/app/admin/[groupId]/*` (COMPLETED)
 
 ### Medium Priority (Performance)

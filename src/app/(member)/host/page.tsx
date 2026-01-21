@@ -31,6 +31,7 @@ export default function HostPage() {
   // Q1: When & where
   const [tripDate, setTripDate] = useState("");
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [selectedFormat, setSelectedFormat] = useState<"Stroke" | "Stableford" | "">("");
   
   // Q2: Travel (legacy, kept for backward compatibility)
   const [travelType, setTravelType] = useState<"local" | "travel" | null>(null);
@@ -276,7 +277,7 @@ export default function HostPage() {
     // Use selectedGroupIdForTrip if set, otherwise fallback to activeGroupId
     const targetGroupId = selectedGroupIdForTrip || activeGroupId;
     
-    if (!targetGroupId || !tripDate || !selectedCourseId) {
+    if (!targetGroupId || !tripDate || !selectedCourseId || !selectedFormat) {
       setSubmitError("Please complete all required fields.");
       return;
     }
@@ -291,7 +292,7 @@ export default function HostPage() {
         name: "Group trip", // Minimal placeholder for schema compliance
         tripName: undefined, // Explicitly do not set trip_name for group trips
         date: tripDate,
-        format: "Stableford",
+        format: selectedFormat,
         status: "open",
         courseId: selectedCourseId,
         teeId: null,
@@ -328,7 +329,7 @@ export default function HostPage() {
   }
 
   async function handleCreateHostedRound() {
-    if (!activeGroupId || !tripDate || !selectedCourseId) {
+    if (!activeGroupId || !tripDate || !selectedCourseId || !selectedFormat) {
       setSubmitError("Please complete all required fields.");
       return;
     }
@@ -342,7 +343,7 @@ export default function HostPage() {
       const result = await createTrip([], activeGroupId, {
         name: tripName,
         date: tripDate,
-        format: "Stableford",
+        format: selectedFormat,
         status: "open",
         courseId: selectedCourseId,
         teeId: null,
@@ -437,6 +438,7 @@ export default function HostPage() {
           <button
             onClick={() => {
               setTripIntent("hosted_round");
+              setSelectedFormat(""); // Reset format selection
               setCurrentStep("q1_when_where");
             }}
             className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
@@ -456,6 +458,7 @@ export default function HostPage() {
                 onClick={() => {
                   setTripIntent("group_trip");
                   setOrganisationLevel("group_trip"); // Preselect for Q3
+                  setSelectedFormat(""); // Reset format selection
                   setCurrentStep("q1_when_where");
                 }}
                 className="w-full rounded-lg border border-border bg-surface p-4 text-left hover:bg-background active:scale-[0.985] transition-all"
@@ -546,6 +549,25 @@ export default function HostPage() {
               ))}
             </select>
           </div>
+
+          {/* Format selection */}
+          <div className="relative">
+            <div className="absolute top-0 left-0 text-xs text-muted pt-4 pl-4 pointer-events-none">
+              Format <span className="text-muted">(required)</span>
+            </div>
+            <select
+              value={selectedFormat}
+              onChange={(e) => {
+                setSelectedFormat(e.target.value as "Stroke" | "Stableford" | "");
+                setSubmitError(null);
+              }}
+              className="w-full rounded-lg bg-surface active:scale-[0.985] active:shadow-none transition-all cursor-pointer text-base font-medium text-foreground appearance-none border-0 outline-none pt-8 pb-4 px-4"
+            >
+              <option value="">Select format</option>
+              <option value="Stroke">Stroke play</option>
+              <option value="Stableford">Stableford</option>
+            </select>
+          </div>
         </div>
 
         {/* Sticky action bar */}
@@ -572,7 +594,7 @@ export default function HostPage() {
                   handleCreateHostedRound();
                 }
               }}
-              disabled={!tripDate || !selectedCourseId || submitting}
+              disabled={!tripDate || !selectedCourseId || !selectedFormat || submitting}
               className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform ${
                 tripIntent === "hosted_round" ? "btn-anticipation" : "btn-primary"
               }`}
@@ -1181,6 +1203,14 @@ export default function HostPage() {
                   <span className="text-sm text-muted">More than one day</span>
                   <span className="text-sm text-foreground font-medium text-right">{multiDayValue ? "Yes" : "No"}</span>
                 </div>
+
+                {/* Format */}
+                {selectedFormat && (
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-muted">Format</span>
+                    <span className="text-sm text-foreground font-medium text-right">{selectedFormat}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}

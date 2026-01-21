@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../../lib/courseActions";
 import {
@@ -13,6 +13,9 @@ import {
   setMyHandicapForTrip,
   updateTrip,
   type Trip,
+  type TripStatus,
+  type DecisionLogistics,
+  type TripLogistics,
 } from "../../../lib/tripActions";
 import { getTripCourseText, formatTripDateLong } from "../../../lib/tripDisplay";
 import { ConfirmModal } from "../../../components/ConfirmModal";
@@ -373,13 +376,10 @@ export default function TripDetailPage() {
   const [isTripGroupAdmin, setIsTripGroupAdmin] = useState(false);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [profileHandicap, setProfileHandicap] = useState<number | null>(null);
-  const [editingTripName, setEditingTripName] = useState(false);
-  const [tripNameValue, setTripNameValue] = useState<string>("");
   const [showTravelNote, setShowTravelNote] = useState(false);
   // Local phase override state (for manual control, not persisted)
   
   const [showTopAnchorSheet, setShowTopAnchorSheet] = useState(false);
-  const [showBottomAnchorSheet, setShowBottomAnchorSheet] = useState(false);
   // Pending anchor action (for confirmation modal)
   type PendingAction =
     | { kind: "open_signups_now" }
@@ -387,13 +387,14 @@ export default function TripDetailPage() {
     | { kind: "reopen_signups" }
     | { kind: "set_signups_close_date"; dateIso: string };
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [showZoneAOverflowSheet, setShowZoneAOverflowSheet] = useState(false);
   
   // v2.1.1: Control Zone C visibility for group trips (A+B only when false)
   const SHOW_ZONE_C_GROUP_TRIPS = false;
   
   const [scoringStarted, setScoringStarted] = useState(false);
   const [showLaterSteps, setShowLaterSteps] = useState(false);
+  const [hostJoining, setHostJoining] = useState(false);
+  const [hostLeaving, setHostLeaving] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -477,6 +478,7 @@ export default function TripDetailPage() {
     loadData();
   }, [activeGroupId]);
 
+
   // Load profile handicap (single source of truth)
   useEffect(() => {
     if (!currentUserId) {
@@ -559,13 +561,258 @@ export default function TripDetailPage() {
   // Create EventContext and Policy after trip is loaded
   const event = useMemo(() => {
     if (!trip) return null;
-    return resolveEventContext({ trip, scoringStarted, now: Date.now() });
+    return resolveEventContext({
+      trip,
+      scoringStarted,
+      now: Date.now(),
+      currentMemberId: currentUserId,
+      isGroupAdmin: isTripGroupAdmin,
+    });
   }, [trip, scoringStarted]);
 
   const policy = useMemo(() => {
     if (!event) return null;
     return buildEventPolicy({ event, currentMemberId: currentUserId, isGroupAdmin: isTripGroupAdmin });
   }, [event, currentUserId, isTripGroupAdmin]);
+
+  // Refetch function for cross-session updates (memoized to avoid dependency issues)
+  const refetchTripData = useCallback(async () => {
+    if (!activeGroupId) return;
+    try {
+      // Only refetch trips (courses don't change)
+      const tripsData = await loadTrips(activeGroupId, true); // Bypass cache
+      setTrips(tripsData);
+    } catch (error) {
+      perfLog("refetchTripData: error", { error: error instanceof Error ? error.message : String(error) });
+    }
+  }, [activeGroupId]);
+
+  // Cross-session revalidation: refetch on window focus/visibility change
+  useEffect(() => {
+    if (!activeGroupId || !trip) return;
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        refetchTripData();
+      }
+    };
+
+    const handleFocus = () => {
+      refetchTripData();
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [activeGroupId, trip, refetchTripData]);
+
+  // Polling for volatile phases (sign-ups open / forming)
+  useEffect(() => {
+    if (!activeGroupId || !trip || !event) return;
+
+    // Check if we're in a volatile phase where attendees can change
+    const volatilePhases = ['signups_open', 'forming'];
+    const isVolatilePhase = volatilePhases.includes(event.state);
+
+    if (!isVolatilePhase) return;
+
+    // Poll every 10 seconds while page is visible
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      if (!document.hidden) {
+        intervalId = setInterval(() => {
+          if (!document.hidden) {
+            refetchTripData();
+          }
+        }, 10000); // 10 seconds
+      }
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    };
+
+    // Start polling if page is visible
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [activeGroupId, trip, event, refetchTripData]);
+
+  // Shared save pathway for BaseCamp instruments
+  // Writes to Supabase directly with .select("*").single() to get authoritative updated row
+  // Updates local trip state immediately with the returned row (not a merged patch)
+  async function saveTripPatch(patch: Partial<Trip>): Promise<{ ok: true; trip: Trip } | { ok: false; error: string }> {
+    if (!trip || !activeGroupId) {
+      return { ok: false, error: "Trip or group ID not available" };
+    }
+
+    try {
+      // First, get the trip's UUID from the database using legacy_id
+      const { data: tripData, error: tripError } = await supabase
+        .from("trips")
+        .select("id")
+        .eq("legacy_id", trip.id)
+        .maybeSingle();
+
+      if (tripError || !tripData) {
+        return { ok: false, error: "Trip not found in database" };
+      }
+
+      const tripUuid = tripData.id;
+
+      // Build update payload (only include fields that exist in the database)
+      const updateData: any = {
+        updated_at: new Date().toISOString(),
+      };
+
+      // Handle name/trip_name
+      if (patch.name !== undefined) {
+        updateData.name = patch.name || null;
+      }
+      if (patch.tripName !== undefined) {
+        updateData.trip_name = patch.tripName || null;
+      }
+
+      // All new writes must go to jsonb columns only. Legacy flat columns are deprecated.
+      // Handle decisionLogistics - store as jsonb in decision_logistics column
+      // Supabase accepts jsonb objects directly (no JSON.stringify needed)
+      if (patch.decisionLogistics !== undefined) {
+        // Merge with existing to preserve other keys
+        const existingDecisionLogistics = (trip.decisionLogistics ?? {}) as any;
+        updateData.decision_logistics = {
+          ...existingDecisionLogistics,
+          ...patch.decisionLogistics,
+        };
+      }
+
+      // Handle logistics - store as jsonb in logistics column
+      // Supabase accepts jsonb objects directly (no JSON.stringify needed)
+      if (patch.logistics !== undefined) {
+        // Merge with existing to preserve other keys (e.g., capacityConfirmed, meetConfirmed)
+        const existingLogistics = (trip.logistics ?? {}) as any;
+        updateData.logistics = {
+          ...existingLogistics,
+          ...patch.logistics,
+        };
+      }
+
+      // Handle other fields
+      if (patch.cutoffAt !== undefined) {
+        updateData.cutoff_at = patch.cutoffAt || null;
+      }
+      if (patch.signupsOpenedAt !== undefined) {
+        updateData.signups_opened_at = patch.signupsOpenedAt || null;
+      }
+      if (patch.courseId !== undefined) {
+        updateData.course_id = patch.courseId || null;
+      }
+      if (patch.teeId !== undefined) {
+        updateData.tee_id = patch.teeId || null;
+      }
+      if (patch.status !== undefined) {
+        updateData.status = patch.status;
+      }
+      if (patch.capacity !== undefined) {
+        updateData.capacity = patch.capacity;
+      }
+
+      // Perform Supabase update with .select("*").single() to get authoritative updated row
+      const { data: updatedRow, error: updateError } = await supabase
+        .from("trips")
+        .update(updateData)
+        .eq("id", tripUuid)
+        .select("*")
+        .single();
+
+      if (updateError || !updatedRow) {
+        return { ok: false, error: updateError?.message || "Failed to update trip" };
+      }
+
+      // Transform the returned row to Trip format - use authoritative data from DB
+      // Parse JSON columns from database (jsonb columns are returned as objects by Supabase)
+      let decisionLogistics: DecisionLogistics | undefined;
+      const decisionLogisticsRaw = (updatedRow as any).decision_logistics;
+      if (decisionLogisticsRaw) {
+        try {
+          decisionLogistics = typeof decisionLogisticsRaw === 'string'
+            ? JSON.parse(decisionLogisticsRaw)
+            : decisionLogisticsRaw;
+        } catch (e) {
+          console.warn("Failed to parse decision_logistics:", e);
+        }
+      }
+
+      let logistics: TripLogistics | undefined;
+      const logisticsRaw = (updatedRow as any).logistics;
+      if (logisticsRaw) {
+        try {
+          logistics = typeof logisticsRaw === 'string'
+            ? JSON.parse(logisticsRaw)
+            : logisticsRaw;
+        } catch (e) {
+          console.warn("Failed to parse logistics:", e);
+        }
+      }
+
+      // Dev-only logging for verification
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[saveTripPatch] DB row returned:", {
+          decision_logistics: decisionLogisticsRaw,
+          logistics: logisticsRaw,
+          tripNameConfirmed: decisionLogistics?.tripNameConfirmed,
+          capacityConfirmed: logistics?.capacityConfirmed,
+        });
+      }
+
+      const transformedTrip: Trip = {
+        ...trip, // Start with current trip to preserve attendees and other derived fields
+        name: updatedRow.name || undefined,
+        tripName: (updatedRow as any).trip_name || undefined,
+        cutoffAt: updatedRow.cutoff_at ? new Date(updatedRow.cutoff_at).toISOString() : undefined,
+        signupsOpenedAt: (updatedRow as any).signups_opened_at ? new Date((updatedRow as any).signups_opened_at).toISOString() : undefined,
+        courseId: updatedRow.course_id,
+        teeId: updatedRow.tee_id,
+        status: updatedRow.status as TripStatus,
+        capacity: updatedRow.capacity,
+        updatedAtUtc: updatedRow.updated_at,
+        // Use decisionLogistics from DB (authoritative)
+        decisionLogistics: decisionLogistics || trip.decisionLogistics,
+        // Use logistics from DB (authoritative)
+        logistics: logistics || trip.logistics,
+      };
+
+      // Update local state immediately with authoritative row (replaces current trip, not merged)
+      setTrips((prev) => prev.map((t) => (t.id === trip.id ? transformedTrip : t)));
+
+      return { ok: true, trip: transformedTrip };
+    } catch (error) {
+      console.error("Failed to save trip patch:", error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
 
   const instruments = useMemo(() => getInstrumentRegistry(), []);
 
@@ -672,13 +919,22 @@ export default function TripDetailPage() {
   // Permissions: Use centralized permission helpers
   const canEdit = canEditTrip(currentUserId, trip, isTripGroupAdmin);
 
-  // Unified host label (computed once, reused everywhere)
+  // Unified host label - use canonical hosted_by_label from server
   const hostLabel = useMemo(() => {
     if (!trip) return null;
+    // Use canonical hosted_by_label if available
+    if (trip.hostedByLabel) {
+      // For current user's hosted rounds, show "Hosted by you" instead
+      if (!isGroupTripPage && trip.createdByMemberId === currentUserId) {
+        return "Hosted by you";
+      }
+      return trip.hostedByLabel;
+    }
+    // Fallback for older trips without hostedByLabel
     if (isGroupTripPage) {
       return tripGroupName ? `Hosted by ${tripGroupName}` : null;
     }
-    // Hosted round
+    // Hosted round fallback
     if (!trip.createdByMemberName) return null;
     if (trip.createdByMemberId === currentUserId) {
       return "Hosted by you";
@@ -899,11 +1155,6 @@ export default function TripDetailPage() {
   }, [trip, searchParams, router, tripId]);
 
 
-  // Sync trip name edit state when trip changes
-  useEffect(() => {
-    if (!trip || editingTripName) return;
-    setTripNameValue(trip.tripName || trip.name || "");
-  }, [trip, editingTripName]);
 
   // Scheduled: open trip, but signups only open within 30 days of trip date (computed in signals for group trips, duplicated here for hosted rounds)
   const tripDateUtc = trip ? new Date(trip.date + "T00:00:00Z").getTime() : NaN;
@@ -1074,9 +1325,15 @@ export default function TripDetailPage() {
   const slope = metricsParts.find((p) => p.startsWith("Slope "))?.replace("Slope ", "") || null;
 
   // Build golf details secondary line: "Blue Tees · Stableford · 6000m · Par 72 · Slope 120"
+  // Only show format if explicitly set and not the DB default ('Stroke')
   const golfDetailsSecondaryParts: string[] = [];
   if (teeLabel) golfDetailsSecondaryParts.push(teeLabel);
-  if (trip.format && !isHostedRound(trip)) golfDetailsSecondaryParts.push(trip.format);
+  if (!isHostedRound(trip)) {
+    const format = trip.format?.trim();
+    if (format && format !== 'Stroke') {
+      golfDetailsSecondaryParts.push(format);
+    }
+  }
   if (meters) golfDetailsSecondaryParts.push(meters);
   if (par) golfDetailsSecondaryParts.push(`Par ${par}`);
   if (slope) golfDetailsSecondaryParts.push(`Slope ${slope}`);
@@ -1126,79 +1383,110 @@ export default function TripDetailPage() {
           <>
             {/* Zone A: Identity (Compiled) */}
             <section aria-label="Trip identity" className="mt-4 space-y-3">
-              {/* Trip name */}
-              <div>
-                {editingTripName && trip.createdByMemberId === currentUserId ? (
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={tripNameValue}
-                      onChange={(e) => setTripNameValue(e.target.value)}
-                      placeholder="Trip name"
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xl font-semibold text-foreground outline-none focus:border-foreground/30"
-                      autoFocus
-                    />
+              {/* Trip name (read-only in Chroma) */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-4xl font-light text-primary">
+                  {trip.tripName || trip.name || (getGolfNoun(trip) === "trip" ? "Trip" : "Round")}
+                </div>
+                {/* Host RSVP toggle (top-right) */}
+                {policy?.isHost && event && currentUserId && activeGroupId && trip && (() => {
+                  const myEntry = event.trip.attendees.find((a) => a.memberId === currentUserId);
+                  const isJoined = myEntry?.status === "confirmed" || myEntry?.status === "waitlist";
+                  const canJoin = policy.canJoinRoster && !isJoined;
+                  const canLeave = policy.canLeaveRoster && myEntry?.status === "confirmed";
+
+                  async function handleHostJoin() {
+                    if (hostJoining || !currentUserId || !activeGroupId || !trip) return;
+                    setHostJoining(true);
+                    try {
+                      const { data: memberData } = await supabase
+                        .from("members")
+                        .select("declared_handicap")
+                        .eq("id", currentUserId)
+                        .maybeSingle();
+                      const existingHandicap = memberData && typeof memberData.declared_handicap === "number" ? memberData.declared_handicap : null;
+                      const updatedTrips = await joinTrip([trip], trip.id, existingHandicap, activeGroupId);
+                      const updatedTrip = updatedTrips.find((t) => t.id === trip.id);
+                      if (updatedTrip) {
+                        setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
+                      }
+                      const freshTrips = await loadTrips(activeGroupId, true);
+                      const freshTrip = freshTrips.find((t) => t.id === trip.id);
+                      if (freshTrip) {
+                        setTrips((prev) => prev.map(t => t.id === freshTrip.id ? freshTrip : t));
+                      }
+                    } catch (error) {
+                      console.error("Failed to join trip:", error);
+                      alert(`Failed to join trip: ${error instanceof Error ? error.message : String(error)}`);
+                    } finally {
+                      setHostJoining(false);
+                    }
+                  }
+
+                  async function handleHostLeave() {
+                    if (hostLeaving || !currentUserId || !activeGroupId || !trip) return;
+                    if (!confirm("Leave this trip? You'll be removed from the attendee list.")) return;
+                    setHostLeaving(true);
+                    try {
+                      const updatedTrips = await leaveTrip([trip], trip.id, activeGroupId);
+                      const updatedTrip = updatedTrips.find((t) => t.id === trip.id);
+                      if (updatedTrip) {
+                        setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
+                      }
+                      const freshTrips = await loadTrips(activeGroupId, true);
+                      const freshTrip = freshTrips.find((t) => t.id === trip.id);
+                      if (freshTrip) {
+                        setTrips((prev) => prev.map(t => t.id === freshTrip.id ? freshTrip : t));
+                      }
+                    } catch (error) {
+                      console.error("Failed to leave trip:", error);
+                      alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
+                    } finally {
+                      setHostLeaving(false);
+                    }
+                  }
+
+                  if (!canJoin && !canLeave) return null;
+
+                  return (
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={async () => {
-                          if (!currentUserId || !activeGroupId) return;
-                          try {
-                            // Update via API (consistent with other trip updates)
-                            const updatedTrips = await updateTrip(trips, trip.id, activeGroupId, {
-                              tripName: tripNameValue.trim() || undefined,
-                            });
-                            
-                            setTrips(updatedTrips);
-                            setEditingTripName(false);
-                          } catch (error) {
-                            console.error("Failed to save trip name:", error);
-                            alert(`Failed to save trip name: ${error instanceof Error ? error.message : String(error)}`);
-                          }
-                        }}
-                        className="rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingTripName(false);
-                          setTripNameValue(trip.tripName || trip.name || "");
-                        }}
-                        className="rounded-lg bg-transparent text-ink-600 px-4 py-2 text-sm font-medium hover:text-ink-900 hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/10"
-                      >
-                        Cancel
-                      </button>
+                      {canJoin ? (
+                        <button
+                          onClick={handleHostJoin}
+                          disabled={hostJoining}
+                          className="rounded-lg btn-primary px-3 py-1.5 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {hostJoining ? "Joining..." : "Join"}
+                        </button>
+                      ) : isJoined ? (
+                        <div className="flex items-center gap-1.5">
+                          {canLeave && (
+                            <button
+                              onClick={handleHostLeave}
+                              disabled={hostLeaving}
+                              className="text-xs text-muted-foreground hover:text-foreground underline disabled:opacity-50"
+                            >
+                              {hostLeaving ? "Leaving..." : "Leave"}
+                            </button>
+                          )}
+                          <span className="text-sm font-medium text-foreground">Joined</span>
+                          <svg className="h-4 w-4 text-[rgb(var(--brand-green))]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xl font-semibold text-foreground">
-                      {trip.tripName || trip.name || (getGolfNoun(trip) === "trip" ? "Trip" : "Round")}
-                    </div>
-                    {trip.createdByMemberId === currentUserId && (
-                      <button
-                        onClick={() => {
-                          setShowZoneAOverflowSheet(true);
-                        }}
-                        className="text-muted hover:text-foreground p-1"
-                        aria-label="Edit trip"
-                      >
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
-              {/* Course · location */}
+              {/* Location · course */}
               {(courseName || courseText?.title !== "Course TBD") && (
                 <div className="text-base font-medium text-foreground">
-                  {courseName || courseText?.title}
                   {course?.location && (
-                    <span className="text-muted"> · {course.location}</span>
+                    <span className="text-muted">{course.location} · </span>
                   )}
+                  {courseName || courseText?.title}
                 </div>
               )}
 
@@ -1207,21 +1495,62 @@ export default function TripDetailPage() {
                 {formatTripDateLong(trip.date)}
               </div>
 
-              {/* Compiled details summary (from instruments, read-only) */}
-              {baseCampInstruments
-                .filter(instrument => instrument.chromeLine)
-                .map((instrument, idx) => (
-                  <div key={instrument.id} className="text-xs text-muted">
-                    {instrument.chromeLine}
-                  </div>
-                ))}
-
               {/* Host indication */}
               {hostLabel && (
                 <div className="text-sm text-secondary">
                   {hostLabel}
                 </div>
               )}
+
+              {/* Chroma must remain identity + compiled facts only */}
+              {/* Timeline preview narrative ("Sign-ups open on {date}") renders in Timeline Preview lane, not Chroma */}
+              {/* Phase status lines removed from Chroma - they belong in Timeline Preview lane only */}
+
+              {/* Compiled operational outputs (structured, curated) */}
+              {event && (() => {
+                const meetTime = event.instruments.meet_details.data.meetTime || "";
+                const meetingPoint = event.instruments.meet_details.data.meetingPoint || "";
+                const hasMeet = Boolean(meetTime.trim() || meetingPoint.trim());
+                
+                // Format time from HH:MM to 12-hour
+                const formatTime12Hour = (timeStr: string): string => {
+                  if (!timeStr) return "";
+                  const [h, m] = timeStr.split(":").map(Number);
+                  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+                  const period = h >= 12 ? "pm" : "am";
+                  return `${hour12}:${String(m).padStart(2, "0")}${period}`;
+                };
+                
+                // Check if there's any content to show
+                const confirmedCount = event.trip.attendees.filter((a) => a.status === "confirmed").length;
+                const hasAttendees = confirmedCount > 0;
+                
+                if (!hasMeet && !hasAttendees) return null;
+                
+                return (
+                  <div className="border-t border-border/60 pt-2 space-y-1">
+                    {hasMeet && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Meet</span>
+                        <span className="text-sm text-foreground">
+                          {meetTime.trim() && meetingPoint.trim()
+                            ? `${formatTime12Hour(meetTime.trim())} · ${meetingPoint.trim()}`
+                            : meetTime.trim()
+                            ? formatTime12Hour(meetTime.trim())
+                            : meetingPoint.trim()}
+                        </span>
+                      </div>
+                    )}
+                    {hasAttendees && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Attendees</span>
+                        <span className="text-sm text-foreground">{confirmedCount} joined</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
             </section>
 
             {/* Zone B: Base Camp (Narrative Spine) - group trips only */}
@@ -1236,10 +1565,11 @@ export default function TripDetailPage() {
               onTripUpdate={(updatedTrip) => {
                 setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
               }}
+              saveTripPatch={saveTripPatch}
               canEdit={canEdit}
               trip={trip}
               isGroupTripPage={isGroupTripPage}
-              onShowBottomAnchorSheet={() => setShowBottomAnchorSheet(true)}
+              onOpenSignupsRequested={() => setPendingAction({ kind: "open_signups_now" })}
             />
 
             {/* Zone C: Secondary surfaces (below Base Camp) */}
@@ -1502,12 +1832,12 @@ export default function TripDetailPage() {
           {/* 1) Golf details block */}
           {(courseName || courseText?.title !== "Course TBD") && (
             <div className={isHostedRoundTrip ? "mt-3" : "mt-4"}>
-              {/* Primary line: Course name + location */}
+              {/* Primary line: Location + course name */}
               <div className="text-base font-medium text-foreground">
-                {courseName || courseText?.title}
                 {course?.location && (
-                  <span className="text-muted"> · {course.location}</span>
+                  <span className="text-muted">{course.location} · </span>
                 )}
+                {courseName || courseText?.title}
               </div>
               {/* Secondary line: Tee + format + metrics */}
               {golfDetailsSecondary && (
@@ -1638,87 +1968,9 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      {/* Bottom anchor action sheet - scheduled phase (Open sign-ups now) */}
-      {showBottomAnchorSheet && event && event.state === "forming" && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
-          <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Sign-ups</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowBottomAnchorSheet(false);
-                }}
-                className="text-muted hover:text-foreground"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+      {/* Bottom sheet for forming phase removed - AlertDialog is now the only gate */}
 
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowBottomAnchorSheet(false);
-                  setPendingAction({ kind: "open_signups_now" });
-                }}
-                className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
-              >
-                Open sign-ups now
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowBottomAnchorSheet(false);
-                }}
-                className="w-full rounded-lg bg-transparent text-ink-600 px-4 py-2 text-sm font-medium hover:text-ink-900 hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/10"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom anchor action sheet - signups_open phase */}
-      {showBottomAnchorSheet && event && event.state === "signups_open" && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
-          <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Sign-ups</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowBottomAnchorSheet(false);
-                }}
-                className="text-muted hover:text-foreground"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Action: Close sign-ups now */}
-              <div className="border-t border-border pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowBottomAnchorSheet(false);
-                    setPendingAction({ kind: "close_signups_now" });
-                  }}
-                  className="w-full rounded-lg btn-anticipation px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-anticipation/40"
-                >
-                  Close sign-ups now
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Bottom sheet for signups_open phase removed - close action handled via instrument */}
 
       {/* Anchor action confirm modal (single modal for all phase-changing actions) */}
       <ConfirmModal
@@ -1763,15 +2015,17 @@ export default function TripDetailPage() {
                   signupsOpenedAt: new Date().toISOString(),
                 });
                 
-                // Optimistic UI update
-                setTrips(updatedTrips);
-                
-                // Reload trips to get fresh data
+                // NO optimistic update - wait for authoritative DB response
+                // Reload trips to get fresh data from DB (ensures EventContext recomputes correctly)
                 const freshTrips = await loadTrips(groupIdForTrip, true);
                 const updatedTrip = freshTrips.find(t => t.id === trip.id);
                 
                 if (updatedTrip) {
+                  // Replace trip with authoritative DB response so EventContext recomputes
                   setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                } else {
+                  // Fallback: use API response if fresh fetch fails
+                  setTrips(updatedTrips);
                 }
                 break;
               }
@@ -1853,63 +2107,6 @@ export default function TripDetailPage() {
       />
 
 
-      {/* Zone A overflow action sheet */}
-      {showZoneAOverflowSheet && trip && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
-          <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Edit trip</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowZoneAOverflowSheet(false);
-                }}
-                className="text-muted hover:text-foreground"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowZoneAOverflowSheet(false);
-                  // Scroll to trip_name instrument
-                  const tripNameAnchor = document.getElementById('trip-name');
-                  if (tripNameAnchor) {
-                    tripNameAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }
-                }}
-                className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface text-left"
-              >
-                Edit trip name
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowZoneAOverflowSheet(false);
-                  router.push(`/host?editTripId=${trip.id}`);
-                }}
-                className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface text-left"
-              >
-                Edit trip details
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowZoneAOverflowSheet(false);
-                }}
-                className="w-full rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface text-left mt-4"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Trip name sheet */}
 

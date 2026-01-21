@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import type { EventContext } from "../event/eventTypes";
 import type { InstrumentRenderProps } from "./instrumentTypes";
-import { updateTrip, loadTrips } from "../../tripActions";
-import type { Trip } from "../../tripActions";
 
 /**
  * Trip Name Body Component
@@ -17,6 +15,7 @@ export function TripNameBody({
   supabase,
   activeGroupId,
   onTripUpdate,
+  saveTripPatch,
 }: InstrumentRenderProps) {
   const tripNameData = event.instruments.trip_name.data;
   const isDone = event.instruments.trip_name.status === "done";
@@ -52,64 +51,22 @@ export function TripNameBody({
     setSaveError(null);
 
     try {
-      // Update via API (consistent with other trip updates)
+      // Use shared saveTripPatch pathway
       // Set tripNameConfirmed flag in decisionLogistics to mark as done
-      const updatedTrips = await updateTrip(
-        [event.trip],
-        event.trip.id,
-        activeGroupId,
-        {
-          tripName: trimmedName,
-          name: trimmedName, // Also update legacy field
-          decisionLogistics: {
-            ...(event.trip.decisionLogistics ?? {}),
-            tripNameConfirmed: true,
-          },
-        }
-      );
-
-      // Update local trip state immediately (before reload) to ensure UI updates instantly
-      // This causes the instrument to re-render as DONE without requiring page refresh
-      const immediateUpdate: Trip = {
-        ...event.trip,
+      const result = await saveTripPatch({
         tripName: trimmedName,
-        name: trimmedName, // Also set legacy field for parity
+        name: trimmedName, // Also update legacy field
         decisionLogistics: {
           ...(event.trip.decisionLogistics ?? {}),
           tripNameConfirmed: true,
         },
-      };
-      onTripUpdate(immediateUpdate);
+      });
 
-      // Reload trips to get fresh data from API (ensures consistency)
-      const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
-      const updatedTrip = freshTrips.find(t => t.id === event.trip.id);
-      
-      // Debug logging (dev only)
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[tripNameInstrument] save succeeded:", {
-          updatePayload: {
-            tripName: trimmedName,
-            name: trimmedName,
-            decisionLogistics: {
-              ...(event.trip.decisionLogistics ?? {}),
-              tripNameConfirmed: true,
-            },
-          },
-          returnedTrip: updatedTrip ? {
-            id: updatedTrip.id,
-            tripName: updatedTrip.tripName,
-            name: updatedTrip.name,
-            decisionLogistics: updatedTrip.decisionLogistics,
-          } : null,
-        });
-      }
-      
-      if (updatedTrip) {
-        // Update again with API-normalized data to ensure consistency
-        onTripUpdate(updatedTrip);
+      if (!result.ok) {
+        throw new Error(result.error);
       }
 
+      // saveTripPatch already updated local state, so instrument will re-render as DONE
       setSaved(true);
       setIsEditing(false);
       

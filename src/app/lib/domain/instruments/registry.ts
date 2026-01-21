@@ -64,7 +64,7 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
     roster: {
       key: "roster",
       title: "Attendees",
-      helper: "See who's joining and manage your RSVP.",
+      helper: "Monitor sign-ups and chase missing details.",
       kind: "job",
       compactWhenDone: true,
       isAvailable: (event: EventContext) => {

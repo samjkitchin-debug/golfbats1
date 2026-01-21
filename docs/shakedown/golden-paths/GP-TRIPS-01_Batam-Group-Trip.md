@@ -58,3 +58,19 @@ Admin creates Batam-style group trip and prepares basecamp.
 - TRIPS-008: Trip name editor appears as bottom sheet; inconsistent pattern
 - TRIPS-009: Sign-ups open instrument: odd "saving" feedback then persists
 - TRIPS-010: Close sign-ups now → confirmation → nothing happens
+
+## Proof checklist (must pass to mark fixes "Verified")
+
+- Host label is consistent everywhere (Home, Trips list, Trip detail, BaseCamp): "Hosted by Swingapore" for group trips.
+- Member joining from Home -> Trip detail can still join (no dead-end details-only view).
+- Attendees never show "Unknown" when display_name/full_name exists.
+- With travelDocsRequired ON:
+  - attendee with passport fields complete is NOT marked "Docs missing".
+  - attendee missing any required passport field IS marked "Docs missing".
+- Format:
+  - trip creation requires choosing format (cannot proceed without it).
+  - Trips list shows the chosen format and never defaults to Stableford silently.
+- Host BaseCamp reflects join/leave from another session without manual refresh:
+  - within 10 seconds OR on focus/visibility return.
+
+**Note:** Fixes are not considered permanent until this checklist passes twice across fresh sessions (host + member) after a clean restart.

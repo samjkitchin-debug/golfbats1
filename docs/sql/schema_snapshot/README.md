@@ -18,6 +18,6 @@ Minimum required exports for full schema truth:
 - policies (RLS)
 
 Then update:
-- docs/schema_snapshot/*.csv (raw exports)
-- docs/schema_snapshot/*.sql (normalized DDL where possible)
+- docs/sql/schema_snapshot/*.csv (raw exports)
+- docs/sql/schema_snapshot/*.sql (normalized DDL where possible)
 - docs/schema.md (human-readable contract)

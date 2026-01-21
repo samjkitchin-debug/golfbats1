@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
+
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/trips/[id]
@@ -20,7 +22,7 @@ export async function GET(
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
     }
 
     // Parse id - could be numeric legacy_id or UUID
@@ -31,7 +33,7 @@ export async function GET(
     let tripQuery = supabase
       .from("trips")
       .select(
-        "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group,travel_involved,travel_type,travel_scope,booking_approach,booking_provider_name,travel_note"
+        "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,decision_logistics,logistics,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group,travel_involved,travel_type,travel_scope,booking_approach,booking_provider_name,travel_note"
       );
 
     if (isNumeric) {
@@ -45,11 +47,20 @@ export async function GET(
     if (tripError || !tripData) {
       return NextResponse.json(
         { error: "Trip not found." },
-        { status: 404 }
+        { status: 404, headers: { "Cache-Control": "no-store" } }
       );
     }
 
     const tripId = tripData.id;
+
+    // Fetch group name for hosted_by_label
+    const groupId = tripData.group_id;
+    const { data: groupData } = await supabase
+      .from("groups")
+      .select("name")
+      .eq("id", groupId)
+      .maybeSingle();
+    const groupName = groupData?.name || null;
 
     // Get current member ID for filtering member trips visibility
     let currentMemberId: string | null = null;
@@ -68,7 +79,7 @@ export async function GET(
       if (!isPosted && !isCreator) {
         return NextResponse.json(
           { error: "Trip not found." },
-          { status: 404 }
+          { status: 404, headers: { "Cache-Control": "no-store" } }
         );
       }
     }
@@ -100,24 +111,27 @@ export async function GET(
     const attendees = attendeesData || [];
     const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id).filter(Boolean)));
 
-    // Fetch member details with passport data
+    // Fetch member details with passport data using service role client to bypass RLS
     const membersById: Record<string, { 
       display_name: string | null; 
       full_name: string | null;
+      nationality: string | null;
       passport_full_name: string | null;
       passport_number: string | null;
       passport_nationality: string | null;
       passport_date_of_birth: string | null;
       passport_expiry_date: string | null;
+      passport_photo_path: string | null;
     }> = {};
 
     if (memberIds.length > 0) {
-      const { data: membersData, error: membersError } = await supabase
-        .from("members")
-        .select(`
+      // Use service role client to fetch attendee member details (bypasses RLS)
+      const supabaseService = await createSupabaseServiceClient();
+      const selectQuery = `
           id,
           display_name,
           full_name,
+          nationality,
           member_profiles(
             passport_full_name,
             passport_number,
@@ -125,22 +139,28 @@ export async function GET(
             passport_date_of_birth,
             passport_expiry_date
           )
-        `)
+        `;
+      const { data: membersData, error: membersError } = await supabaseService
+        .from("members")
+        .select(selectQuery)
         .in("id", memberIds);
 
       if (membersError) {
-        console.warn("[trips/[id] API] Failed to fetch members:", membersError);
+        console.error("[trips/[id] API] Failed to fetch members via service role:", membersError);
+        console.error("[trips/[id] API] Select query that failed:", selectQuery);
       } else if (membersData) {
         for (const m of membersData) {
           const profile = (m.member_profiles as any)?.[0] || null;
           membersById[m.id] = { 
             display_name: m.display_name, 
             full_name: m.full_name,
+            nationality: m.nationality,
             passport_full_name: profile?.passport_full_name ?? null,
             passport_number: profile?.passport_number ?? null,
             passport_nationality: profile?.passport_nationality ?? null,
             passport_date_of_birth: profile?.passport_date_of_birth ?? null,
             passport_expiry_date: profile?.passport_expiry_date ?? null,
+            passport_photo_path: null, // Not available in member_profiles
           };
         }
       }
@@ -167,11 +187,17 @@ export async function GET(
         joinedAt: new Date(a.joined_at).getTime(),
         handicapForTrip: a.handicap_snapshot ?? null,
         memberId: a.member_id,
+        // Include member profile fields for completeness checks
+        fullName: member.full_name || null,
+        displayName: member.display_name || null,
+        nationality: member.nationality || null,
+        // Include passport fields from member_profiles
         passportFullName: member.passport_full_name,
         passportNumber: member.passport_number,
         passportNationality: member.passport_nationality,
         passportDateOfBirth: member.passport_date_of_birth,
         passportExpiryDate: member.passport_expiry_date,
+        passportPhotoPath: member.passport_photo_path,
       };
     });
 
@@ -209,6 +235,55 @@ export async function GET(
       numericId = Math.abs(hash) % 1000000 + 1000000;
     }
 
+    // Parse decision_logistics JSON column (authoritative)
+    let decisionLogistics: any = undefined;
+    if ((tripData as any).decision_logistics) {
+      try {
+        decisionLogistics = typeof (tripData as any).decision_logistics === 'string'
+          ? JSON.parse((tripData as any).decision_logistics)
+          : (tripData as any).decision_logistics;
+      } catch (e) {
+        console.warn("[trips/[id] API] Failed to parse decision_logistics:", e);
+      }
+    }
+    // Fallback to legacy flat columns only if JSON is missing
+    if (!decisionLogistics && tripData.meeting_point && !tripData.ferry_details) {
+      decisionLogistics = {
+        meetingPoint: tripData.meeting_point || undefined,
+        meetTime: tripData.meet_time || undefined,
+      };
+    }
+
+    // Parse logistics JSON column (authoritative)
+    let logistics: any = undefined;
+    if ((tripData as any).logistics) {
+      try {
+        logistics = typeof (tripData as any).logistics === 'string'
+          ? JSON.parse((tripData as any).logistics)
+          : (tripData as any).logistics;
+      } catch (e) {
+        console.warn("[trips/[id] API] Failed to parse logistics:", e);
+      }
+    }
+    // Fallback to legacy flat columns only if JSON is missing
+    if (!logistics) {
+      logistics = {
+        meetingPoint: tripData.meeting_point || undefined,
+        meetTime: tripData.meet_time || undefined,
+        ferryDetails: tripData.ferry_details || undefined,
+        notes: tripData.notes || undefined,
+      };
+    } else {
+      // Merge missing fields from legacy flat columns (preserve existing keys like capacityConfirmed)
+      logistics = {
+        ...logistics,
+        meetingPoint: logistics.meetingPoint ?? tripData.meeting_point ?? undefined,
+        meetTime: logistics.meetTime ?? tripData.meet_time ?? undefined,
+        ferryDetails: logistics.ferryDetails ?? tripData.ferry_details ?? undefined,
+        notes: logistics.notes ?? tripData.notes ?? undefined,
+      };
+    }
+
     // Build TripDetail response
     const tripDetail = {
       id: numericId,
@@ -224,16 +299,9 @@ export async function GET(
       courseId: tripData.course_id,
       teeId: tripData.tee_id,
       scenarioKey: (tripData as any).scenario_key || null,
-      decisionLogistics: tripData.meeting_point && !tripData.ferry_details ? {
-        meetingPoint: tripData.meeting_point || undefined,
-        meetTime: tripData.meet_time || undefined,
-      } : undefined,
-      logistics: {
-        meetingPoint: tripData.meeting_point || undefined,
-        meetTime: tripData.meet_time || undefined,
-        ferryDetails: tripData.ferry_details || undefined,
-        notes: tripData.notes || undefined,
-      },
+      // Use parsed JSON columns as authoritative
+      decisionLogistics,
+      logistics,
       attendees: tripAttendees,
       result: resultData && resultData.published && leaderboard
         ? {
@@ -248,6 +316,16 @@ export async function GET(
       createdByMemberId: (tripData as any).created_by_member_id || null,
       isPostedToGroup: (tripData as any).is_posted_to_group !== undefined ? (tripData as any).is_posted_to_group : true,
       createdByMemberName,
+      // Compute canonical hosted_by_label
+      hostedByLabel: (() => {
+        const tripOrigin = (tripData as any).trip_origin || 'group';
+        if (tripOrigin === 'group' && groupName) {
+          return `Hosted by ${groupName}`;
+        } else if (tripOrigin !== 'group' && createdByMemberName) {
+          return `Hosted by ${createdByMemberName}`;
+        }
+        return undefined;
+      })(),
       // Travel fields (group trips only)
       travelInvolved: (tripData as any).travel_involved !== undefined ? Boolean((tripData as any).travel_involved) : undefined,
       travelType: (tripData as any).travel_type || null,
@@ -257,12 +335,12 @@ export async function GET(
       travelNote: (tripData as any).travel_note || null,
     };
 
-    return NextResponse.json({ ok: true, trip: tripDetail });
+    return NextResponse.json({ ok: true, trip: tripDetail }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Get trip detail error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "An error occurred." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

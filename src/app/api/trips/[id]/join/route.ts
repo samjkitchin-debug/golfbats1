@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
-import { isTripJoinable } from "@/app/lib/tripDates";
+import { deriveEventState } from "@/app/lib/domain/lifecycle/lifecycleEngine";
 import type { Trip } from "@/app/lib/tripActions";
 
 const CACHE_TAG = "trips";
@@ -9,7 +9,7 @@ const CACHE_TAG = "trips";
 // Map a single trip row + related rows into the Trip JSON shape used by /api/trips
 async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, tripIdentifier: string | number) {
   // Determine if identifier is legacy_id (number) or id (UUID)
-  let tripQuery = supabase.from("trips").select("id,group_id,legacy_id,trip_date,status,coordination_status,cutoff_at,signups_opened_at,course_id,tee_id,name,format,capacity,ferry,meeting_point,meet_time,ferry_details,notes,created_at,updated_at,scenario_key");
+  let tripQuery = supabase.from("trips").select("id,group_id,legacy_id,trip_date,status,coordination_status,cutoff_at,signups_opened_at,course_id,tee_id,name,format,capacity,ferry,meeting_point,meet_time,ferry_details,notes,decision_logistics,logistics,created_at,updated_at,scenario_key");
   
   if (typeof tripIdentifier === "number") {
     tripQuery = tripQuery.eq("legacy_id", tripIdentifier);
@@ -84,6 +84,55 @@ async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupaba
     numericId = Math.abs(hash) % 1000000 + 1000000;
   }
 
+  // Parse decision_logistics JSON column (authoritative)
+  let decisionLogistics: any = undefined;
+  if ((trip as any).decision_logistics) {
+    try {
+      decisionLogistics = typeof (trip as any).decision_logistics === 'string'
+        ? JSON.parse((trip as any).decision_logistics)
+        : (trip as any).decision_logistics;
+    } catch (e) {
+      console.warn("[join API] Failed to parse decision_logistics:", e);
+    }
+  }
+  // Fallback to legacy flat columns only if JSON is missing
+  if (!decisionLogistics && trip.meeting_point && !trip.ferry_details) {
+    decisionLogistics = {
+      meetingPoint: trip.meeting_point || undefined,
+      meetTime: trip.meet_time || undefined,
+    };
+  }
+
+  // Parse logistics JSON column (authoritative)
+  let logistics: any = undefined;
+  if ((trip as any).logistics) {
+    try {
+      logistics = typeof (trip as any).logistics === 'string'
+        ? JSON.parse((trip as any).logistics)
+        : (trip as any).logistics;
+    } catch (e) {
+      console.warn("[join API] Failed to parse logistics:", e);
+    }
+  }
+  // Fallback to legacy flat columns only if JSON is missing
+  if (!logistics) {
+    logistics = {
+      meetingPoint: trip.meeting_point || undefined,
+      meetTime: trip.meet_time || undefined,
+      ferryDetails: trip.ferry_details || undefined,
+      notes: trip.notes || undefined,
+    };
+  } else {
+    // Merge missing fields from legacy flat columns (preserve existing keys like capacityConfirmed)
+    logistics = {
+      ...logistics,
+      meetingPoint: logistics.meetingPoint ?? trip.meeting_point ?? undefined,
+      meetTime: logistics.meetTime ?? trip.meet_time ?? undefined,
+      ferryDetails: logistics.ferryDetails ?? trip.ferry_details ?? undefined,
+      notes: logistics.notes ?? trip.notes ?? undefined,
+    };
+  }
+
   const payload = {
     id: numericId,
     name: trip.name || undefined,
@@ -99,12 +148,9 @@ async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupaba
     courseId: trip.course_id,
     teeId: trip.tee_id,
     scenarioKey: (trip as any).scenario_key || null,
-    logistics: {
-      meetingPoint: trip.meeting_point || undefined,
-      meetTime: trip.meet_time || undefined,
-      ferryDetails: trip.ferry_details || undefined,
-      notes: trip.notes || undefined,
-    },
+    // Use parsed JSON columns as authoritative
+    decisionLogistics,
+    logistics,
     attendees,
     result: result && result.published
       ? {
@@ -173,8 +219,8 @@ export async function POST(
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    // Use isTripJoinable to check if trip can be joined (phase === 'openForSignups')
-    // This is the single source of truth for joinability checks
+    // Use canonical lifecycle state to check if trip can be joined
+    // Build Trip object for state derivation
     const tripForJoinability: Trip = {
       id: tripPayload.id,
       name: tripPayload.name,
@@ -196,8 +242,15 @@ export async function POST(
       updatedAtUtc: tripPayload.updatedAtUtc,
     };
 
-    if (!isTripJoinable(tripForJoinability)) {
-      // Trip is not joinable - could be scheduled (too early), closed, or past
+    // Derive canonical state - only allow join if state is "signups_open"
+    const state = deriveEventState({
+      trip: tripForJoinability,
+      scoringStarted: false,
+      now: Date.now(),
+    });
+
+    if (state !== "signups_open") {
+      // Trip is not joinable - could be forming (too early), locked (closed), or past
       return NextResponse.json(
         { error: "RSVP is not available for this trip. It may be too early, closed, or past." },
         { status: 403 }

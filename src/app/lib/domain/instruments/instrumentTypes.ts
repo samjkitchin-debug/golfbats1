@@ -7,6 +7,7 @@
 import type { ReactElement } from "react";
 import type { EventContext, InstrumentKey } from "../event/eventTypes";
 import type { EventPolicy } from "../policy/eventPolicy";
+import type { Trip } from "../../tripActions";
 
 export type InstrumentRenderProps = {
   event: EventContext;
@@ -15,6 +16,7 @@ export type InstrumentRenderProps = {
   supabase: any; // caller passes createBrowserClient() instance
   activeGroupId: string | null;
   onTripUpdate: (updatedTrip: EventContext["trip"]) => void;
+  saveTripPatch: (patch: Partial<Trip>) => Promise<{ ok: true; trip: Trip } | { ok: false; error: string }>;
 };
 
 export type InlineInstrumentDefinition = {

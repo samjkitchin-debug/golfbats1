@@ -23,6 +23,17 @@ export type Attendee = {
   handicapForTrip?: number | null;
   /** Optional Supabase member_id (UUID) so we can reliably match the current user */
   memberId?: string;
+  // Member profile fields for completeness checks
+  fullName?: string | null;
+  displayName?: string | null;
+  nationality?: string | null;
+  // Passport fields from member_profiles
+  passportFullName?: string | null;
+  passportNumber?: string | null;
+  passportNationality?: string | null;
+  passportDateOfBirth?: string | null;
+  passportExpiryDate?: string | null;
+  passportPhotoPath?: string | null;
 };
 
 export type TripStatus = "open" | "closed" | "archived" | "cancelled";
@@ -42,6 +53,8 @@ export type TripLogistics = {
   capacityConfirmed?: boolean;
   meetConfirmed?: boolean;
   transportConfirmed?: boolean;
+  /** Travel docs required flag - when true, organiser needs passport details for all attendees */
+  travelDocsRequired?: boolean;
 };
 
 /**
@@ -80,6 +93,7 @@ export type TripListItem = {
   tripOrigin?: 'group' | 'member';
   isPostedToGroup?: boolean;
   createdByMemberName?: string | null;
+  hostedByLabel?: string;
   attendeeCount: number;
   openSpots: number;
   hasPublishedResults: boolean;
@@ -156,6 +170,9 @@ export type Trip = {
   /** Creator name (for member trips, populated by API) */
   createdByMemberName?: string | null;
 
+  /** Canonical host label: "Hosted by {groupName}" for group trips, "Hosted by {memberName}" for hosted rounds */
+  hostedByLabel?: string;
+
   /** Manual phase override for group trips (scheduled | signups_open | locked) */
   phaseOverride?: 'scheduled' | 'signups_open' | 'locked' | null;
 };
@@ -192,6 +209,8 @@ function normalizeCutoffAt(v: unknown): string | undefined {
   return s ? s : undefined;
 }
 
+// JSON columns (decision_logistics, logistics) are authoritative.
+// Legacy flat columns are fallback only and must never overwrite existing JSON state.
 function normalizeTrip(input: any): Trip {
   const t = input as Trip;
 
@@ -227,9 +246,71 @@ function normalizeTrip(input: any): Trip {
     bookingProviderName: (t as any).booking_provider_name !== undefined ? ((t as any).booking_provider_name ?? null) : undefined,
     travelNote: (t as any).travel_note !== undefined ? ((t as any).travel_note ?? null) : undefined,
 
-    decisionLogistics: (t as any).decisionLogistics ?? undefined,
+    // Parse decision_logistics JSON column (authoritative), fallback to legacy flat columns
+    decisionLogistics: (() => {
+      // Check for JSON column (snake_case from DB or camelCase from API normalization)
+      const jsonValue = (t as any).decision_logistics ?? (t as any).decisionLogistics;
+      if (jsonValue) {
+        try {
+          // Parse if string, use as-is if already object
+          const parsed = typeof jsonValue === 'string' ? JSON.parse(jsonValue) : jsonValue;
+          // Return if non-empty object
+          if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+            return parsed as DecisionLogistics;
+          }
+        } catch (e) {
+          console.warn("[normalizeTrip] Failed to parse decision_logistics:", e);
+        }
+      }
+      // Fallback to legacy flat columns
+      const meetingPoint = (t as any).meeting_point ?? (t as any).meetingPoint;
+      const meetTime = (t as any).meet_time ?? (t as any).meetTime;
+      const ferryDetails = (t as any).ferry_details ?? (t as any).ferryDetails;
+      // Only create decisionLogistics if meeting_point exists and ferry_details is null (decision-grade only)
+      if (meetingPoint && !ferryDetails) {
+        return {
+          meetingPoint: meetingPoint || undefined,
+          meetTime: meetTime || undefined,
+        } as DecisionLogistics;
+      }
+      return undefined;
+    })(),
 
-    logistics: (t as any).logistics ?? {},
+    // Parse logistics JSON column (authoritative), fallback to legacy flat columns
+    logistics: (() => {
+      // Check for JSON column (snake_case from DB or camelCase from API normalization)
+      const jsonValue = (t as any).logistics ?? (t as any).logistics_json;
+      if (jsonValue) {
+        try {
+          // Parse if string, use as-is if already object
+          const parsed = typeof jsonValue === 'string' ? JSON.parse(jsonValue) : jsonValue;
+          // Return if non-empty object
+          if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+            // Merge missing fields from legacy flat columns (preserve existing keys like capacityConfirmed)
+            const logistics = parsed as TripLogistics;
+            return {
+              ...logistics,
+              meetingPoint: logistics.meetingPoint ?? (t as any).meeting_point ?? undefined,
+              meetTime: logistics.meetTime ?? (t as any).meet_time ?? undefined,
+              ferryDetails: logistics.ferryDetails ?? (t as any).ferry_details ?? undefined,
+              notes: logistics.notes ?? (t as any).notes ?? undefined,
+              // capacityLimit from JSON takes precedence (may be null)
+              capacityLimit: logistics.capacityLimit ?? ((t as any).capacity && (t as any).capacity > 0 ? Number((t as any).capacity) : null),
+            } as TripLogistics;
+          }
+        } catch (e) {
+          console.warn("[normalizeTrip] Failed to parse logistics:", e);
+        }
+      }
+      // Fallback to legacy flat columns
+      return {
+        meetingPoint: (t as any).meeting_point ?? (t as any).meetingPoint ?? undefined,
+        meetTime: (t as any).meet_time ?? (t as any).meetTime ?? undefined,
+        ferryDetails: (t as any).ferry_details ?? (t as any).ferryDetails ?? undefined,
+        notes: (t as any).notes ?? undefined,
+        capacityLimit: (t as any).capacity && (t as any).capacity > 0 ? Number((t as any).capacity) : null,
+      } as TripLogistics;
+    })(),
 
     attendees: Array.isArray((t as any).attendees)
       ? (t as any).attendees.map((a: any): Attendee => ({
@@ -250,6 +331,7 @@ function normalizeTrip(input: any): Trip {
     createdByMemberId: (t as any).createdByMemberId || (t as any).created_by_member_id || null,
     isPostedToGroup: (t as any).isPostedToGroup !== undefined ? (t as any).isPostedToGroup : ((t as any).is_posted_to_group !== undefined ? (t as any).is_posted_to_group : ((t as any).tripOrigin === 'group' || (t as any).trip_origin === 'group' ? true : false)),
     createdByMemberName: (t as any).createdByMemberName || (t as any).created_by_member_name || null,
+    hostedByLabel: (t as any).hostedByLabel || (t as any).hosted_by_label || undefined,
     phaseOverride: (t as any).phaseOverride !== undefined ? ((t as any).phaseOverride ?? null) : ((t as any).phase_override !== undefined ? ((t as any).phase_override ?? null) : undefined),
   };
 }
@@ -483,7 +565,7 @@ export async function createTrip(
     id: 0, // Temporary, will be set by server
     name: partial.name, // REQUIRED - API validates
     date: partial.date ?? new Date().toISOString().slice(0, 10), // REQUIRED - API validates
-    format: partial.format ?? "Stableford",
+    format: partial.format ?? undefined, // Let DB default to 'Stroke' if not provided
     ferry: partial.ferry ?? null,
     capacity: Number.isFinite(Number(partial.capacity)) ? Number(partial.capacity) : 16,
     status: partial.status ?? "open",
