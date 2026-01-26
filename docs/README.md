@@ -2,6 +2,14 @@
 
 Documentation for DayForeIt v1 Beta.
 
+## Environments
+- main = production (Vercel prod + Supabase prod)
+- develop = development (Vercel dev + Supabase dev)
+
+## Secrets
+- Never commit .env files
+- Use Vercel environment variables per project
+
 ## Start here
 
 Canonical product documentation (source of truth):
