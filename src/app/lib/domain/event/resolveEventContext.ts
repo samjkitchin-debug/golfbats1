@@ -28,6 +28,15 @@ export function resolveEventContext(args: {
   const isHostedRound = trip.scenarioKey === "hosted_round" || trip.tripOrigin === "member";
   const kind: EventKind = isHostedRound ? "hosted_round" : "group_trip"; // quick_round not implemented yet
 
+  // Contract guard: detect DTO breach for group trips
+  if (kind === "group_trip" && !trip.groupId && !trip.group_id) {
+    console.error("DTO CONTRACT BREACH: Trip.groupId missing", {
+      tripId: trip.id,
+      tripOrigin: trip.tripOrigin,
+      scenarioKey: trip.scenarioKey,
+    });
+  }
+
   // Derive state using lifecycle engine
   const state = deriveEventState({ trip, scoringStarted, now });
 

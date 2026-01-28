@@ -888,8 +888,12 @@ export default function TripDetailPage() {
 
     async function loadTripGroupInfo() {
       try {
+        // Capture trip in const for TypeScript narrowing
+        const currentTrip = trip;
+        if (!currentTrip) return;
+        
         // Use groupId from tripDetail (canonical source from API)
-        const groupId = (trip as any).groupId || (trip as any).group_id || null;
+        const groupId = currentTrip.groupId ?? currentTrip.group_id ?? null;
 
         if (!groupId) {
           // Fallback: use activeGroupId if trip group_id not found

@@ -50,28 +50,26 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       key: "signups_window",
       title: "",
       helper: undefined,
-      kind: "job",
-      compactWhenDone: true,
+      kind: "status_control",
       isAvailable: (event: EventContext) => {
         // Available ONLY in signups_open phase
         // NOT available in forming, locked, gameday, in_play, or completed
         // (In locked phase, the phase anchor label "Sign-ups closed" is sufficient)
         return event.state === "signups_open";
       },
-      isDone: (event: EventContext) => event.instruments.signups_window.status === "done",
+      isDone: () => false,
       RenderBody: SignupsWindowBody,
     },
     roster: {
       key: "roster",
       title: "Attendees",
       helper: "Monitor sign-ups and chase missing details.",
-      kind: "job",
-      compactWhenDone: true,
+      kind: "status_control",
       isAvailable: (event: EventContext) => {
         // Available ONLY in signups_open phase
         return event.state === "signups_open";
       },
-      isDone: (event: EventContext) => event.instruments.roster.status === "done",
+      isDone: () => false,
       RenderBody: RosterBody,
     },
     flights_plan: {

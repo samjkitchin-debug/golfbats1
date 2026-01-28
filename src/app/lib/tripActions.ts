@@ -95,6 +95,7 @@ export type TripListItem = {
   attendeeCount: number;
   openSpots: number;
   hasPublishedResults: boolean;
+  groupId: string;
 };
 
 export type Trip = {
@@ -173,6 +174,10 @@ export type Trip = {
 
   /** Manual phase override for group trips (scheduled | signups_open | locked) */
   phaseOverride?: 'scheduled' | 'signups_open' | 'locked' | null;
+
+  /** Group ID (for group trips) - preserved from API response */
+  groupId?: string | null;
+  group_id?: string | null;
 };
 
 /* ================================
@@ -331,6 +336,8 @@ function normalizeTrip(input: any): Trip {
     createdByMemberName: (t as any).createdByMemberName || (t as any).created_by_member_name || null,
     hostedByLabel: (t as any).hostedByLabel || (t as any).hosted_by_label || undefined,
     phaseOverride: (t as any).phaseOverride !== undefined ? ((t as any).phaseOverride ?? null) : ((t as any).phase_override !== undefined ? ((t as any).phase_override ?? null) : undefined),
+    groupId: (t as any).groupId ?? (t as any).group_id ?? null,
+    group_id: (t as any).group_id ?? (t as any).groupId ?? null,
   };
 }
 

@@ -240,6 +240,7 @@ export async function GET(req: Request) {
         attendeeCount,
         openSpots,
         hasPublishedResults: hasPublishedResults[trip.id] || false,
+        groupId: trip.group_id,
       };
     });
 
