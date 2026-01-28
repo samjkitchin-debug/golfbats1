@@ -47,6 +47,7 @@ See [`sql/migrations/README.md`](./sql/migrations/README.md) for migration guida
 ## Audits
 
 - [Audits](./audits/) — Audit reports and reviews
+- [Post-Incident Audit & Hardening Playbook](./audits/post-incident-ddd-role-policy-phase-audit.md) — Repeatable audit procedure for DTO contracts, roles/policy, lifecycle, instruments, and performance
 
 ## Notes
 

@@ -64,24 +64,21 @@ export function ExportDocsBody({
         .in("id", memberIds);
 
       // Passport data is now canonical in member_passports and accessed via secure export endpoint
-      // For preview, use derived compliance fields from attendee (docsComplete, missingDocsFields)
+      // Preview cannot show passport data - actual values require secure export endpoint
       // Actual export should use /api/trips/[id]/passport/export (secure, audited, decrypts numbers)
       const profiles = confirmed.map((attendee) => {
         const member = membersData?.find((m: any) => m.id === attendee.memberId);
-        
-        // Use derived compliance fields - actual passport values are only available via secure export endpoint
-        const hasPassportData = attendee.docsComplete === true;
         
         return {
           memberId: attendee.memberId || "",
           name: attendee.name,
           nationality: member?.nationality || null,
-          // Preview shows completeness only - actual values require secure export endpoint
-          passportFullName: hasPassportData ? "[Complete]" : null,
-          passportNumber: hasPassportData ? "[Complete]" : null,
-          passportNationality: hasPassportData ? "[Complete]" : null, // Note: canonical field is passport_country
+          // Preview cannot show passport data - use secure export endpoint for actual values
+          passportFullName: null,
+          passportNumber: null,
+          passportNationality: null,
           passportDateOfBirth: null, // Not stored in v1 schema
-          passportExpiryDate: hasPassportData ? "[Complete]" : null,
+          passportExpiryDate: null,
         };
       });
 

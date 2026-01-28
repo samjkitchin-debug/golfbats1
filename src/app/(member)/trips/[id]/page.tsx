@@ -10,6 +10,7 @@ import {
   joinTrip,
   leaveTrip,
   loadTrips,
+  loadTripDetail,
   setMyHandicapForTrip,
   updateTrip,
   type Trip,
@@ -121,12 +122,11 @@ function TravelInstrument({
         throw error;
       }
 
-      // Reload trips to get fresh data
-      const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
-      const updatedTrip = freshTrips.find(t => t.id === trip.id);
+      // Reload trip detail to get fresh data
+      const freshTrip = await loadTripDetail(trip.id);
       
-      if (updatedTrip) {
-        onUpdate(updatedTrip);
+      if (freshTrip) {
+        onUpdate(freshTrip);
       } else {
         // Fallback: update local state if reload didn't find the trip
         const fallbackTrip: Trip = {
@@ -634,15 +634,19 @@ export default function TripDetailPage() {
 
   // Refetch function for cross-session updates (memoized to avoid dependency issues)
   const refetchTripData = useCallback(async () => {
-    if (!activeGroupId) return;
+    if (!tripId) return;
     try {
-      // Only refetch trips (courses don't change)
-      const tripsData = await loadTrips(activeGroupId, true); // Bypass cache
-      setTrips(tripsData);
+      // Only refetch trip detail (courses don't change)
+      const freshTrip = await loadTripDetail(tripId);
+      if (freshTrip) {
+        setTripDetail(freshTrip);
+        // Also update trips array to keep it in sync
+        setTrips((prev) => prev.map(t => t.id === freshTrip.id ? freshTrip : t));
+      }
     } catch (error) {
       perfLog("refetchTripData: error", { error: error instanceof Error ? error.message : String(error) });
     }
-  }, [activeGroupId]);
+  }, [tripId]);
 
   // Cross-session revalidation: refetch on window focus/visibility change
   useEffect(() => {
@@ -1363,10 +1367,14 @@ export default function TripDetailPage() {
         try {
           const updated = await setMyHandicapForTrip(trips, tripIdSafe, parsed, activeGroupId);
           setTrips(updated);
-          // Reload trips to get fresh data
+          // Reload trip detail to get fresh data
           try {
-            const freshTrips = await loadTrips(activeGroupId, true); // Bypass cache
-            setTrips(freshTrips);
+            const freshTrip = await loadTripDetail(tripIdSafe);
+            if (freshTrip) {
+              setTripDetail(freshTrip);
+              // Also update trips array to keep it in sync
+              setTrips((prev) => prev.map(t => t.id === freshTrip.id ? freshTrip : t));
+            }
           } catch (reloadError) {
             perfLog("saveHandicap: reload error", { tripId: tripIdSafe, error: reloadError instanceof Error ? reloadError.message : String(reloadError) });
           }
@@ -1484,9 +1492,10 @@ export default function TripDetailPage() {
                       if (updatedTrip) {
                         setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
                       }
-                      const freshTrips = await loadTrips(activeGroupId, true);
-                      const freshTrip = freshTrips.find((t) => t.id === trip.id);
+                      const freshTrip = await loadTripDetail(trip.id);
                       if (freshTrip) {
+                        setTripDetail(freshTrip);
+                        // Also update trips array to keep it in sync
                         setTrips((prev) => prev.map(t => t.id === freshTrip.id ? freshTrip : t));
                       }
                     } catch (error) {
@@ -1507,9 +1516,10 @@ export default function TripDetailPage() {
                       if (updatedTrip) {
                         setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
                       }
-                      const freshTrips = await loadTrips(activeGroupId, true);
-                      const freshTrip = freshTrips.find((t) => t.id === trip.id);
+                      const freshTrip = await loadTripDetail(trip.id);
                       if (freshTrip) {
+                        setTripDetail(freshTrip);
+                        // Also update trips array to keep it in sync
                         setTrips((prev) => prev.map(t => t.id === freshTrip.id ? freshTrip : t));
                       }
                     } catch (error) {
@@ -2098,13 +2108,14 @@ export default function TripDetailPage() {
                 });
                 
                 // NO optimistic update - wait for authoritative DB response
-                // Reload trips to get fresh data from DB (ensures EventContext recomputes correctly)
-                const freshTrips = await loadTrips(groupIdForTrip, true);
-                const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                // Reload trip detail to get fresh data from DB (ensures EventContext recomputes correctly)
+                const freshTrip = await loadTripDetail(trip.id);
                 
-                if (updatedTrip) {
+                if (freshTrip) {
                   // Replace trip with authoritative DB response so EventContext recomputes
-                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                  setTripDetail(freshTrip);
+                  // Also update trips array to keep it in sync
+                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? freshTrip : t)));
                 } else {
                   // Fallback: use API response if fresh fetch fails
                   setTrips(updatedTrips);
@@ -2122,12 +2133,13 @@ export default function TripDetailPage() {
                 // Optimistic UI update
                 setTrips(updatedTrips);
                 
-                // Reload trips to get fresh data
-                const freshTrips = await loadTrips(groupIdForTrip, true);
-                const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                // Reload trip detail to get fresh data
+                const freshTrip = await loadTripDetail(trip.id);
                 
-                if (updatedTrip) {
-                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                if (freshTrip) {
+                  setTripDetail(freshTrip);
+                  // Also update trips array to keep it in sync
+                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? freshTrip : t)));
                 }
                 break;
               }
@@ -2143,12 +2155,13 @@ export default function TripDetailPage() {
                 // Optimistic UI update
                 setTrips(updatedTrips);
                 
-                // Reload trips to get fresh data
-                const freshTrips = await loadTrips(groupIdForTrip, true);
-                const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                // Reload trip detail to get fresh data
+                const freshTrip = await loadTripDetail(trip.id);
                 
-                if (updatedTrip) {
-                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                if (freshTrip) {
+                  setTripDetail(freshTrip);
+                  // Also update trips array to keep it in sync
+                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? freshTrip : t)));
                 }
                 break;
               }
@@ -2165,12 +2178,13 @@ export default function TripDetailPage() {
                 // Optimistic UI update
                 setTrips(updatedTrips);
                 
-                // Reload trips to get fresh data
-                const freshTrips = await loadTrips(groupIdForTrip, true);
-                const updatedTrip = freshTrips.find(t => t.id === trip.id);
+                // Reload trip detail to get fresh data
+                const freshTrip = await loadTripDetail(trip.id);
                 
-                if (updatedTrip) {
-                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
+                if (freshTrip) {
+                  setTripDetail(freshTrip);
+                  // Also update trips array to keep it in sync
+                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? freshTrip : t)));
                 }
                 break;
               }

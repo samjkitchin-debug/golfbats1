@@ -42,51 +42,33 @@ export function deriveEventState(args: {
   // 3) Determine signup phase from coordination_status (canonical source) or fallback
   else {
     // Priority 1: phaseOverride (highest priority)
-    if (trip.phaseOverride && (trip.phaseOverride === "scheduled" || trip.phaseOverride === "signups_open" || trip.phaseOverride === "locked")) {
-      const overridePhase = trip.phaseOverride;
-      // Map "scheduled" to "forming" for override
-      if (overridePhase === "scheduled") {
-        state = "forming";
-      } else {
-        state = overridePhase; // "signups_open" or "locked" are already canonical
-      }
+    if (trip.phaseOverride && (trip.phaseOverride === "forming" || trip.phaseOverride === "signups_open" || trip.phaseOverride === "locked")) {
+      state = trip.phaseOverride; // All phaseOverride values are already canonical
     }
     // Priority 2: coordination_status (canonical source of truth)
     else if ((trip as any).coordinationStatus && typeof (trip as any).coordinationStatus === "string") {
       const coordinationStatus = (trip as any).coordinationStatus;
-      // Map coordination_status to EventState
-      switch (coordinationStatus) {
-        case "draft":
-          state = "forming"; // pre-publish/initial setup
-          break;
-        case "forming":
-          state = "signups_open"; // canonical "sign-ups open" period for group trips
-          break;
-        case "scheduled":
-          state = "locked"; // sign-ups closed / scheduled
-          break;
-        case "completed":
-          state = "completed";
-          break;
-        default:
-          // Unknown coordination_status, fall through to resolveSignupPhase
-          const signupPhase = resolveSignupPhase(trip, now);
-          if (signupPhase === "scheduled") {
-            state = "forming";
-          } else {
-            state = signupPhase; // "signups_open" or "locked" are already canonical
-          }
+      
+      // Contract guard: enforce v1 canonical coordination_status set
+      const CANONICAL = ["forming", "signups_open", "locked", "gameday", "in_play", "completed"] as const;
+      const LEGACY = ["scheduled", "draft"] as const;
+      
+      if (LEGACY.includes(coordinationStatus as any)) {
+        // Legacy status: warn and fall back to safe derivation
+        console.warn("LIFECYCLE LEGACY STATUS:", coordinationStatus, "tripId=", trip.id);
+        state = resolveSignupPhase(trip, now);
+      } else if (!CANONICAL.includes(coordinationStatus as any)) {
+        // Unknown status: error and fall back to safe derivation
+        console.error("LIFECYCLE CONTRACT BREACH: unknown coordination_status", coordinationStatus, "tripId=", trip.id);
+        state = resolveSignupPhase(trip, now);
+      } else {
+        // Canonical status: use directly (no mapping needed)
+        state = coordinationStatus as BaseCampPhase;
       }
     }
     // Priority 3: Fallback to resolveSignupPhase for legacy rows (coordination_status is null/undefined)
     else {
-      const signupPhase = resolveSignupPhase(trip, now);
-      // Map legacy "scheduled" to canonical "forming"
-      if (signupPhase === "scheduled") {
-        state = "forming";
-      } else {
-        state = signupPhase; // "signups_open" or "locked" are already canonical
-      }
+      state = resolveSignupPhase(trip, now);
     }
 
     // 4) If trip date is today (SGT) AND phase is "locked" -> "gameday"

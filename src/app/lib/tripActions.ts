@@ -172,8 +172,8 @@ export type Trip = {
   /** Canonical host label: "Hosted by {groupName}" for group trips, "Hosted by {memberName}" for hosted rounds */
   hostedByLabel?: string;
 
-  /** Manual phase override for group trips (scheduled | signups_open | locked) */
-  phaseOverride?: 'scheduled' | 'signups_open' | 'locked' | null;
+  /** Manual phase override for group trips (forming | signups_open | locked) */
+  phaseOverride?: 'forming' | 'signups_open' | 'locked' | null;
 
   /** Group ID (for group trips) - preserved from API response */
   groupId?: string | null;
@@ -756,8 +756,17 @@ export async function updateTrip(trips: Trip[], tripId: number, groupId: string,
       throw new Error(json?.error || "Failed to update trip.");
     }
 
-    // Reload trips from server for this group
-    return await loadTrips(groupId, true);
+    // Return locally patched trips array (preserve sort order)
+    const tripIndex = trips.findIndex((t) => normalizeTrip(t).id === tripId);
+    if (tripIndex >= 0) {
+      // Replace existing trip
+      const patched = [...trips];
+      patched[tripIndex] = updated;
+      return patched;
+    } else {
+      // Append if not found (rare, but safe)
+      return [...trips, updated];
+    }
   } catch (error) {
     perfLog("updateTrip: error", { tripId, groupId, error: error instanceof Error ? error.message : String(error) });
     throw error;
@@ -783,8 +792,8 @@ export async function deleteTrip(trips: Trip[], tripId: number, groupId: string)
       throw new Error(json?.error || "Failed to delete trip.");
     }
 
-    // Reload trips from server for this group
-    return await loadTrips(groupId, true);
+    // Return locally filtered trips array (preserve order of remaining trips)
+    return trips.filter((t) => normalizeTrip(t).id !== tripId);
   } catch (error) {
     perfLog("deleteTrip: error", { tripId, groupId, error: error instanceof Error ? error.message : String(error) });
     throw error;
@@ -837,8 +846,25 @@ export async function publishTripResult(
       throw new Error(json?.error || "Failed to publish result.");
     }
 
-    // Reload trips from server
-    return await loadTrips(groupId, true);
+    // Return locally patched trips array (preserve order)
+    const tripIndex = trips.findIndex((t) => normalizeTrip(t).id === tripId);
+    if (tripIndex >= 0) {
+      const existingTrip = normalizeTrip(trips[tripIndex]);
+      const patchedTrip: Trip = {
+        ...existingTrip,
+        result: {
+          leaderboard: (payload as any).leaderboard ?? [],
+          notes: (payload as any).notes,
+          publishedAt: nowIsoUtc(),
+        },
+      };
+      const patched = [...trips];
+      patched[tripIndex] = patchedTrip;
+      return patched;
+    } else {
+      // Trip not found in array - return as-is (shouldn't happen, but safe)
+      return trips;
+    }
   } catch (error) {
     perfLog("publishTripResult: error", { tripId, groupId, error: error instanceof Error ? error.message : String(error) });
     throw error;
@@ -858,8 +884,21 @@ export async function clearTripResult(trips: Trip[], tripId: number, groupId: st
       throw new Error(json?.error || "Failed to clear result.");
     }
 
-    // Reload trips from server
-    return await loadTrips(groupId, true);
+    // Return locally patched trips array (preserve order)
+    const tripIndex = trips.findIndex((t) => normalizeTrip(t).id === tripId);
+    if (tripIndex >= 0) {
+      const existingTrip = normalizeTrip(trips[tripIndex]);
+      const patchedTrip: Trip = {
+        ...existingTrip,
+        result: undefined,
+      };
+      const patched = [...trips];
+      patched[tripIndex] = patchedTrip;
+      return patched;
+    } else {
+      // Trip not found in array - return as-is (shouldn't happen, but safe)
+      return trips;
+    }
   } catch (error) {
     perfLog("clearTripResult: error", { tripId, groupId, error: error instanceof Error ? error.message : String(error) });
     throw error;

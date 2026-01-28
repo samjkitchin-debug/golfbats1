@@ -87,7 +87,7 @@ async function fetchTripsData(
       .in("trip_id", tripIds),
     supabase
       .from("trip_results")
-      .select("id,trip_id,published,published_at,notes,result_rows(id,position,display_name,metric_label,metric_value)")
+      .select("trip_id,published,published_at")
       .in("trip_id", tripIds),
   ]);
 
@@ -104,27 +104,17 @@ async function fetchTripsData(
   const attendees = attendeesData || [];
   const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id).filter(Boolean)));
 
-  // Fetch member display names and profile data only if we have attendees
+  // Fetch member display names only if we have attendees
   const membersById: Record<string, { 
     display_name: string | null; 
     full_name: string | null;
-    nationality: string | null;
-  }> = {};
-  
-  // Fetch passport data separately (canonical source: member_passports)
-  const passportsByUserId: Record<string, {
-    passport_full_name: string | null;
-    passport_number_encrypted: boolean;
-    passport_country: string | null;
-    passport_expiry_date: string | null;
-    passport_photo_path: string | null;
   }> = {};
   
   if (memberIds.length > 0) {
-    // Fetch members (profile fields only)
+    // Fetch members (display names only - no compliance data)
     const { data: membersData, error: membersError } = await supabaseService
       .from("members")
-      .select("id,display_name,full_name,nationality")
+      .select("id,display_name,full_name")
       .in("id", memberIds);
 
     // Dev-only instrumentation for roster resolution correctness
@@ -152,32 +142,9 @@ async function fetchTripsData(
         membersById[m.id] = { 
           display_name: m.display_name, 
           full_name: m.full_name,
-          nationality: m.nationality,
         };
       }
     }
-
-    // Fetch passport data from member_passports (canonical source)
-    // Note: user_id in member_passports equals members.id (since members.id == auth.uid())
-    const { data: passportsData, error: passportsError } = await supabaseService
-      .from("member_passports")
-      .select("user_id,passport_full_name,passport_number_encrypted,passport_country,passport_expiry_date,passport_photo_path")
-      .in("user_id", memberIds);
-
-    if (passportsError) {
-      console.error("[trips API] Failed to fetch passports:", passportsError);
-    } else if (passportsData) {
-      for (const p of passportsData) {
-        passportsByUserId[p.user_id] = {
-          passport_full_name: p.passport_full_name ?? null,
-          passport_number_encrypted: !!p.passport_number_encrypted,
-          passport_country: p.passport_country ?? null,
-          passport_expiry_date: p.passport_expiry_date ?? null,
-          passport_photo_path: p.passport_photo_path ?? null,
-        };
-      }
-    }
-
   }
 
   // Map database trips to UI Trip format
@@ -189,54 +156,22 @@ async function fetchTripsData(
         const member = membersById[a.member_id] || {};
         const name = member.display_name || member.full_name || "Unknown";
         
-        // Compute compliance fields from member_passports data (canonical source)
-        const passport = passportsByUserId[a.member_id] || null;
-        const missingDocsFields: string[] = [];
-        if (!passport?.passport_full_name) missingDocsFields.push("passport_full_name");
-        if (!passport?.passport_number_encrypted) missingDocsFields.push("passport_number");
-        if (!passport?.passport_country) missingDocsFields.push("passport_country");
-        if (!passport?.passport_expiry_date) missingDocsFields.push("passport_expiry_date");
-        
-        const docsComplete = missingDocsFields.length === 0;
-        const hasPassportPhoto = !!passport?.passport_photo_path;
-        
         return {
           name,
           status: a.status as "confirmed" | "waitlist" | "out",
           joinedAt: new Date(a.joined_at).getTime(),
           handicapForTrip: a.handicap_snapshot ?? null,
           memberId: a.member_id,
-          // Include member profile fields for completeness checks
+          // Include member profile fields for display
           fullName: member.full_name || null,
           displayName: member.display_name || null,
-          nationality: member.nationality || null,
-          // Compliance fields only (derived from member_passports, no raw passport values)
-          docsComplete,
-          missingDocsFields,
-          hasPassportPhoto,
         };
       });
 
-    // Find result for this trip
+    // Find result for this trip (lightweight - only check if published)
     const result = (resultsData || []).find((r: any) => r.trip_id === trip.id);
-    const resultRows = (result?.result_rows || []) as Array<{
-      metric_label: string;
-      position: number;
-      display_name: string;
-      metric_value: string;
-    }>;
-    
-    // Build leaderboard only if result exists and is published
-    const leaderboard =
-      result && result.published
-        ? resultRows
-            .filter((r) => r.metric_label === "points")
-            .sort((a, b) => b.position - a.position)
-            .map((r) => ({
-              name: r.display_name,
-              points: Number(r.metric_value) || 0,
-            }))
-        : undefined;
+    const hasResult = result && result.published;
+    const resultPublishedAt = hasResult ? (result.published_at || undefined) : undefined;
 
     // Generate unique numeric ID: use legacy_id if available, otherwise use a hash of the UUID
     let numericId: number;
@@ -324,11 +259,9 @@ async function fetchTripsData(
       decisionLogistics,
       logistics,
       attendees: tripAttendees,
-      result: result && result.published && leaderboard
+      result: hasResult
         ? {
-            leaderboard,
-            notes: result.notes || undefined,
-            publishedAt: result.published_at || undefined,
+            publishedAt: resultPublishedAt,
           }
         : undefined,
       createdAtUtc: trip.created_at,

@@ -116,8 +116,12 @@ export default function LoginClient() {
     setBusy(provider);
 
     try {
-      const origin = getCanonicalOrigin();
-      const redirectTo = `${origin}/auth/callback?next=/`;
+      const redirectTo = `${window.location.origin}/auth/callback?next=/`;
+
+      // Dev-only proof log
+      if (process.env.NODE_ENV === "development") {
+        console.log("OAuth redirectTo =", redirectTo);
+      }
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider,

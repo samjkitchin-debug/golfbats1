@@ -32,6 +32,16 @@ export function RosterBody({
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
+  
+  // Travel docs compliance state (organiser-only)
+  const [complianceData, setComplianceData] = useState<{
+    tripId: number;
+    required: boolean;
+    summary: { total: number; complete: number; missing: number };
+    missing: Array<{ memberId: string; displayName: string; missingFields: string[] }>;
+  } | null>(null);
+  const [complianceLoading, setComplianceLoading] = useState(false);
+  const [complianceError, setComplianceError] = useState<string | null>(null);
 
   // Find current user's entry in attendees
   const myEntry = useMemo(() => {
@@ -157,7 +167,7 @@ export function RosterBody({
       .sort((a, b) => a.joinedAt - b.joinedAt);
   }, [event.trip.attendees]);
 
-  // Full attendee data (avatar + handicap + compliance) for display
+  // Full attendee data (avatar + handicap) for display
   const [attendeeData, setAttendeeData] = useState<
     Array<{
       memberId: string | null;
@@ -166,9 +176,6 @@ export function RosterBody({
       handicap: number | null;
       handicapForTrip: number | null | undefined;
       isWaitlist: boolean;
-      docsComplete?: boolean;
-      missingDocsFields?: string[];
-      hasPassportPhoto?: boolean;
     }>
   >([]);
 
@@ -195,9 +202,6 @@ export function RosterBody({
             handicap: null,
             handicapForTrip: a.handicapForTrip,
             isWaitlist: a.status === "waitlist",
-            docsComplete: a.docsComplete,
-            missingDocsFields: a.missingDocsFields,
-            hasPassportPhoto: a.hasPassportPhoto,
           }))
         );
         return;
@@ -226,9 +230,6 @@ export function RosterBody({
               handicap: member?.declared_handicap ?? null,
               handicapForTrip: attendee.handicapForTrip,
               isWaitlist: attendee.status === "waitlist",
-              docsComplete: attendee.docsComplete,
-              missingDocsFields: attendee.missingDocsFields,
-              hasPassportPhoto: attendee.hasPassportPhoto,
             };
           });
           setAttendeeData(attendees);
@@ -243,9 +244,6 @@ export function RosterBody({
             handicap: null,
             handicapForTrip: a.handicapForTrip,
             isWaitlist: a.status === "waitlist",
-            docsComplete: a.docsComplete,
-            missingDocsFields: a.missingDocsFields,
-            hasPassportPhoto: a.hasPassportPhoto,
           }))
         );
       }
@@ -253,6 +251,49 @@ export function RosterBody({
 
     loadAttendeeData();
   }, [confirmed, waitlist, supabase, isHostedRound]);
+
+  // Fetch travel docs compliance (organiser-only, when required)
+  const travelDocsRequired = event.requirements?.travelDocsRequired ?? false;
+  const isOrganiser = policy.canAccessBaseCamp;
+  
+  useEffect(() => {
+    if (!travelDocsRequired || !isOrganiser) {
+      setComplianceData(null);
+      return;
+    }
+
+    async function loadCompliance() {
+      setComplianceLoading(true);
+      setComplianceError(null);
+      
+      try {
+        const res = await fetch(`/api/trips/${event.trip.id}/compliance`, {
+          credentials: "include",
+        });
+        
+        if (res.status === 403) {
+          // Not organiser - degrade quietly
+          setComplianceData(null);
+          return;
+        }
+        
+        if (!res.ok) {
+          throw new Error(`Failed to load compliance: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        setComplianceData(data);
+      } catch (error) {
+        // Degrade quietly - don't show errors to user
+        setComplianceError(error instanceof Error ? error.message : "Failed to load");
+        setComplianceData(null);
+      } finally {
+        setComplianceLoading(false);
+      }
+    }
+
+    loadCompliance();
+  }, [travelDocsRequired, isOrganiser, event.trip.id]);
 
   // Summary line
   const summaryParts: string[] = [];
@@ -271,6 +312,50 @@ export function RosterBody({
     <div className="space-y-3">
       {/* Summary line */}
       <div className="text-sm text-foreground">{summaryText}</div>
+
+      {/* Travel docs compliance (organiser-only, exception-only) */}
+      {isOrganiser && travelDocsRequired && (
+        <div className="pt-2 border-t border-border">
+          {complianceLoading ? (
+            <div className="text-xs text-muted">Loading travel docs status...</div>
+          ) : complianceData ? (
+            <div className="space-y-2">
+              <div className="text-sm text-foreground">
+                Travel docs: {complianceData.summary.complete} complete • {complianceData.summary.missing} missing
+              </div>
+              {complianceData.missing.length > 0 && (
+                <div className="space-y-1.5">
+                  {complianceData.missing.map((member) => (
+                    <div key={member.memberId} className="rounded-lg border border-border bg-surface p-2">
+                      <div className="text-sm font-medium text-foreground">{member.displayName}</div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {member.missingFields.map((field) => {
+                          // Map field codes to user-friendly labels
+                          const fieldLabels: Record<string, string> = {
+                            passport_full_name: "Full name",
+                            passport_number: "Passport number",
+                            passport_country: "Country",
+                            passport_expiry_date: "Expiry date",
+                          };
+                          const label = fieldLabels[field] || field.replace(/_/g, " ");
+                          return (
+                            <span
+                              key={field}
+                              className="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-warning/10 text-warning border border-warning/20"
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Current user status */}
       {currentUserStatus === "confirmed" && (
@@ -359,16 +444,6 @@ export function RosterBody({
                           <div className="text-sm font-medium text-foreground truncate">
                             {displayName}
                           </div>
-                          {/* Compliance indicator */}
-                          {attendee.docsComplete !== undefined && (
-                            <div className="mt-0.5 text-xs">
-                              {attendee.docsComplete ? (
-                                <span className="text-muted">Docs complete</span>
-                              ) : (
-                                <span className="text-warning">Docs missing</span>
-                              )}
-                            </div>
-                          )}
                         </div>
                       </div>
 
@@ -413,16 +488,6 @@ export function RosterBody({
                               <div className="text-sm font-medium text-foreground truncate">
                                 {displayName}
                               </div>
-                              {/* Compliance indicator */}
-                              {attendee.docsComplete !== undefined && (
-                                <div className="mt-0.5 text-xs">
-                                  {attendee.docsComplete ? (
-                                    <span className="text-muted">Docs complete</span>
-                                  ) : (
-                                    <span className="text-warning">Docs missing</span>
-                                  )}
-                                </div>
-                              )}
                             </div>
                           </div>
 

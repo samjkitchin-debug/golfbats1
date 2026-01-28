@@ -5,7 +5,7 @@
 
 import { computeSignupOpenAt } from './tripDates';
 
-export type TripPhase = "scheduled" | "signups_open" | "locked" | "gameday" | "in_play" | "completed";
+export type TripPhase = "forming" | "signups_open" | "locked" | "gameday" | "in_play" | "completed";
 
 /**
  * Resolve sign-up phase for a trip
@@ -14,7 +14,7 @@ export type TripPhase = "scheduled" | "signups_open" | "locked" | "gameday" | "i
  *    (use trip.signupsClosedAt OR trip.signupsCloseAt if either exists)
  * 2) Else if an explicit open moment exists and is <= now => signups_open
  * 3) Else if computed open moment (trip.date - 30d) <= now => signups_open
- * 4) Else scheduled
+ * 4) Else forming
  *
  * IMPORTANT: If both open and close exist, close wins.
  */
@@ -28,7 +28,7 @@ export function resolveSignupPhase(
     cutoffAt?: string | null;
   },
   now: number = Date.now()
-): "scheduled" | "signups_open" | "locked" {
+): "forming" | "signups_open" | "locked" {
   // Helper to safely parse date string to timestamp
   function parseDateSafe(dateStr: string | null | undefined): number | null {
     if (!dateStr) return null;
@@ -68,8 +68,8 @@ export function resolveSignupPhase(
     return "signups_open";
   }
 
-  // Otherwise, scheduled
-  return "scheduled";
+  // Otherwise, forming
+  return "forming";
 }
 
 /**

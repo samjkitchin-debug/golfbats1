@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 
@@ -111,33 +111,22 @@ export async function GET(
     const attendees = attendeesData || [];
     const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id).filter(Boolean)));
 
-    // Fetch member profile data and passport data separately (canonical source: member_passports)
+    // Fetch member profile data (public fields only - no passport/compliance data)
     const membersById: Record<string, { 
       display_name: string | null; 
       full_name: string | null;
       nationality: string | null;
     }> = {};
-    
-    const passportsByUserId: Record<string, {
-      passport_full_name: string | null;
-      passport_number_encrypted: boolean;
-      passport_country: string | null;
-      passport_expiry_date: string | null;
-      passport_photo_path: string | null;
-    }> = {};
 
     if (memberIds.length > 0) {
-      // Use service role client to fetch attendee member details (bypasses RLS)
-      const supabaseService = await createSupabaseServiceClient();
-      
-      // Fetch members (profile fields only)
-      const { data: membersData, error: membersError } = await supabaseService
+      // Fetch members (profile fields only - no passport data)
+      const { data: membersData, error: membersError } = await supabase
         .from("members")
         .select("id,display_name,full_name,nationality")
         .in("id", memberIds);
 
       if (membersError) {
-        console.error("[trips/[id] API] Failed to fetch members via service role:", membersError);
+        console.warn("[trips/[id] API] Failed to fetch members:", membersError);
       } else if (membersData) {
         for (const m of membersData) {
           membersById[m.id] = { 
@@ -147,27 +136,6 @@ export async function GET(
           };
         }
       }
-
-      // Fetch passport data from member_passports (canonical source)
-      const { data: passportsData, error: passportsError } = await supabaseService
-        .from("member_passports")
-        .select("user_id,passport_full_name,passport_number_encrypted,passport_country,passport_expiry_date,passport_photo_path")
-        .in("user_id", memberIds);
-
-      if (passportsError) {
-        console.error("[trips/[id] API] Failed to fetch passports:", passportsError);
-      } else if (passportsData) {
-        for (const p of passportsData) {
-          passportsByUserId[p.user_id] = {
-            passport_full_name: p.passport_full_name ?? null,
-            passport_number_encrypted: !!p.passport_number_encrypted,
-            passport_country: p.passport_country ?? null,
-            passport_expiry_date: p.passport_expiry_date ?? null,
-            passport_photo_path: p.passport_photo_path ?? null,
-          };
-        }
-      }
-
     }
 
     // Fetch results
@@ -181,21 +149,10 @@ export async function GET(
       console.warn("[trips/[id] API] Failed to fetch results:", resultError);
     }
 
-    // Map attendees
+    // Map attendees (public fields only - no compliance data)
     const tripAttendees = attendees.map((a: any) => {
       const member = membersById[a.member_id] || {};
-      const passport = passportsByUserId[a.member_id] || null;
       const name = member.display_name || member.full_name || "Unknown";
-      
-      // Compute compliance fields from member_passports data (canonical source)
-      const missingDocsFields: string[] = [];
-      if (!passport?.passport_full_name) missingDocsFields.push("passport_full_name");
-      if (!passport?.passport_number_encrypted) missingDocsFields.push("passport_number");
-      if (!passport?.passport_country) missingDocsFields.push("passport_country");
-      if (!passport?.passport_expiry_date) missingDocsFields.push("passport_expiry_date");
-      
-      const docsComplete = missingDocsFields.length === 0;
-      const hasPassportPhoto = !!passport?.passport_photo_path;
       
       return {
         name,
@@ -203,14 +160,9 @@ export async function GET(
         joinedAt: new Date(a.joined_at).getTime(),
         handicapForTrip: a.handicap_snapshot ?? null,
         memberId: a.member_id,
-        // Include member profile fields for completeness checks
+        // Include member profile fields (public only)
         fullName: member.full_name || null,
         displayName: member.display_name || null,
-        nationality: member.nationality || null,
-        // Compliance fields only (derived from member_passports, no raw passport values)
-        docsComplete,
-        missingDocsFields,
-        hasPassportPhoto,
       };
     });
 
