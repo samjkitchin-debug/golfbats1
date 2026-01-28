@@ -35,7 +35,7 @@ export type TripReadiness = {
     missingReasonsBreakdown: Array<{
       memberId: string;
       memberName: string;
-      missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap">;
+      missingFields: Array<"passport_full_name" | "passport_number" | "passport_country" | "passport_expiry_date" | "handicap">;
     }>;
   };
   agentItinerary?: {
@@ -46,29 +46,19 @@ export type TripReadiness = {
 };
 
 /**
- * Passport profile data structure
- */
-export type PassportProfile = {
-  passport_full_name: string | null;
-  passport_number: string | null;
-  passport_nationality: string | null;
-  passport_date_of_birth: string | null;
-  passport_expiry_date: string | null;
-};
-
-/**
  * Check if a member is export-ready for agent roster
  * 
  * An attendee is export-ready if:
  * - RSVP status === 'confirmed' (yes)
  * - handicap is present
- * - ALL passport fields are present and non-empty
+ * - ALL passport fields are present (using derived docsComplete from trips API)
+ * 
+ * Uses canonical passport data from member_passports via attendee.docsComplete and attendee.missingDocsFields.
  */
 export function isMemberAgentReady(
-  attendee: Attendee,
-  profile: PassportProfile | null
-): { isReady: boolean; missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap"> } {
-  const missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap"> = [];
+  attendee: Attendee
+): { isReady: boolean; missingFields: Array<"passport_full_name" | "passport_number" | "passport_country" | "passport_expiry_date" | "handicap"> } {
+  const missingFields: Array<"passport_full_name" | "passport_number" | "passport_country" | "passport_expiry_date" | "handicap"> = [];
 
   // Check RSVP status
   if (attendee.status !== "confirmed") {
@@ -81,26 +71,22 @@ export function isMemberAgentReady(
     missingFields.push("handicap");
   }
 
-  // Check passport fields
-  if (!profile) {
-    // No profile at all - all passport fields are missing
-    missingFields.push("passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date");
-  } else {
-    // Check each passport field
-    if (!profile.passport_full_name || profile.passport_full_name.trim().length === 0) {
-      missingFields.push("passport_full_name");
-    }
-    if (!profile.passport_number || profile.passport_number.trim().length === 0) {
-      missingFields.push("passport_number");
-    }
-    if (!profile.passport_nationality || profile.passport_nationality.trim().length === 0) {
-      missingFields.push("passport_nationality");
-    }
-    if (!profile.passport_date_of_birth || profile.passport_date_of_birth.trim().length === 0) {
-      missingFields.push("passport_date_of_birth");
-    }
-    if (!profile.passport_expiry_date || profile.passport_expiry_date.trim().length === 0) {
-      missingFields.push("passport_expiry_date");
+  // Check passport fields using derived compliance from trips API (canonical source: member_passports)
+  // attendee.docsComplete is true when all required fields are present
+  // attendee.missingDocsFields contains the field codes for missing fields
+  if (!attendee.docsComplete) {
+    // Use missingDocsFields if available, otherwise assume all fields missing
+    if (attendee.missingDocsFields && attendee.missingDocsFields.length > 0) {
+      // Map field codes to the expected format
+      for (const field of attendee.missingDocsFields) {
+        if (field === "passport_full_name") missingFields.push("passport_full_name");
+        if (field === "passport_number") missingFields.push("passport_number");
+        if (field === "passport_country") missingFields.push("passport_country");
+        if (field === "passport_expiry_date") missingFields.push("passport_expiry_date");
+      }
+    } else {
+      // No missingDocsFields provided - assume all passport fields missing
+      missingFields.push("passport_full_name", "passport_number", "passport_country", "passport_expiry_date");
     }
   }
 
@@ -126,7 +112,7 @@ export async function getAgentRosterStatus(
   notReadyMembers: Array<{
     memberId: string;
     memberName: string;
-    missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap">;
+    missingFields: Array<"passport_full_name" | "passport_number" | "passport_country" | "passport_expiry_date" | "handicap">;
   }>;
 }> {
   // Get confirmed attendees
@@ -141,19 +127,12 @@ export async function getAgentRosterStatus(
     };
   }
 
-  // Fetch passport data for all confirmed attendees
-  const memberIds = confirmedAttendees
-    .map((a) => a.memberId)
-    .filter((id): id is string => !!id);
-
-  const passportData = await fetchPassportData(memberIds);
-
-  // Check each attendee
+  // Check each attendee using derived compliance fields from trips API (canonical source: member_passports)
   let exportReadyCount = 0;
   const notReadyMembers: Array<{
     memberId: string;
     memberName: string;
-    missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap">;
+    missingFields: Array<"passport_full_name" | "passport_number" | "passport_country" | "passport_expiry_date" | "handicap">;
   }> = [];
 
   for (const attendee of confirmedAttendees) {
@@ -162,13 +141,12 @@ export async function getAgentRosterStatus(
       notReadyMembers.push({
         memberId: "",
         memberName: attendee.name,
-        missingFields: ["passport_full_name", "passport_number", "passport_nationality", "passport_date_of_birth", "passport_expiry_date", "handicap"],
+        missingFields: ["passport_full_name", "passport_number", "passport_country", "passport_expiry_date", "handicap"],
       });
       continue;
     }
 
-    const profile = passportData[attendee.memberId] || null;
-    const readiness = isMemberAgentReady(attendee, profile);
+    const readiness = isMemberAgentReady(attendee);
 
     if (readiness.isReady) {
       exportReadyCount++;
@@ -188,38 +166,8 @@ export async function getAgentRosterStatus(
   };
 }
 
-/**
- * Fetch passport data for a list of member IDs from member_profiles
- * Returns a map of memberId -> passport data
- */
-async function fetchPassportData(memberIds: string[]): Promise<Record<string, PassportProfile>> {
-  if (memberIds.length === 0) return {};
-
-  const supabase = createSupabaseBrowserClient();
-  const { data: profiles, error } = await supabase
-    .from("member_profiles")
-    .select("member_id,passport_full_name,passport_number,passport_nationality,passport_date_of_birth,passport_expiry_date")
-    .in("member_id", memberIds);
-
-  if (error) {
-    console.warn("[tripReadiness] Failed to fetch passport data:", error);
-    return {};
-  }
-
-  const result: Record<string, PassportProfile> = {};
-
-  for (const p of profiles || []) {
-    result[p.member_id] = {
-      passport_full_name: p.passport_full_name,
-      passport_number: p.passport_number,
-      passport_nationality: p.passport_nationality,
-      passport_date_of_birth: p.passport_date_of_birth,
-      passport_expiry_date: p.passport_expiry_date,
-    };
-  }
-
-  return result;
-}
+// Removed fetchPassportData - passport data now comes from trips API via attendee.docsComplete and attendee.missingDocsFields
+// Canonical source is member_passports, accessed through the trips API routes
 
 /**
  * Get basic trip readiness based on scenario requirements.
@@ -387,7 +335,7 @@ export async function computeBatamReadiness(
     missingReasonsBreakdown: Array<{
       memberId: string;
       memberName: string;
-      missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap">;
+      missingFields: Array<"passport_full_name" | "passport_number" | "passport_country" | "passport_expiry_date" | "handicap">;
     }>;
   };
   agentItinerary: { done: boolean; missing: Array<"meeting_point" | "meet_time" | "itinerary_details"> };

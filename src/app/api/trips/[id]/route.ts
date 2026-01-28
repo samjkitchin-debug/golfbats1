@@ -33,7 +33,7 @@ export async function GET(
     let tripQuery = supabase
       .from("trips")
       .select(
-        "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,decision_logistics,logistics,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group,travel_involved,travel_type,travel_scope,booking_approach,booking_provider_name,travel_note"
+        "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,cutoff_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,decision_logistics,logistics,created_at,updated_at,group_id,scenario_key,trip_origin,created_by_member_id,is_posted_to_group,travel_involved,travel_type,travel_scope,booking_approach,booking_provider_name,travel_note,coordination_status,signups_opened_at,phase_override"
       );
 
     if (isNumeric) {
@@ -111,15 +111,17 @@ export async function GET(
     const attendees = attendeesData || [];
     const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id).filter(Boolean)));
 
-    // Fetch member details with passport data using service role client to bypass RLS
+    // Fetch member profile data and passport data separately (canonical source: member_passports)
     const membersById: Record<string, { 
       display_name: string | null; 
       full_name: string | null;
       nationality: string | null;
+    }> = {};
+    
+    const passportsByUserId: Record<string, {
       passport_full_name: string | null;
-      passport_number: string | null;
-      passport_nationality: string | null;
-      passport_date_of_birth: string | null;
+      passport_number_encrypted: boolean;
+      passport_country: string | null;
       passport_expiry_date: string | null;
       passport_photo_path: string | null;
     }> = {};
@@ -127,43 +129,45 @@ export async function GET(
     if (memberIds.length > 0) {
       // Use service role client to fetch attendee member details (bypasses RLS)
       const supabaseService = await createSupabaseServiceClient();
-      const selectQuery = `
-          id,
-          display_name,
-          full_name,
-          nationality,
-          member_profiles(
-            passport_full_name,
-            passport_number,
-            passport_nationality,
-            passport_date_of_birth,
-            passport_expiry_date
-          )
-        `;
+      
+      // Fetch members (profile fields only)
       const { data: membersData, error: membersError } = await supabaseService
         .from("members")
-        .select(selectQuery)
+        .select("id,display_name,full_name,nationality")
         .in("id", memberIds);
 
       if (membersError) {
         console.error("[trips/[id] API] Failed to fetch members via service role:", membersError);
-        console.error("[trips/[id] API] Select query that failed:", selectQuery);
       } else if (membersData) {
         for (const m of membersData) {
-          const profile = (m.member_profiles as any)?.[0] || null;
           membersById[m.id] = { 
             display_name: m.display_name, 
             full_name: m.full_name,
             nationality: m.nationality,
-            passport_full_name: profile?.passport_full_name ?? null,
-            passport_number: profile?.passport_number ?? null,
-            passport_nationality: profile?.passport_nationality ?? null,
-            passport_date_of_birth: profile?.passport_date_of_birth ?? null,
-            passport_expiry_date: profile?.passport_expiry_date ?? null,
-            passport_photo_path: null, // Not available in member_profiles
           };
         }
       }
+
+      // Fetch passport data from member_passports (canonical source)
+      const { data: passportsData, error: passportsError } = await supabaseService
+        .from("member_passports")
+        .select("user_id,passport_full_name,passport_number_encrypted,passport_country,passport_expiry_date,passport_photo_path")
+        .in("user_id", memberIds);
+
+      if (passportsError) {
+        console.error("[trips/[id] API] Failed to fetch passports:", passportsError);
+      } else if (passportsData) {
+        for (const p of passportsData) {
+          passportsByUserId[p.user_id] = {
+            passport_full_name: p.passport_full_name ?? null,
+            passport_number_encrypted: !!p.passport_number_encrypted,
+            passport_country: p.passport_country ?? null,
+            passport_expiry_date: p.passport_expiry_date ?? null,
+            passport_photo_path: p.passport_photo_path ?? null,
+          };
+        }
+      }
+
     }
 
     // Fetch results
@@ -180,7 +184,19 @@ export async function GET(
     // Map attendees
     const tripAttendees = attendees.map((a: any) => {
       const member = membersById[a.member_id] || {};
+      const passport = passportsByUserId[a.member_id] || null;
       const name = member.display_name || member.full_name || "Unknown";
+      
+      // Compute compliance fields from member_passports data (canonical source)
+      const missingDocsFields: string[] = [];
+      if (!passport?.passport_full_name) missingDocsFields.push("passport_full_name");
+      if (!passport?.passport_number_encrypted) missingDocsFields.push("passport_number");
+      if (!passport?.passport_country) missingDocsFields.push("passport_country");
+      if (!passport?.passport_expiry_date) missingDocsFields.push("passport_expiry_date");
+      
+      const docsComplete = missingDocsFields.length === 0;
+      const hasPassportPhoto = !!passport?.passport_photo_path;
+      
       return {
         name,
         status: a.status as "confirmed" | "waitlist" | "out",
@@ -191,13 +207,10 @@ export async function GET(
         fullName: member.full_name || null,
         displayName: member.display_name || null,
         nationality: member.nationality || null,
-        // Include passport fields from member_profiles
-        passportFullName: member.passport_full_name,
-        passportNumber: member.passport_number,
-        passportNationality: member.passport_nationality,
-        passportDateOfBirth: member.passport_date_of_birth,
-        passportExpiryDate: member.passport_expiry_date,
-        passportPhotoPath: member.passport_photo_path,
+        // Compliance fields only (derived from member_passports, no raw passport values)
+        docsComplete,
+        missingDocsFields,
+        hasPassportPhoto,
       };
     });
 
@@ -333,6 +346,17 @@ export async function GET(
       bookingApproach: (tripData as any).booking_approach || null,
       bookingProviderName: (tripData as any).booking_provider_name || null,
       travelNote: (tripData as any).travel_note || null,
+      // Lifecycle-critical fields
+      coordinationStatus: (tripData as any).coordination_status ?? null,
+      signupsOpenedAt: (tripData as any).signups_opened_at ? new Date((tripData as any).signups_opened_at).toISOString() : undefined,
+      phaseOverride: (tripData as any).phase_override ?? null,
+      // Snake_case keys for UI/lifecycle consumers
+      coordination_status: (tripData as any).coordination_status ?? null,
+      signups_opened_at: (tripData as any).signups_opened_at ?? null,
+      phase_override: (tripData as any).phase_override ?? null,
+      // Group ID (canonical)
+      groupId: (tripData as any).group_id ?? null,
+      group_id: (tripData as any).group_id ?? null,
     };
 
     return NextResponse.json({ ok: true, trip: tripDetail }, { headers: { "Cache-Control": "no-store" } });

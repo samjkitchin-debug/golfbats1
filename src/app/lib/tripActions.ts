@@ -27,13 +27,11 @@ export type Attendee = {
   fullName?: string | null;
   displayName?: string | null;
   nationality?: string | null;
-  // Passport fields from member_profiles
-  passportFullName?: string | null;
-  passportNumber?: string | null;
-  passportNationality?: string | null;
-  passportDateOfBirth?: string | null;
-  passportExpiryDate?: string | null;
-  passportPhotoPath?: string | null;
+  // Compliance fields (derived from member_passports, canonical source)
+  // Never return raw passport values - only derived booleans
+  docsComplete?: boolean;
+  missingDocsFields?: string[]; // Field codes: "passport_full_name" | "passport_number" | "passport_country" | "passport_expiry_date"
+  hasPassportPhoto?: boolean;
 };
 
 export type TripStatus = "open" | "closed" | "archived" | "cancelled";

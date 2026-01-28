@@ -11,7 +11,7 @@ import { resolveSignupPhase, getEffectiveSignupOpenAt } from "../../lib/tripPhas
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
-import { checkMemberExportReadiness } from "../../lib/memberExportReadiness";
+import { checkAttendeeExportReadiness } from "../../lib/memberExportReadiness";
 import { useRouter } from "next/navigation";
 import { getGolfNoun } from "../../lib/roundNounHelper";
 import { getEffectiveCoordinationStatus } from "../../lib/tripCoordination";
@@ -328,13 +328,19 @@ export default function TripsListPage() {
         // Check if this is a Batam trip and member details are complete
         if (trip.scenarioKey === "cross_border_agent" && currentUserId) {
           try {
-            const readiness = await checkMemberExportReadiness(currentUserId, existingHandicap);
-            if (!readiness.isReady) {
-              // Show completion prompt
-              setCompletionPrompt({
-                tripId,
-                missingFields: readiness.missingFields,
-              });
+            // Find the attendee entry from the reloaded trip (or use the original trip if reload failed)
+            const tripToCheck = reloadedTrip || trip;
+            const myAttendee = tripToCheck.attendees.find((a) => a.memberId === currentUserId);
+            
+            if (myAttendee) {
+              const readiness = checkAttendeeExportReadiness(myAttendee);
+              if (!readiness.isReady) {
+                // Show completion prompt
+                setCompletionPrompt({
+                  tripId,
+                  missingFields: readiness.missingFields,
+                });
+              }
             }
           } catch (error) {
             perfLog("handleJoinTrip: completion check error", { tripId, error: error instanceof Error ? error.message : String(error) });
@@ -555,7 +561,7 @@ export default function TripsListPage() {
     if (!myEntry || myEntry.status !== "confirmed") return; // Only check for confirmed attendees
     
     try {
-      const readiness = await checkMemberExportReadiness(currentUserId, myEntry.handicapForTrip);
+      const readiness = checkAttendeeExportReadiness(myEntry);
       setCompletionStatusCache(prev => ({ ...prev, [trip.id]: readiness }));
     } catch (error) {
       perfLog("checkAndCacheCompletionStatus: error", { tripId: trip.id, error: error instanceof Error ? error.message : String(error) });

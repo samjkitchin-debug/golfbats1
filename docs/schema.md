@@ -1,524 +1,742 @@
-# Database Schema
-
-## Authoritative schema artifacts
-
-- `docs/sql/schema_snapshot/public_functions.sql` is authoritative for public schema SQL function definitions.
-- Full schema tables/columns/constraints/indexes/policies must be captured via `docs/sql/schema_snapshot/schema_snapshot_supabase.sql` exports.
-
-## Schema Migrations History
-
-### 2026-01 — Introduced JSON persistence for BaseCamp instruments
-
-**Changes:**
-- Added `trips.decision_logistics jsonb NOT NULL DEFAULT '{}'::jsonb`
-- Added `trips.logistics jsonb NOT NULL DEFAULT '{}'::jsonb`
-- Backfilled from legacy flat columns (`meeting_point`, `meet_time`, `ferry_details`, `notes`, `capacity`)
-- Legacy columns deprecated for writes (read-only for backward compatibility)
-
-**Rationale:**
-- Enables persistent confirmation flags for BaseCamp instruments
-- Provides structured storage for instrument state
-- Maintains backward compatibility via fallback hydration
-
-**Migration:** `add_trip_json_columns`
-
-## Current DB Tables (relevant)
-
-### public.courses
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid()
-club_id | uuid | NO | 
-name | text | NO | 
-location | text | YES | 
-website | text | YES | 
-created_at | timestamp with time zone | NO | now()
-updated_at | timestamp with time zone | NO | now()
-
-### public.tees
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid()
-course_id | uuid | NO | REFERENCES courses(id) ON DELETE CASCADE
-label | text | NO | 
-meters | integer | NO | 
-par | integer | NO | 
-slope | integer | NO | 
-rating | numeric | YES | 
-created_at | timestamp with time zone | NO | now()
-updated_at | timestamp with time zone | NO | now()
-
-### public.tee_holes
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid()
-tee_id | uuid | NO | REFERENCES tees(id) ON DELETE CASCADE
-hole_number | integer | NO | 
-par | integer | YES | 
-meters | integer | YES | 
-stroke_index | integer | YES | 
-created_at | timestamp with time zone | NO | now()
-
-### public.trips
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid()
-club_id | uuid | YES | 
-trip_date | date | NO | 
-format | text | NO | 'Stroke'::text
-ferry | text | YES | 
-capacity | integer | NO | 16
-course_id | uuid | YES | 
-tee_id | uuid | YES | 
-meeting_point | text | YES | 
-meet_time | text | YES | 
-ferry_details | text | YES | 
-notes | text | YES | 
-decision_logistics | jsonb | NO | '{}'::jsonb
-logistics | jsonb | NO | '{}'::jsonb
-status | USER-DEFINED | NO | 'draft'::trip_status
-coordination_status | USER-DEFINED | NO | 'forming'::trip_coordination_status
-cutoff_at | timestamp with time zone | YES | 
-signups_opened_at | timestamp with time zone | YES | 
-created_at | timestamp with time zone | NO | now()
-updated_at | timestamp with time zone | NO | now()
-legacy_id | integer | YES | 
-name | text | YES | 
-group_id | uuid | NO | 
-trip_kind | USER-DEFINED | NO | 'official'::trip_kind
-created_by | uuid | YES | 
-phase_override | text | YES | 
-
-**Note:** `members.id == auth.uid()` (see RLS policies); do not rely on `members.user_id` for lookups.
-
-**Note:** `phase_override` (deprecated) - Not used by the app. Phase is derived from canonical moments only.
-
-**Note:** `public.group_members` RLS: Single canonical SELECT policy (`group members can read group members`) allows approved members or group admins to read membership rows. Recursive policy removed (see `docs/sql/migrations/rebase_rls_group_members_select.sql`).
-
-**Note:** `signups_opened_at` (timestamptz, nullable) - For group trips only. One-way gate: can be set once during Scheduled phase, never cleared. When set, makes sign-ups considered open regardless of derived open date (trip_date - 30 days). Written by group admins via base camp "Open sign-ups now" action (Scheduled bottom anchor). Cannot be set if already set, cannot be set to null, cannot be set if trip is no longer in Scheduled phase. 
-
-### public.trip_attendees
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid()
-trip_id | uuid | NO | 
-member_id | uuid | NO | 
-status | USER-DEFINED | NO | 'confirmed'::rsvp_status
-joined_at | timestamp with time zone | NO | now()
-handicap_snapshot | numeric | YES | 
-group_id | uuid | NO | 
-
-**Note:** When a member-origin trip is created, an attendee row is automatically created for the creator (trip_origin='member', created_by_member_id). This is required for GameDay participant visibility and ensures the round persists in trip lists. 
-
-### public.trip_results
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid()
-trip_id | uuid | NO | 
-published | boolean | NO | false
-published_at | timestamp with time zone | YES | 
-notes | text | YES | 
-created_at | timestamp with time zone | NO | now()
-updated_at | timestamp with time zone | NO | now()
-group_id | uuid | NO | 
-
-### public.result_rows
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid()
-result_id | uuid | NO | REFERENCES trip_results(id) ON DELETE CASCADE
-position | integer | NO | 
-display_name | text | NO | 
-metric_label | text | NO | 
-metric_value | numeric | NO | 
-created_at | timestamp with time zone | NO | now()
-
-### public.provider_course_map
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid()
-provider | text | NO | 
-provider_course_id | text | NO | 
-course_id | uuid | NO | REFERENCES courses(id) ON DELETE CASCADE
-created_at | timestamp with time zone | NO | now()
-updated_at | timestamp with time zone | NO | now()
-
-### public.gameday_rounds
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-trip_id | uuid | NO | PRIMARY KEY REFERENCES trips(id) ON DELETE CASCADE
-state | text | NO | 'not_started' CHECK (state IN ('not_started','in_progress','ready_to_close','closed','published'))
-locked_course_id | uuid | YES | REFERENCES courses(id)
-locked_tee_id | uuid | YES | REFERENCES tees(id)
-start_hole | integer | NO | 1 CHECK (start_hole BETWEEN 1 AND 18)
-holes_to_play | integer | NO | 18 CHECK (holes_to_play IN (9, 18))
-current_hole_index | integer | NO | 0 CHECK (current_hole_index BETWEEN 0 AND 17)
-started_at | timestamp with time zone | YES | 
-closed_at | timestamp with time zone | YES | 
-published_at | timestamp with time zone | YES | 
-created_at | timestamp with time zone | NO | now()
-updated_at | timestamp with time zone | NO | now()
-
-### public.gameday_scores
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid() PRIMARY KEY
-trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
-member_id | uuid | NO | REFERENCES members(id) ON DELETE CASCADE
-hole_number | integer | NO | CHECK (hole_number BETWEEN 1 AND 18)
-strokes | integer | NO | CHECK (strokes >= 0)
-client_updated_at | timestamp with time zone | NO | 
-updated_at | timestamp with time zone | NO | now()
-UNIQUE (trip_id, member_id, hole_number)
-
-### public.gameday_hole_commits
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid() PRIMARY KEY
-trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
-flight_id | uuid | YES | REFERENCES trip_flights(id) ON DELETE CASCADE
-hole_number | integer | NO | CHECK (hole_number BETWEEN 1 AND 18)
-committed_by_member_id | uuid | YES | REFERENCES members(id)
-client_commit_id | uuid | NO | 
-committed_at | timestamptz | NO | now()
-scores_json | jsonb | NO | 
-UNIQUE (trip_id, flight_id, hole_number)
-UNIQUE (trip_id, client_commit_id)
-
-### public.gameday_flight_rounds
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-flight_id | uuid | NO | PRIMARY KEY REFERENCES trip_flights(id) ON DELETE CASCADE
-state | text | NO | 'not_started' CHECK (state IN ('not_started','in_progress','ready_to_close','closed','published'))
-current_hole_index | integer | NO | 0 CHECK (current_hole_index BETWEEN 0 AND 17)
-started_at | timestamptz | YES | 
-closed_at | timestamptz | YES | 
-published_at | timestamptz | YES | 
-created_at | timestamptz | NO | now()
-updated_at | timestamptz | NO | now()
-
-### public.gameday_round_participants
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid() PRIMARY KEY
-trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
-member_id | uuid | NO | REFERENCES members(id) ON DELETE CASCADE
-handicap_snapshot | numeric | YES | 
-display_name | text | NO | 
-is_host | boolean | NO | false
-joined_at | timestamptz | NO | now()
-created_at | timestamptz | NO | now()
-updated_at | timestamptz | NO | now()
-UNIQUE (trip_id, member_id)
-
-### public.trip_flight_exports
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid() PRIMARY KEY
-trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
-flight_id | uuid | YES | REFERENCES trip_flights(id) ON DELETE CASCADE
-export_type | text | NO | 
-export_data | jsonb | NO | 
-created_at | timestamptz | NO | now()
-updated_at | timestamptz | NO | now()
-
-### public.trip_flights
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid() PRIMARY KEY
-trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
-flight_number | integer | NO | 
-is_unassigned | boolean | NO | false
-execution_status | USER-DEFINED | NO | 'not_started'::flight_execution_status
-start_hole | integer | NO | 1 CHECK (start_hole BETWEEN 1 AND 18)
-started_at | timestamptz | YES | 
-started_by_member_id | uuid | YES | REFERENCES members(id)
-finished_at | timestamptz | YES | 
-created_at | timestamptz | NO | now()
-updated_at | timestamptz | NO | now()
-
-### public.members
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-handicap_type | text | NO | 'declared_starter' CHECK (handicap_type IN ('declared_starter','declared_established','dayforeit_official'))
-declared_handicap | numeric | YES | 
-
-**Note:** `declared_handicap` remains the v1 numeric value source.
-
-### public.member_handicap_index
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid() PRIMARY KEY
-group_id | uuid | NO | REFERENCES groups(id) ON DELETE CASCADE
-member_id | uuid | NO | REFERENCES members(id) ON DELETE CASCADE
-current_index | numeric | YES | 
-updated_at | timestamp with time zone | NO | now()
-UNIQUE (group_id, member_id)
-
-### public.handicap_rounds
-
-Column | Type | Nullable | Default
--------|------|----------|---------
-id | uuid | NO | gen_random_uuid() PRIMARY KEY
-group_id | uuid | NO | REFERENCES groups(id) ON DELETE CASCADE
-trip_id | uuid | NO | REFERENCES trips(id) ON DELETE CASCADE
-member_id | uuid | NO | REFERENCES members(id) ON DELETE CASCADE
-played_on | date | NO | 
-course_id | uuid | YES | REFERENCES courses(id)
-tee_id | uuid | YES | REFERENCES tees(id)
-gross_total_strokes | integer | YES | 
-handicap_snapshot | numeric | YES | 
-course_rating | numeric | YES | 
-slope | integer | YES | 
-par | integer | YES | 
-differential | numeric | YES | 
-created_at | timestamp with time zone | NO | now()
-UNIQUE (trip_id, member_id)
-
-**Note:** GameDay migration: run `docs/sql/migrations/gameday_rounds_and_scores.sql` manually in Supabase SQL Editor (consolidates phase3 and phase3.1)  
-**Note:** Phase 4 migration: run `docs/sql/migrations/phase4_handicap_tables.sql` manually in Supabase SQL Editor
-
-**Note:** GameDay requires `tee_id` set on trips before scoring; GameDay page allows tee selection via `/api/trips` PATCH.
-
-**Note:** `gameday_rounds.start_hole` (1-18) determines starting hole; `holes_to_play` (9 or 18) determines round length; `current_hole_index` (0-17) tracks progress through play order (wrap-around: 18 → 1).
-
-## Planned v1 additions (not yet applied)
-
-- (none - all v1 tables implemented)
-
-## API contracts (v1)
-
-### GET /api/courses/lookup
-
-Response shape:
-```json
-{
-  "ok": true,
-  "courses": [
-    {
-      "id": "uuid",
-      "name": "string",
-      "location": "string",
-      "tees": [
-        {
-          "id": "uuid",
-          "label": "string"
-        }
-      ]
-    }
-  ]
-}
-```
-
-### GET /api/gameday/:roundId/course-pack
-
-Response shape:
-```json
-{
-  "ok": true,
-  "coursePack": {
-    "course": {
-      "id": "uuid",
-      "name": "string",
-      "location": "string"
-    },
-    "tee": {
-      "id": "uuid",
-      "label": "string",
-      "meters": "number",
-      "par": "number",
-      "slope": "number",
-      "rating": "number | null"
-    },
-    "holes": [
-      {
-        "holeNumber": "number",
-        "par": "number | null",
-        "meters": "number | null",
-        "strokeIndex": "number | null"
-      }
-    ]
-  }
-}
-```
-
-Error responses:
-- `404`: `{ "ok": false, "error": "not_found" }` - Trip not found
-- `400`: `{ "ok": false, "error": "missing_tee" }` - tee_id is null
-- `400`: `{ "ok": false, "error": "missing_course" }` - course_id is null
-
-### POST /api/gameday/:roundId/start
-
-Request body (optional):
-```json
-{
-  "startHole": 1-18,
-  "holesToPlay": 9 | 18
-}
-```
-
-Response shape:
-```json
-{
-  "ok": true,
-  "gameday": {
-    "tripId": "uuid",
-    "state": "in_progress",
-    "lockedCourseId": "uuid",
-    "lockedTeeId": "uuid",
-    "startedAt": "ISO timestamp",
-    "startHole": 1-18,
-    "holesToPlay": 9 | 18,
-    "currentHoleIndex": 0-17
-  }
-}
-```
-
-Error responses:
-- `404`: `{ "ok": false, "error": "not_found" }` - Trip not found
-- `400`: `{ "ok": false, "error": "missing_tee" }` - tee_id is null
-- `400`: `{ "ok": false, "error": "missing_course" }` - course_id is null
-
-### GET /api/gameday/:roundId/scorecard
-
-Response shape:
-```json
-{
-  "ok": true,
-  "trip": {
-    "id": "uuid",
-    "groupId": "uuid",
-    "courseId": "uuid",
-    "teeId": "uuid",
-    "format": "string"
-  },
-  "participants": [
-    {
-      "memberId": "uuid",
-      "displayName": "string"
-    }
-  ],
-  "scores": [
-    {
-      "memberId": "uuid",
-      "holeNumber": "number",
-      "strokes": "number",
-      "clientUpdatedAt": "ISO timestamp"
-    }
-  ]
-}
-```
-
-### POST /api/gameday/:roundId/scorecard
-
-Request body:
-```json
-{
-  "updates": [
-    {
-      "memberId": "uuid",
-      "holeNumber": "number (1-18)",
-      "strokes": "number (>= 0)",
-      "clientUpdatedAt": "ISO timestamp"
-    }
-  ],
-  "cursor": {
-    "currentHoleIndex": "number (0-17)"
-  }
-}
-```
-
-**Note:** `updates` and `cursor` are both optional, but at least one must be provided. `cursor` updates `gameday_rounds.current_hole_index` when round is `in_progress`.
-
-Response shape:
-```json
-{
-  "ok": true,
-  "applied": "number"
-}
-```
-
-**Note:** Offline-safe and idempotent writes. Updates are only applied if `clientUpdatedAt` is newer than existing `client_updated_at` in the database. This prevents stale overwrites during offline replay.
-
-### POST /api/gameday/:roundId/close
-
-Request: (no body)
-
-Response shape:
-```json
-{
-  "ok": true,
-  "gameday": {
-    "tripId": "uuid",
-    "state": "closed",
-    "closedAt": "ISO timestamp"
-  }
-}
-```
-
-Error responses:
-- `404`: `{ "ok": false, "error": "not_found" }` - Trip not found
-- Returns current state if already closed/published (idempotent)
-
-### POST /api/gameday/:roundId/publish
-
-Request: (no body)
-
-Response shape:
-```json
-{
-  "ok": true,
-  "publishedAt": "ISO timestamp",
-  "result": {
-    "tripResultId": "uuid",
-    "rowsCreated": "number"
-  },
-  "handicap": {
-    "roundsUpserted": "number",
-    "indexUpserted": "number"
-  }
-}
-```
-
-Error responses:
-- `404`: `{ "ok": false, "error": "not_found" }` - Trip not found
-- `400`: `{ "ok": false, "error": "not_closed" }` - Round must be closed before publishing
-- Returns success if already published (idempotent)
-
-**Note:** Publishing is idempotent. If already published, returns success without re-writing data. Writes to `trip_results`, `result_rows`, `handicap_rounds`, and `member_handicap_index`. Handicap index only updates `current_index` if it's null (preserves existing values).
-
-### GET /api/gameday/active
-
-Response shape:
-```json
-{
-  "active": null | {
-    "tripId": "string",
-    "groupId": "string",
-    "state": "string",
-    "label": "string",
-    "updatedAt": "ISO timestamp"
-  }
-}
-```
-
-**Note:** Returns the most recently active GameDay round for the current user (state in `in_progress` or `closed`, not published). Used by the "Return to GameDay" chip.
-
-**Note:** Client-side localStorage key: `gameday:last:<tripId>` stores `{ holeNumber: number, at: timestamp }` to resume at the last viewed hole.
+# Supabase Database Schema
+
+Generated from Supabase project: `uauuexcemwsrnrnsrzip`
+
+## Enums
+
+### trip_status
+- `draft`
+- `open`
+- `locked`
+- `completed`
+- `archived`
+- `closed`
+
+### trip_kind
+- `official`
+- `mini`
+
+### trip_origin
+- `group`
+- `member`
+
+### trip_coordination_status
+- `draft` - Being planned
+- `forming` - Signups open
+- `scheduled` - Signups closed, trip confirmed
+- `completed` - Trip finished
+
+### rsvp_status
+- `confirmed`
+- `waitlist`
+
+### group_role
+- `member`
+- `admin`
+
+### membership_status
+- `pending`
+- `approved`
+- `rejected`
+- `suspended`
+
+### flight_execution_status
+- `not_started`
+- `in_progress`
+- `finished`
+
+## Tables
+
+### clubs
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| slug | text | NO | - | Unique slug |
+| name | text | NO | - | Club name |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `slug`
+
+**Foreign Keys:**
+- Referenced by: `courses.club_id`, `trips.club_id`
+
+---
+
+### courses
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| club_id | uuid | NO | - | Foreign key to clubs |
+| name | text | NO | - | Course name |
+| location | text | YES | - | Location |
+| website | text | YES | - | Website URL |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+| data_source | text | NO | 'legacy' | Data source identifier |
+| data_version | integer | NO | 0 | Data version number |
+| country_code | text | YES | - | ISO country code |
+| lat | numeric | YES | - | Latitude |
+| lng | numeric | YES | - | Longitude |
+| geog | geography | YES | Generated | Geography column (generated from lat/lng) |
+
+**Primary Key:** `id`  
+**Foreign Keys:**
+- `club_id` → `clubs.id` (ON DELETE CASCADE)
+- Referenced by: `gameday_rounds.locked_course_id`, `tees.course_id`, `trips.course_id`, `provider_course_map.course_id`, `handicap_rounds.course_id`
+
+---
+
+### tees
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| course_id | uuid | NO | - | Foreign key to courses |
+| label | text | NO | - | Tee label (e.g., "White", "Blue") |
+| meters | integer | NO | - | Total length in meters |
+| par | integer | NO | - | Par for the course |
+| slope | integer | NO | - | Slope rating |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+| rating | numeric | YES | - | Course rating |
+| data_source | text | NO | 'legacy' | Data source identifier |
+| data_version | integer | NO | 0 | Data version number |
+| gender | text | YES | - | Gender designation |
+| yards | integer | YES | - | Total length in yards |
+| display_order | integer | YES | - | Display order |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(course_id, label)`  
+**Foreign Keys:**
+- `course_id` → `courses.id` (ON DELETE CASCADE)
+- Referenced by: `trips.tee_id`, `gameday_rounds.locked_tee_id`, `tee_holes.tee_id`, `handicap_rounds.tee_id`
+
+---
+
+### tee_holes
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| tee_id | uuid | NO | - | Foreign key to tees |
+| hole_number | integer | NO | - | Hole number (1-18) |
+| par | integer | YES | - | Par for this hole |
+| meters | integer | YES | - | Length in meters |
+| stroke_index | integer | YES | - | Stroke index (1-18) |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(tee_id, hole_number)`  
+**Check Constraints:**
+- `hole_number >= 1 AND hole_number <= 18`
+- `stroke_index IS NULL OR (stroke_index >= 1 AND stroke_index <= 18)`
+**Foreign Keys:**
+- `tee_id` → `tees.id` (ON DELETE CASCADE)
+
+---
+
+### groups
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| slug | text | NO | - | Unique slug (4-32 chars, lowercase alphanumeric + hyphens) |
+| name | text | NO | - | Group name |
+| created_by | uuid | YES | - | Foreign key to auth.users |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| is_active | boolean | NO | true | Active status |
+| visibility | text | NO | 'private' | Visibility: 'private' or 'discoverable' |
+| description | text | YES | - | Description (max 280 chars) |
+| base_country | text | YES | - | Base country (2-letter ISO code) |
+| base_city | text | YES | - | Base city (1-60 chars) |
+| default_scenario_key | text | YES | - | Default scenario for fast trip creation |
+| secondary_scenario_key | text | YES | - | Secondary scenario for fast trip creation |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `slug`  
+**Check Constraints:**
+- `slug ~ '^[a-z0-9-]{4,32}$'`
+- `visibility IN ('private', 'discoverable')`
+- `description IS NULL OR length(description) <= 280`
+- `base_country IS NULL OR (length(base_country) = 2 AND base_country ~ '^[A-Z]{2}$')`
+- `base_city IS NULL OR (length(TRIM(base_city)) >= 1 AND length(TRIM(base_city)) <= 60)`
+- `default_scenario_key IS NULL OR default_scenario_key IN ('local_round', 'carpool_round', 'away_day', 'overnight_trip', 'organiser_booking', 'cross_border_agent', 'casual_round')`
+- `secondary_scenario_key IS NULL OR secondary_scenario_key IN ('local_round', 'carpool_round', 'away_day', 'overnight_trip', 'organiser_booking', 'cross_border_agent', 'casual_round')`
+**Foreign Keys:**
+- `created_by` → `auth.users.id`
+- Referenced by: `group_members.group_id`, `trips.group_id`, `member_handicap_index.group_id`, `handicap_rounds.group_id`, `trip_events.group_id`, `members.last_active_group_id`, `trip_results.group_id`, `trip_attendees.group_id`
+
+---
+
+### group_members
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| group_id | uuid | NO | - | Foreign key to groups |
+| user_id | uuid | NO | - | Foreign key to auth.users |
+| role | group_role | NO | 'member' | Role: 'member' or 'admin' |
+| status | membership_status | NO | 'pending' | Membership status |
+| joined_at | timestamptz | NO | now() | Join timestamp |
+| approved_at | timestamptz | YES | - | Approval timestamp |
+| approved_by | uuid | YES | - | Foreign key to auth.users (approver) |
+
+**Primary Key:** `(group_id, user_id)`  
+**Foreign Keys:**
+- `group_id` → `groups.id` (ON DELETE CASCADE)
+- `user_id` → `auth.users.id` (ON DELETE CASCADE)
+- `approved_by` → `auth.users.id`
+
+---
+
+### members
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | - | Primary key, foreign key to auth.users |
+| email | text | NO | - | Email address (unique) |
+| full_name | text | YES | - | Full name |
+| display_name | text | YES | - | Display name |
+| nationality | text | YES | - | Nationality |
+| declared_handicap | numeric | YES | - | Declared handicap |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| last_seen | timestamptz | NO | now() | Last seen timestamp |
+| profile_photo_path | text | YES | - | Path to profile photo in Supabase Storage |
+| status | text | NO | 'pending' | Member status |
+| is_admin | boolean | NO | false | Admin flag |
+| last_active_group_id | uuid | YES | - | Foreign key to groups |
+| platform_role | text | NO | 'user' | Platform role: 'user' or 'superuser' |
+| handicap_origin | text | NO | 'starter' | Handicap origin: 'starter' or 'established' |
+| handicap_type | text | NO | 'declared_starter' | Handicap type: 'declared_starter', 'declared_established', or 'dayforeit_official' |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `email`  
+**Check Constraints:**
+- `platform_role IN ('user', 'superuser')`
+- `handicap_origin IN ('starter', 'established')`
+- `handicap_type IN ('declared_starter', 'declared_established', 'dayforeit_official')`
+**Foreign Keys:**
+- `id` → `auth.users.id` (ON DELETE CASCADE)
+- `last_active_group_id` → `groups.id` (ON DELETE SET NULL)
+- Referenced by: `member_profiles.member_id`, `trip_flight_slots.member_id`, `trips.created_by_member_id`, `gameday_scores.member_id`, `handicap_rounds.member_id`, `member_handicap_index.member_id`, `trip_flights.started_by_member_id`, `gameday_hole_commits.committed_by_member_id`, `gameday_round_participants.member_id`, `trip_attendees.member_id`
+
+---
+
+### member_profiles
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| member_id | uuid | NO | - | Primary key, foreign key to members |
+| passport_full_name | text | YES | - | Passport full name |
+| passport_number | text | YES | - | Passport number |
+| passport_nationality | text | YES | - | Passport nationality |
+| passport_date_of_birth | date | YES | - | Date of birth |
+| passport_expiry_date | date | YES | - | Passport expiry date |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+
+**Primary Key:** `member_id`  
+**Foreign Keys:**
+- `member_id` → `members.id` (ON DELETE CASCADE)
+
+---
+
+### member_passports
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| user_id | uuid | NO | - | Foreign key to auth.users (unique) |
+| passport_full_name | text | NO | - | Passport full name |
+| passport_number_encrypted | bytea | NO | - | Encrypted passport number |
+| passport_country | text | NO | - | Passport country |
+| passport_expiry_date | date | NO | - | Passport expiry date |
+| passport_photo_path | text | YES | - | Path to passport photo |
+| delete_after | timestamptz | YES | - | Deletion timestamp |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `user_id`  
+**Foreign Keys:**
+- `user_id` → `auth.users.id` (ON DELETE CASCADE)
+
+---
+
+### passport_access_audit
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| viewer_user_id | uuid | NO | - | Foreign key to auth.users (viewer) |
+| target_user_id | uuid | NO | - | Foreign key to auth.users (target) |
+| action | text | NO | - | Action: 'view_text', 'view_image', or 'decrypt_number' |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+
+**Primary Key:** `id`  
+**Check Constraints:**
+- `action IN ('view_text', 'view_image', 'decrypt_number')`
+**Foreign Keys:**
+- `viewer_user_id` → `auth.users.id` (ON DELETE SET NULL)
+- `target_user_id` → `auth.users.id` (ON DELETE CASCADE)
+
+---
+
+### trips
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| club_id | uuid | YES | - | Foreign key to clubs |
+| trip_date | date | NO | - | Trip date |
+| format | text | NO | 'Stroke' | Format (e.g., 'Stroke', 'Stableford') |
+| ferry | text | YES | - | Ferry information |
+| capacity | integer | NO | 16 | Capacity |
+| course_id | uuid | YES | - | Foreign key to courses |
+| tee_id | uuid | YES | - | Foreign key to tees |
+| meeting_point | text | YES | - | Meeting point |
+| meet_time | text | YES | - | Meeting time |
+| ferry_details | text | YES | - | Ferry details |
+| notes | text | YES | - | Notes |
+| status | trip_status | NO | 'draft' | Trip status |
+| cutoff_at | timestamptz | YES | - | Cutoff timestamp |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+| legacy_id | integer | YES | - | Legacy ID |
+| name | text | YES | - | Trip name |
+| group_id | uuid | NO | - | Foreign key to groups |
+| trip_kind | trip_kind | NO | 'official' | Trip kind |
+| created_by | uuid | YES | - | Foreign key to auth.users |
+| scenario_key | text | YES | - | Trip scenario key (local_round, away_day, overnight_trip, organiser_booking, cross_border_agent, or NULL) |
+| trip_origin | trip_origin | NO | 'group' | Trip origin |
+| created_by_member_id | uuid | YES | - | Foreign key to members |
+| is_posted_to_group | boolean | NO | true | Posted to group flag |
+| coordination_status | trip_coordination_status | NO | 'forming' | Coordination status |
+| travel_involved | boolean | NO | false | Whether travel is involved (group trips only) |
+| travel_type | text | YES | - | Type of travel: ferry, flight, coach, drive, other (group trips only) |
+| travel_scope | text | YES | - | Travel scope: domestic or international (group trips only) |
+| booking_approach | text | YES | - | Booking approach: self or centralised (group trips only) |
+| booking_provider_name | text | YES | - | Travel agent/concierge name if booking_approach is centralised |
+| travel_note | text | YES | - | Additional travel coordination notes |
+| trip_name | text | YES | - | Primary human-readable trip title |
+| phase_override | text | YES | - | Phase override |
+| signups_opened_at | timestamptz | YES | - | When set, group trip sign-ups are open from this moment |
+| decision_logistics | jsonb | NO | '{}' | Decision logistics JSON |
+| logistics | jsonb | NO | '{}' | Logistics JSON |
+
+**Primary Key:** `id`  
+**Check Constraints:**
+- `travel_type IS NULL OR travel_type IN ('ferry', 'flight', 'coach', 'drive', 'other')`
+- `travel_scope IS NULL OR travel_scope IN ('domestic', 'international')`
+- `booking_approach IS NULL OR booking_approach IN ('self', 'centralised')`
+**Foreign Keys:**
+- `club_id` → `clubs.id` (ON DELETE CASCADE)
+- `course_id` → `courses.id` (ON DELETE SET NULL)
+- `tee_id` → `tees.id` (ON DELETE SET NULL)
+- `group_id` → `groups.id`
+- `created_by` → `auth.users.id`
+- `created_by_member_id` → `members.id`
+- Referenced by: `gameday_round_participants.trip_id`, `trip_flight_exports.trip_id`, `gameday_rounds.trip_id`, `trip_flights.trip_id`, `trip_results.trip_id`, `trip_attendees.trip_id`, `gameday_scores.trip_id`, `handicap_rounds.trip_id`, `gameday_hole_commits.trip_id`
+
+---
+
+### trip_attendees
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| trip_id | uuid | NO | - | Foreign key to trips |
+| member_id | uuid | NO | - | Foreign key to members |
+| status | rsvp_status | NO | 'confirmed' | RSVP status |
+| joined_at | timestamptz | NO | now() | Join timestamp |
+| handicap_snapshot | numeric | YES | - | Handicap snapshot |
+| group_id | uuid | NO | - | Foreign key to groups |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(trip_id, member_id)`  
+**Foreign Keys:**
+- `trip_id` → `trips.id` (ON DELETE CASCADE)
+- `group_id` → `groups.id`
+
+---
+
+### trip_results
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| trip_id | uuid | NO | - | Foreign key to trips (unique) |
+| published | boolean | NO | false | Published flag |
+| published_at | timestamptz | YES | - | Published timestamp |
+| notes | text | YES | - | Notes |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+| group_id | uuid | NO | - | Foreign key to groups |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `trip_id`  
+**Foreign Keys:**
+- `trip_id` → `trips.id` (ON DELETE CASCADE)
+- `group_id` → `groups.id`
+- Referenced by: `result_rows.result_id`
+
+---
+
+### result_rows
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| result_id | uuid | NO | - | Foreign key to trip_results |
+| position | integer | NO | - | Position |
+| display_name | text | NO | - | Display name |
+| metric_label | text | NO | 'Points' | Metric label |
+| metric_value | text | NO | - | Metric value |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(result_id, position)`  
+**Foreign Keys:**
+- `result_id` → `trip_results.id` (ON DELETE CASCADE)
+
+---
+
+### trip_flights
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| trip_id | uuid | NO | - | Foreign key to trips |
+| flight_number | integer | NO | - | Flight number |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+| execution_status | flight_execution_status | NO | 'not_started' | Execution status |
+| started_at | timestamptz | YES | - | Timestamp when flight was started |
+| started_by_member_id | uuid | YES | - | Member who started this flight |
+| finished_at | timestamptz | YES | - | Timestamp when flight was finished |
+| start_hole | integer | NO | 1 | Per-flight shotgun/starting hole (1-18) |
+| is_unassigned | boolean | NO | false | Unassigned flag |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(trip_id, flight_number)`  
+**Check Constraints:**
+- `start_hole >= 1 AND start_hole <= 18`
+**Foreign Keys:**
+- `trip_id` → `trips.id` (ON DELETE CASCADE)
+- `started_by_member_id` → `members.id`
+- Referenced by: `gameday_hole_commits.flight_id`, `trip_flight_exports.flight_id`, `gameday_flight_rounds.flight_id`, `trip_flight_slots.flight_id`
+
+---
+
+### trip_flight_slots
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| flight_id | uuid | NO | - | Foreign key to trip_flights |
+| member_id | uuid | NO | - | Foreign key to members |
+| slot_position | integer | NO | - | Slot position |
+| is_locked | boolean | NO | false | Locked flag |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+
+**Primary Key:** `id`  
+**Unique Constraints:** 
+- `(flight_id, member_id)`
+- `(flight_id, slot_position)`
+**Foreign Keys:**
+- `flight_id` → `trip_flights.id` (ON DELETE CASCADE)
+- `member_id` → `members.id` (ON DELETE CASCADE)
+
+---
+
+### trip_flight_exports
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| trip_id | uuid | NO | - | Foreign key to trips |
+| flight_id | uuid | YES | - | Foreign key to trip_flights |
+| export_type | text | NO | - | Export type |
+| export_data | jsonb | NO | - | Export data JSON |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+
+**Primary Key:** `id`  
+**Foreign Keys:**
+- `trip_id` → `trips.id` (ON DELETE CASCADE)
+- `flight_id` → `trip_flights.id` (ON DELETE CASCADE)
+
+---
+
+### trip_events
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| group_id | uuid | YES | - | Foreign key to groups |
+| trip_id | bigint | YES | - | Trip ID (legacy) |
+| event_type | text | NO | - | Event type |
+| scenario_key | text | YES | - | Scenario key |
+| phase | text | YES | - | Phase |
+| step | text | YES | - | Step |
+| source | text | YES | - | Source |
+| metadata | jsonb | NO | '{}' | Metadata JSON |
+
+**Primary Key:** `id`  
+**Foreign Keys:**
+- `group_id` → `groups.id` (ON DELETE CASCADE)
+
+---
+
+### gameday_rounds
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| trip_id | uuid | NO | - | Primary key, foreign key to trips |
+| state | text | NO | 'not_started' | State: 'not_started', 'in_progress', 'ready_to_close', 'closed', 'published' |
+| locked_course_id | uuid | YES | - | Foreign key to courses |
+| locked_tee_id | uuid | YES | - | Foreign key to tees |
+| started_at | timestamptz | YES | - | Started timestamp |
+| closed_at | timestamptz | YES | - | Closed timestamp |
+| published_at | timestamptz | YES | - | Published timestamp |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+| start_hole | integer | NO | 1 | Start hole (1-18) |
+| holes_to_play | integer | NO | 18 | Holes to play (9 or 18) |
+| current_hole_index | integer | NO | 0 | Current hole index (0-17) |
+
+**Primary Key:** `trip_id`  
+**Check Constraints:**
+- `state IN ('not_started', 'in_progress', 'ready_to_close', 'closed', 'published')`
+- `start_hole >= 1 AND start_hole <= 18`
+- `holes_to_play IN (9, 18)`
+- `current_hole_index >= 0 AND current_hole_index <= 17`
+**Foreign Keys:**
+- `trip_id` → `trips.id` (ON DELETE CASCADE)
+- `locked_course_id` → `courses.id`
+- `locked_tee_id` → `tees.id`
+
+---
+
+### gameday_flight_rounds
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| flight_id | uuid | NO | - | Primary key, foreign key to trip_flights |
+| state | text | NO | 'not_started' | State: 'in_progress', 'paused', 'completed' |
+| current_hole_index | integer | NO | 0 | Current hole index (0-17) |
+| started_at | timestamptz | YES | - | Started timestamp |
+| closed_at | timestamptz | YES | - | Closed timestamp |
+| published_at | timestamptz | YES | - | Published timestamp |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+
+**Primary Key:** `flight_id`  
+**Check Constraints:**
+- `state IN ('in_progress', 'paused', 'completed')`
+- `current_hole_index >= 0 AND current_hole_index <= 17`
+**Foreign Keys:**
+- `flight_id` → `trip_flights.id` (ON DELETE CASCADE)
+
+---
+
+### gameday_round_participants
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| trip_id | uuid | NO | - | Foreign key to trips |
+| member_id | uuid | NO | - | Foreign key to members |
+| handicap_snapshot | numeric | YES | - | Handicap snapshot |
+| display_name | text | NO | - | Display name |
+| is_host | boolean | NO | false | Host flag |
+| joined_at | timestamptz | NO | now() | Join timestamp |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(trip_id, member_id)`  
+**Foreign Keys:**
+- `trip_id` → `trips.id` (ON DELETE CASCADE)
+- `member_id` → `members.id` (ON DELETE CASCADE)
+
+---
+
+### gameday_scores
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| trip_id | uuid | NO | - | Foreign key to trips |
+| member_id | uuid | NO | - | Foreign key to members |
+| hole_number | integer | NO | - | Hole number (1-18) |
+| strokes | integer | NO | - | Strokes (>= 0) |
+| client_updated_at | timestamptz | NO | - | Client update timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(trip_id, member_id, hole_number)`  
+**Check Constraints:**
+- `hole_number >= 1 AND hole_number <= 18`
+- `strokes >= 0`
+**Foreign Keys:**
+- `trip_id` → `trips.id` (ON DELETE CASCADE)
+- `member_id` → `members.id` (ON DELETE CASCADE)
+
+---
+
+### gameday_hole_commits
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| trip_id | uuid | NO | - | Foreign key to trips |
+| hole_number | integer | NO | - | Hole number (1-18) |
+| committed_by_member_id | uuid | YES | - | Foreign key to members |
+| client_commit_id | uuid | NO | - | Client commit ID |
+| committed_at | timestamptz | NO | now() | Commit timestamp |
+| scores_json | jsonb | NO | - | Scores JSON |
+| flight_id | uuid | YES | - | Foreign key to trip_flights |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(trip_id, flight_id, hole_number)`  
+**Check Constraints:**
+- `hole_number >= 1 AND hole_number <= 18`
+**Foreign Keys:**
+- `trip_id` → `trips.id` (ON DELETE CASCADE)
+- `committed_by_member_id` → `members.id`
+- `flight_id` → `trip_flights.id` (ON DELETE CASCADE)
+
+---
+
+### handicap_rounds
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| group_id | uuid | NO | - | Foreign key to groups |
+| member_id | uuid | NO | - | Foreign key to members |
+| trip_id | uuid | NO | - | Foreign key to trips |
+| course_id | uuid | YES | - | Foreign key to courses |
+| tee_id | uuid | YES | - | Foreign key to tees |
+| played_on | date | NO | - | Date played |
+| gross_total | integer | NO | - | Gross total |
+| stableford_points | integer | YES | - | Stableford points |
+| handicap_used | numeric | YES | - | Handicap used |
+| published_at | timestamptz | NO | now() | Published timestamp |
+
+**Primary Key:** `id`  
+**Foreign Keys:**
+- `group_id` → `groups.id` (ON DELETE CASCADE)
+- `member_id` → `members.id` (ON DELETE CASCADE)
+- `trip_id` → `trips.id` (ON DELETE CASCADE)
+- `course_id` → `courses.id`
+- `tee_id` → `tees.id`
+
+---
+
+### member_handicap_index
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| group_id | uuid | NO | - | Foreign key to groups |
+| member_id | uuid | NO | - | Foreign key to members |
+| handicap_index | numeric | YES | - | Handicap index |
+| as_of | timestamptz | NO | now() | As of timestamp |
+| source | text | NO | 'derived_v1' | Source |
+
+**Primary Key:** `(group_id, member_id)`  
+**Foreign Keys:**
+- `group_id` → `groups.id` (ON DELETE CASCADE)
+- `member_id` → `members.id` (ON DELETE CASCADE)
+
+---
+
+### provider_course_map
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| provider | text | NO | - | Provider name |
+| provider_course_id | text | NO | - | Provider course ID |
+| course_id | uuid | NO | - | Foreign key to courses |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(provider, provider_course_id)`  
+**Foreign Keys:**
+- `course_id` → `courses.id` (ON DELETE CASCADE)
+
+---
+
+### dev_notes
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| user_id | uuid | NO | - | Foreign key to auth.users |
+| note | text | NO | - | Note content |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| updated_at | timestamptz | NO | now() | Update timestamp |
+
+**Primary Key:** `id`  
+**Foreign Keys:**
+- `user_id` → `auth.users.id` (ON DELETE CASCADE)
+
+---
+
+### spatial_ref_sys
+**RLS:** Disabled
+
+PostGIS system table for spatial reference systems.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| srid | integer | NO | - | Primary key |
+| auth_name | varchar(256) | YES | - | Authority name |
+| auth_srid | integer | YES | - | Authority SRID |
+| srtext | varchar(2048) | YES | - | Spatial reference text |
+| proj4text | varchar(2048) | YES | - | PROJ4 text |
+
+**Primary Key:** `srid`  
+**Check Constraints:**
+- `srid > 0 AND srid <= 998999`
+
+---
+
+## Notes
+
+- **RLS (Row Level Security):** Some tables have RLS enabled. Check individual table descriptions.
+- **Geography Column:** The `courses.geog` column is a generated column that creates a geography point from `lat` and `lng` when both are present.
+- **Foreign Key Cascades:** Most foreign keys use `ON DELETE CASCADE`, but some use `ON DELETE SET NULL` (noted in the schema).
+- **Legacy Fields:** Some tables contain legacy fields (e.g., `trips.legacy_id`, `trip_events.trip_id` as bigint) for migration purposes.

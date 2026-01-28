@@ -37,6 +37,11 @@ function toTripId(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Helper to compare trip IDs (normalizes string/number)
+function sameTripId(a: unknown, b: unknown): boolean {
+  return String(a) === String(b);
+}
+
 // Helper to check if trip is a hosted round
 function isHostedRound(trip: Trip): boolean {
   return trip.scenarioKey === "hosted_round" || trip.tripOrigin === "member";
@@ -367,6 +372,9 @@ export default function TripDetailPage() {
 
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [tripDetail, setTripDetail] = useState<Trip | null>(null);
+  const [loadingTripDetail, setLoadingTripDetail] = useState(true);
+  const [tripDetailError, setTripDetailError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
@@ -374,6 +382,7 @@ export default function TripDetailPage() {
   const [tripGroupName, setTripGroupName] = useState<string | null>(null);
   const [tripGroupId, setTripGroupId] = useState<string | null>(null);
   const [isTripGroupAdmin, setIsTripGroupAdmin] = useState(false);
+  const [groupRoleChecked, setGroupRoleChecked] = useState(false);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [profileHandicap, setProfileHandicap] = useState<number | null>(null);
   const [showTravelNote, setShowTravelNote] = useState(false);
@@ -478,6 +487,48 @@ export default function TripDetailPage() {
     loadData();
   }, [activeGroupId]);
 
+  // Load trip detail from server endpoint (includes attendees with compliance fields)
+  useEffect(() => {
+    if (!tripId) {
+      setLoadingTripDetail(false);
+      return;
+    }
+
+    async function loadTripDetail() {
+      setLoadingTripDetail(true);
+      setTripDetailError(null);
+      try {
+        const res = await fetch(`/api/trips/${tripId}`, { credentials: "include" });
+        if (!res.ok) {
+          if (res.status === 404) {
+            perfLog("loadTripDetail: trip not found", { tripId });
+            setTripDetail(null);
+            setTripDetailError(`${res.status} ${res.statusText}`);
+            setLoadingTripDetail(false);
+            return;
+          }
+          setTripDetailError(`${res.status} ${res.statusText}`);
+          throw new Error(`Failed to load trip detail: ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (data.ok && data.trip) {
+          setTripDetail(data.trip);
+        } else {
+          setTripDetail(null);
+        }
+      } catch (error) {
+        perfLog("loadTripDetail: error", { error: error instanceof Error ? error.message : String(error) });
+        setTripDetail(null);
+        setTripDetailError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setLoadingTripDetail(false);
+      }
+    }
+
+    loadTripDetail();
+  }, [tripId]);
+
 
   // Load profile handicap (single source of truth)
   useEffect(() => {
@@ -553,10 +604,16 @@ export default function TripDetailPage() {
     checkScoringStarted();
   }, [tripId, activeGroupId, supabase]);
 
+  // Use tripDetail if available (from server endpoint), otherwise fallback to trips array
   const trip = useMemo(() => {
     if (!tripId) return undefined;
-    return trips.find((t) => t.id === tripId);
-  }, [trips, tripId]);
+    // Prefer tripDetail (server endpoint with compliance fields)
+    if (tripDetail && sameTripId(tripDetail.id, tripId)) {
+      return tripDetail;
+    }
+    // Fallback to trips array (from list endpoint)
+    return trips.find((t) => sameTripId(t.id, tripId));
+  }, [tripDetail, trips, tripId]);
 
   // Create EventContext and Policy after trip is loaded
   const event = useMemo(() => {
@@ -568,7 +625,7 @@ export default function TripDetailPage() {
       currentMemberId: currentUserId,
       isGroupAdmin: isTripGroupAdmin,
     });
-  }, [trip, scoringStarted]);
+  }, [trip, scoringStarted, currentUserId, isTripGroupAdmin]);
 
   const policy = useMemo(() => {
     if (!event) return null;
@@ -831,23 +888,18 @@ export default function TripDetailPage() {
 
     async function loadTripGroupInfo() {
       try {
-        // Get trip's group_id from database
-        const { data: tripData, error } = await supabase
-          .from("trips")
-          .select("group_id")
-          .eq("legacy_id", tripId)
-          .maybeSingle();
+        // Use groupId from tripDetail (canonical source from API)
+        const groupId = (trip as any).groupId || (trip as any).group_id || null;
 
-        if (error || !tripData?.group_id) {
+        if (!groupId) {
           // Fallback: use activeGroupId if trip group_id not found
           const group = approvedGroups.find(g => g.id === activeGroupId);
           setTripGroupName(group?.name || "the group");
           setTripGroupId(activeGroupId);
           setIsTripGroupAdmin(false);
+          setGroupRoleChecked(true);
           return;
         }
-
-        const groupId = tripData.group_id;
         setTripGroupId(groupId);
 
         // Check if user is admin of this group
@@ -887,6 +939,9 @@ export default function TripDetailPage() {
         console.error("Failed to load trip group info:", error);
         setTripGroupName("the group");
         setIsTripGroupAdmin(false);
+      } finally {
+        // Mark group role check as complete (regardless of success/failure)
+        setGroupRoleChecked(true);
       }
     }
 
@@ -918,6 +973,15 @@ export default function TripDetailPage() {
   const isGroupTripPage = trip ? isGroupTrip(trip) : false;
   // Permissions: Use centralized permission helpers
   const canEdit = canEditTrip(currentUserId, trip, isTripGroupAdmin);
+
+  // Compute baseCampAccessResolved: true when member ID is known AND (for group trips) group role check is complete
+  const baseCampAccessResolved = useMemo(() => {
+    if (!currentUserId) return false;
+    if (isGroupTripPage) {
+      return groupRoleChecked; // For group trips, must wait for role check
+    }
+    return true; // For hosted rounds, no role check needed
+  }, [currentUserId, isGroupTripPage, groupRoleChecked]);
 
   // Unified host label - use canonical hosted_by_label from server
   const hostLabel = useMemo(() => {
@@ -1238,7 +1302,8 @@ export default function TripDetailPage() {
     );
   }
 
-  if (!trip) {
+  // Guard: show "Trip not found" if trip is undefined and loading is complete
+  if (!trip && !loadingTripDetail) {
     return (
       <div className="rounded-xl border bg-surface p-5 shadow-sm">
         <div className="text-lg font-semibold text-foreground">Trip not found</div>
@@ -1248,6 +1313,11 @@ export default function TripDetailPage() {
         </Link>
       </div>
     );
+  }
+
+  // Early return if trip not loaded yet
+  if (!trip) {
+    return null;
   }
 
   // From here down, trip is guaranteed
@@ -1554,23 +1624,31 @@ export default function TripDetailPage() {
             </section>
 
             {/* Zone B: Base Camp (Narrative Spine) - group trips only */}
-            <BaseCampLane
-              event={event}
-              policy={policy}
-              instruments={instruments}
-              baseCampInstruments={baseCampInstruments}
-              currentUserId={currentUserId}
-              supabase={supabase}
-              activeGroupId={activeGroupId}
-              onTripUpdate={(updatedTrip) => {
-                setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
-              }}
-              saveTripPatch={saveTripPatch}
-              canEdit={canEdit}
-              trip={trip}
-              isGroupTripPage={isGroupTripPage}
-              onOpenSignupsRequested={() => setPendingAction({ kind: "open_signups_now" })}
-            />
+            {baseCampAccessResolved ? (
+              <BaseCampLane
+                event={event}
+                policy={policy}
+                instruments={instruments}
+                baseCampInstruments={baseCampInstruments}
+                currentUserId={currentUserId}
+                supabase={supabase}
+                activeGroupId={activeGroupId}
+                onTripUpdate={(updatedTrip) => {
+                  setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
+                }}
+                saveTripPatch={saveTripPatch}
+                canEdit={canEdit}
+                trip={trip}
+                isGroupTripPage={isGroupTripPage}
+                onOpenSignupsRequested={() => setPendingAction({ kind: "open_signups_now" })}
+              />
+            ) : (
+              <section aria-label="Base Camp" className="mt-6">
+                <div className="rounded-xl border bg-surface p-5 shadow-sm">
+                  <div className="text-sm text-muted">Loading trip tools…</div>
+                </div>
+              </section>
+            )}
 
             {/* Zone C: Secondary surfaces (below Base Camp) */}
             {/* Large instrument cards and coordination surfaces live here */}

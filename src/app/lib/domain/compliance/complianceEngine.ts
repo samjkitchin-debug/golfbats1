@@ -18,16 +18,15 @@ export type MemberCompliance = {
 /**
  * Compute compliance for a single attendee.
  * 
- * IMPORTANT: Mirrors existing logic from rosterInstrument.tsx:
+ * IMPORTANT: Uses canonical passport data from member_passports table:
  * - profileComplete = Boolean((attendee.fullName || attendee.displayName) && attendee.nationality)
  * - docsComplete = Boolean(
  *     attendee.passportFullName &&
- *     attendee.passportNumber &&
- *     attendee.passportNationality &&
- *     attendee.passportDateOfBirth &&
+ *     attendee.passportNumberEncrypted &&
+ *     attendee.passportCountry &&
  *     attendee.passportExpiryDate
  *   )
- *   Note: passport_photo_path does not exist in member_profiles schema.
+ *   Note: passport_photo_path is optional and not required for docsComplete.
  * - missing includes "profile" if !profileComplete
  * - missing includes "travel_docs" ONLY if requirements.travelDocsRequired && !docsComplete
  */
@@ -42,14 +41,12 @@ export function computeAttendeeCompliance(args: {
     (attendee.fullName || attendee.displayName) && attendee.nationality
   );
 
-  // Docs complete = all passport fields present (excluding passport_photo_path which doesn't exist in schema)
-  const docsComplete = Boolean(
-    attendee.passportFullName &&
-    attendee.passportNumber &&
-    attendee.passportNationality &&
-    attendee.passportDateOfBirth &&
-    attendee.passportExpiryDate
-  );
+  // Docs complete = use derived value from attendee (computed from member_passports)
+  // Do NOT recompute from legacy fields - attendee.docsComplete is the source of truth
+  // Required fields: passport_full_name, passport_number_encrypted, passport_country, passport_expiry_date
+  // Optional: passport_photo_path (not required for docsComplete)
+  // Note: passport_date_of_birth is NOT stored in v1 schema and is NOT required for completeness
+  const docsComplete = attendee.docsComplete === true;
 
   // Build missing array
   const missing: Array<"profile" | "travel_docs"> = [];

@@ -47,17 +47,10 @@ export async function POST(req: Request) {
         ? json.passport_photo_path.trim() || null
         : null;
 
-    // Validate required fields
+    // Validate required fields (name, country, expiry always required)
     if (!passport_full_name) {
       return NextResponse.json(
         { error: "Passport full name is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!passport_number) {
-      return NextResponse.json(
-        { error: "Passport number is required." },
         { status: 400 }
       );
     }
@@ -76,28 +69,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Encrypt passport number (returns base64 string)
-    let encrypted_number: string;
-    try {
-      encrypted_number = encryptPassportNumber(passport_number);
-    } catch (encryptError: any) {
-      console.error("Encryption error:", encryptError);
-      return NextResponse.json(
-        { error: encryptError?.message || "Failed to encrypt passport number." },
-        { status: 500 }
-      );
-    }
-
-    // Convert base64 string to hex format for bytea column
-    // PostgREST/Supabase accepts bytea in hex format: '\x...' 
-    // But when sending via JSON, we need to escape it properly
-    const encryptedBuffer = Buffer.from(encrypted_number, "base64");
-    // PostgREST accepts hex-encoded bytea when sent as a string with \x prefix
-    // However, when sent via JSON, we need to double-escape or use a different format
-    // Try using Buffer directly first (Supabase JS client should handle this)
-    const encryptedData = encryptedBuffer;
-
-    // Check if passport already exists
+    // Check if passport already exists (determines insert vs update and whether passport_number is required)
     const { data: existing } = await supabase
       .from("member_passports")
       .select("id")
@@ -105,17 +77,39 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (existing) {
-      // Update existing passport
+      // Update: passport_number optional; only encrypt and include passport_number_encrypted when non-empty
+      const updatePayload: {
+        passport_full_name: string;
+        passport_country: string;
+        passport_expiry_date: string;
+        passport_photo_path: string | null;
+        updated_at: string;
+        passport_number_encrypted?: Buffer;
+      } = {
+        passport_full_name,
+        passport_country,
+        passport_expiry_date,
+        passport_photo_path,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (passport_number) {
+        let encrypted_number: string;
+        try {
+          encrypted_number = encryptPassportNumber(passport_number);
+        } catch (encryptError: any) {
+          console.error("Encryption error:", encryptError);
+          return NextResponse.json(
+            { error: encryptError?.message || "Failed to encrypt passport number." },
+            { status: 500 }
+          );
+        }
+        updatePayload.passport_number_encrypted = Buffer.from(encrypted_number, "base64");
+      }
+
       const { error: updateError } = await supabase
         .from("member_passports")
-        .update({
-          passport_full_name,
-          passport_number_encrypted: encryptedBuffer,
-          passport_country,
-          passport_expiry_date,
-          passport_photo_path,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq("user_id", user.id);
 
       if (updateError) {
@@ -127,7 +121,26 @@ export async function POST(req: Request) {
         );
       }
     } else {
-      // Insert new passport
+      // Insert: passport_number required (no existing row)
+      if (!passport_number) {
+        return NextResponse.json(
+          { error: "Passport number is required." },
+          { status: 400 }
+        );
+      }
+
+      let encrypted_number: string;
+      try {
+        encrypted_number = encryptPassportNumber(passport_number);
+      } catch (encryptError: any) {
+        console.error("Encryption error:", encryptError);
+        return NextResponse.json(
+          { error: encryptError?.message || "Failed to encrypt passport number." },
+          { status: 500 }
+        );
+      }
+      const encryptedBuffer = Buffer.from(encrypted_number, "base64");
+
       const { error: insertError } = await supabase
         .from("member_passports")
         .insert({

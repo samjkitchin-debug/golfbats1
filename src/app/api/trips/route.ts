@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
 import { isEmailAdmin } from "@/app/lib/auth";
 import { requireNonEmptyString, optionalNonEmptyString } from "@/app/lib/validation";
 
@@ -51,6 +51,9 @@ async function fetchTripsData(
 
   const tripIds = tripsData.map((t) => t.id);
 
+  // Use service-role client for member lookups to bypass RLS
+  const supabaseService = await createSupabaseServiceClient();
+
   // Fetch member names for created_by (for displaying host name)
   // Note: created_by is the member id (members.id == auth.uid() per schema.md)
   const memberCreatorIds = Array.from(new Set(
@@ -61,7 +64,7 @@ async function fetchTripsData(
   
   const memberCreatorsById: Record<string, { display_name: string | null; full_name: string | null }> = {};
   if (memberCreatorIds.length > 0) {
-    const { data: creatorsData } = await supabase
+    const { data: creatorsData } = await supabaseService
       .from("members")
       .select("id, display_name, full_name")
       .in("id", memberCreatorIds);
@@ -101,57 +104,80 @@ async function fetchTripsData(
   const attendees = attendeesData || [];
   const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id).filter(Boolean)));
 
-  // Fetch member display names and passport data only if we have attendees
+  // Fetch member display names and profile data only if we have attendees
   const membersById: Record<string, { 
     display_name: string | null; 
     full_name: string | null;
     nationality: string | null;
+  }> = {};
+  
+  // Fetch passport data separately (canonical source: member_passports)
+  const passportsByUserId: Record<string, {
     passport_full_name: string | null;
-    passport_number: string | null;
-    passport_nationality: string | null;
-    passport_date_of_birth: string | null;
+    passport_number_encrypted: boolean;
+    passport_country: string | null;
     passport_expiry_date: string | null;
     passport_photo_path: string | null;
   }> = {};
+  
   if (memberIds.length > 0) {
-    // Fetch members with their passport data from member_profiles
-    const selectQuery = `
-        id,
-        display_name,
-        full_name,
-        nationality,
-        member_profiles(
-          passport_full_name,
-          passport_number,
-          passport_nationality,
-          passport_date_of_birth,
-          passport_expiry_date
-        )
-      `;
-    const { data: membersData, error: membersError } = await supabase
+    // Fetch members (profile fields only)
+    const { data: membersData, error: membersError } = await supabaseService
       .from("members")
-      .select(selectQuery)
+      .select("id,display_name,full_name,nationality")
       .in("id", memberIds);
+
+    // Dev-only instrumentation for roster resolution correctness
+    if (process.env.NODE_ENV !== "production") {
+      const totalRequested = memberIds.length;
+      const totalReturned = membersData?.length || 0;
+      const returnedIds = new Set(membersData?.map(m => m.id) || []);
+      const missingIds = memberIds.filter(id => !returnedIds.has(id));
+      const missingCount = missingIds.length;
+      const first10Missing = missingIds.slice(0, 10);
+      
+      console.log("[trips API] roster_resolution:", {
+        totalRequested,
+        totalReturned,
+        missingCount,
+        first10Missing: first10Missing.length > 0 ? first10Missing : undefined,
+        membersError: membersError ? membersError.message : undefined,
+      });
+    }
 
     if (membersError) {
       console.error("[trips API] Failed to fetch members for attendees:", membersError);
-      console.error("[trips API] Select query that failed:", selectQuery);
     } else if (membersData) {
       for (const m of membersData) {
-        const profile = (m.member_profiles as any)?.[0] || null;
         membersById[m.id] = { 
           display_name: m.display_name, 
           full_name: m.full_name,
           nationality: m.nationality,
-          passport_full_name: profile?.passport_full_name ?? null,
-          passport_number: profile?.passport_number ?? null,
-          passport_nationality: profile?.passport_nationality ?? null,
-          passport_date_of_birth: profile?.passport_date_of_birth ?? null,
-          passport_expiry_date: profile?.passport_expiry_date ?? null,
-          passport_photo_path: null, // Not available in member_profiles
         };
       }
     }
+
+    // Fetch passport data from member_passports (canonical source)
+    // Note: user_id in member_passports equals members.id (since members.id == auth.uid())
+    const { data: passportsData, error: passportsError } = await supabaseService
+      .from("member_passports")
+      .select("user_id,passport_full_name,passport_number_encrypted,passport_country,passport_expiry_date,passport_photo_path")
+      .in("user_id", memberIds);
+
+    if (passportsError) {
+      console.error("[trips API] Failed to fetch passports:", passportsError);
+    } else if (passportsData) {
+      for (const p of passportsData) {
+        passportsByUserId[p.user_id] = {
+          passport_full_name: p.passport_full_name ?? null,
+          passport_number_encrypted: !!p.passport_number_encrypted,
+          passport_country: p.passport_country ?? null,
+          passport_expiry_date: p.passport_expiry_date ?? null,
+          passport_photo_path: p.passport_photo_path ?? null,
+        };
+      }
+    }
+
   }
 
   // Map database trips to UI Trip format
@@ -162,6 +188,18 @@ async function fetchTripsData(
       .map((a: any) => {
         const member = membersById[a.member_id] || {};
         const name = member.display_name || member.full_name || "Unknown";
+        
+        // Compute compliance fields from member_passports data (canonical source)
+        const passport = passportsByUserId[a.member_id] || null;
+        const missingDocsFields: string[] = [];
+        if (!passport?.passport_full_name) missingDocsFields.push("passport_full_name");
+        if (!passport?.passport_number_encrypted) missingDocsFields.push("passport_number");
+        if (!passport?.passport_country) missingDocsFields.push("passport_country");
+        if (!passport?.passport_expiry_date) missingDocsFields.push("passport_expiry_date");
+        
+        const docsComplete = missingDocsFields.length === 0;
+        const hasPassportPhoto = !!passport?.passport_photo_path;
+        
         return {
           name,
           status: a.status as "confirmed" | "waitlist" | "out",
@@ -172,13 +210,10 @@ async function fetchTripsData(
           fullName: member.full_name || null,
           displayName: member.display_name || null,
           nationality: member.nationality || null,
-          // Include passport fields from member_profiles
-          passportFullName: member.passport_full_name,
-          passportNumber: member.passport_number,
-          passportNationality: member.passport_nationality,
-          passportDateOfBirth: member.passport_date_of_birth,
-          passportExpiryDate: member.passport_expiry_date,
-          passportPhotoPath: member.passport_photo_path,
+          // Compliance fields only (derived from member_passports, no raw passport values)
+          docsComplete,
+          missingDocsFields,
+          hasPassportPhoto,
         };
       });
 

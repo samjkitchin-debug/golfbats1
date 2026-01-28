@@ -1,64 +1,51 @@
 /**
  * Member Export Readiness Helpers
  * 
- * Helper functions for checking if a member has completed required details
- * for export-ready status (e.g., for cross_border_agent trips).
+ * DEPRECATED: This helper is deprecated. Use attendee.docsComplete and attendee.missingDocsFields
+ * from the trips API instead. Passport data is now canonical in member_passports and accessed
+ * through the trips API routes which return derived compliance fields.
+ * 
+ * For admin export, use the secure audited endpoint: /api/trips/[id]/passport/export
  */
 
-import { createSupabaseBrowserClient } from "./supabaseBrowser";
+import type { Attendee } from "./tripActions";
 
 export type MemberExportReadiness = {
   isReady: boolean;
-  missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap">;
+  missingFields: Array<"passport_full_name" | "passport_number" | "passport_country" | "passport_expiry_date" | "handicap">;
 };
 
 /**
- * Check if a member is export-ready for a cross-border agent trip.
- * Requires: passport fields (full_name, number, nationality, date_of_birth, expiry_date) + handicap.
+ * Check if an attendee is export-ready for a cross-border agent trip.
+ * Uses derived compliance fields from trips API (canonical source: member_passports).
  * 
- * @param memberId - The member's user ID
- * @param handicapForTrip - The handicap value for the trip (from attendee record)
- * @returns Promise resolving to readiness status and missing fields
+ * @param attendee - Attendee object with docsComplete and missingDocsFields from trips API
+ * @returns Readiness status and missing fields
  */
-export async function checkMemberExportReadiness(
-  memberId: string,
-  handicapForTrip: number | null | undefined
-): Promise<MemberExportReadiness> {
-  const supabase = createSupabaseBrowserClient();
-  
-  // Fetch passport data from member_profiles
-  const { data: profileData } = await supabase
-    .from("member_profiles")
-    .select("passport_full_name,passport_number,passport_nationality,passport_date_of_birth,passport_expiry_date")
-    .eq("member_id", memberId)
-    .maybeSingle();
-
-  const missingFields: Array<"passport_full_name" | "passport_number" | "passport_nationality" | "passport_date_of_birth" | "passport_expiry_date" | "handicap"> = [];
-
-  // Check passport fields
-  if (!profileData?.passport_full_name || profileData.passport_full_name.trim().length === 0) {
-    missingFields.push("passport_full_name");
-  }
-  
-  if (!profileData?.passport_number || profileData.passport_number.trim().length === 0) {
-    missingFields.push("passport_number");
-  }
-  
-  if (!profileData?.passport_nationality || profileData.passport_nationality.trim().length === 0) {
-    missingFields.push("passport_nationality");
-  }
-  
-  if (!profileData?.passport_date_of_birth || profileData.passport_date_of_birth.trim().length === 0) {
-    missingFields.push("passport_date_of_birth");
-  }
-  
-  if (!profileData?.passport_expiry_date || profileData.passport_expiry_date.trim().length === 0) {
-    missingFields.push("passport_expiry_date");
-  }
+export function checkAttendeeExportReadiness(
+  attendee: Attendee
+): MemberExportReadiness {
+  const missingFields: Array<"passport_full_name" | "passport_number" | "passport_country" | "passport_expiry_date" | "handicap"> = [];
 
   // Check handicap
-  if (handicapForTrip === null || handicapForTrip === undefined) {
+  if (attendee.handicapForTrip === null || attendee.handicapForTrip === undefined) {
     missingFields.push("handicap");
+  }
+
+  // Check passport fields using derived compliance from trips API (canonical source: member_passports)
+  if (!attendee.docsComplete) {
+    // Use missingDocsFields if available
+    if (attendee.missingDocsFields && attendee.missingDocsFields.length > 0) {
+      for (const field of attendee.missingDocsFields) {
+        if (field === "passport_full_name") missingFields.push("passport_full_name");
+        if (field === "passport_number") missingFields.push("passport_number");
+        if (field === "passport_country") missingFields.push("passport_country");
+        if (field === "passport_expiry_date") missingFields.push("passport_expiry_date");
+      }
+    } else {
+      // No missingDocsFields provided - assume all passport fields missing
+      missingFields.push("passport_full_name", "passport_number", "passport_country", "passport_expiry_date");
+    }
   }
 
   return {

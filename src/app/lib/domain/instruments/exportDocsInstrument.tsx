@@ -63,26 +63,25 @@ export function ExportDocsBody({
         .select("id, nationality, profile_photo_path")
         .in("id", memberIds);
 
-      // Load passport data from member_profiles
-      // Note: passport_photo_path does not exist in member_profiles schema
-      const { data: profilesData } = await supabase
-        .from("member_profiles")
-        .select("member_id, passport_full_name, passport_number, passport_nationality, passport_date_of_birth, passport_expiry_date")
-        .in("member_id", memberIds);
-
+      // Passport data is now canonical in member_passports and accessed via secure export endpoint
+      // For preview, use derived compliance fields from attendee (docsComplete, missingDocsFields)
+      // Actual export should use /api/trips/[id]/passport/export (secure, audited, decrypts numbers)
       const profiles = confirmed.map((attendee) => {
         const member = membersData?.find((m: any) => m.id === attendee.memberId);
-        const profile = profilesData?.find((p: any) => p.member_id === attendee.memberId);
+        
+        // Use derived compliance fields - actual passport values are only available via secure export endpoint
+        const hasPassportData = attendee.docsComplete === true;
         
         return {
           memberId: attendee.memberId || "",
           name: attendee.name,
           nationality: member?.nationality || null,
-          passportFullName: profile?.passport_full_name || null,
-          passportNumber: profile?.passport_number || null,
-          passportNationality: profile?.passport_nationality || null,
-          passportDateOfBirth: profile?.passport_date_of_birth || null,
-          passportExpiryDate: profile?.passport_expiry_date || null,
+          // Preview shows completeness only - actual values require secure export endpoint
+          passportFullName: hasPassportData ? "[Complete]" : null,
+          passportNumber: hasPassportData ? "[Complete]" : null,
+          passportNationality: hasPassportData ? "[Complete]" : null, // Note: canonical field is passport_country
+          passportDateOfBirth: null, // Not stored in v1 schema
+          passportExpiryDate: hasPassportData ? "[Complete]" : null,
         };
       });
 
