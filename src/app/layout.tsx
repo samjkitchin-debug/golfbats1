@@ -3,7 +3,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 // ACTIVE GLOBALS IMPORT (THIS IS THE ONE USED BY THE APP)
 import "./globals.css";
 import DevSandboxLauncher from "./components/dev/DevSandboxLauncher";
-import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
+import ServiceWorkerCleanup from "./components/ServiceWorkerCleanup";
 
 export const metadata: Metadata = {
   title: {
@@ -37,7 +37,7 @@ export default function RootLayout({
         {children}
         <SpeedInsights />
         <DevSandboxLauncher />
-        <ServiceWorkerRegistration />
+        <ServiceWorkerCleanup />
       </body>
     </html>
   );

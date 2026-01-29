@@ -5,14 +5,14 @@ import { createServerClient } from "@supabase/ssr";
  * Supabase Auth + minimal route protection middleware.
  *
  * - Always refreshes auth cookies for SSR.
- * - Allows public paths: /login, /auth/*, /_next/*, static assets.
+ * - Explicitly allow (no auth redirect): /login, /auth/callback, /auth/*, /_next/*, static assets.
+ *   OAuth callback must complete session persistence; do not block these.
  * - Does NOT enforce onboarding or membership gates (handled by layouts).
  */
 
 function isPublicPath(pathname: string) {
-  // Public auth pages
   if (pathname === "/login") return true;
-  if (pathname.startsWith("/auth/")) return true;
+  if (pathname.startsWith("/auth/")) return true; /* /auth/callback, /auth/confirm, etc. */
 
   // Next internals / static
   if (pathname.startsWith("/_next/")) return true;
@@ -38,21 +38,44 @@ function isPublicPath(pathname: string) {
   return false;
 }
 
+const CANONICAL_HOST = "dayforeit.sg";
+
 /**
- * Canonical host enforcement: redirect non-canonical hosts to dayforeit.sg
+ * Reject wrong host: dayforeit.com / www.dayforeit.com → 308 to dayforeit.sg.
+ * Prod only (skip localhost, Vercel previews, dev subdomain). Never redirect auth paths.
  */
-function getCanonicalRedirect(req: NextRequest): NextResponse | null {
+function getWrongHostRedirect(req: NextRequest): NextResponse | null {
   const pathname = req.nextUrl.pathname;
-  
-  // Never redirect auth endpoints (prevents breaking sign-in flows)
-  if (pathname === "/login" || pathname.startsWith("/auth/")) {
+  if (pathname === "/login" || pathname.startsWith("/auth/")) return null;
+
+  const hostname = req.headers.get("host") || "";
+  if (
+    hostname === "localhost" ||
+    hostname.startsWith("localhost:") ||
+    hostname.endsWith(".vercel.app") ||
+    hostname === "dev.dayforeit.sg" ||
+    hostname.startsWith("dev.dayforeit.sg:")
+  ) {
     return null;
   }
 
-  const hostname = req.headers.get("host") || "";
-  const canonicalHost = "dayforeit.sg";
+  if (hostname === "dayforeit.com" || hostname === "www.dayforeit.com") {
+    const url = req.nextUrl.clone();
+    const target = new URL(url.pathname + url.search, `https://${CANONICAL_HOST}`);
+    return NextResponse.redirect(target, 308);
+  }
+  return null;
+}
 
-  // Skip canonical enforcement for localhost and Vercel preview domains
+/**
+ * Canonical host enforcement: redirect non-canonical hosts to dayforeit.sg.
+ * Never redirect to .com. Never redirect auth endpoints.
+ */
+function getCanonicalRedirect(req: NextRequest): NextResponse | null {
+  const pathname = req.nextUrl.pathname;
+  if (pathname === "/login" || pathname.startsWith("/auth/")) return null;
+
+  const hostname = req.headers.get("host") || "";
   if (
     hostname === "localhost" ||
     hostname.startsWith("localhost:") ||
@@ -61,27 +84,25 @@ function getCanonicalRedirect(req: NextRequest): NextResponse | null {
     return null;
   }
 
-  // Redirect non-canonical hosts to canonical host
   if (
     hostname === "www.dayforeit.sg" ||
     hostname === "golfbats.sg" ||
     hostname === "www.golfbats.sg"
   ) {
     const url = req.nextUrl.clone();
-    // Construct canonical URL: preserve protocol, pathname, and search params
-    const canonicalUrl = new URL(url.pathname + url.search, `${url.protocol}//${canonicalHost}`);
+    const canonicalUrl = new URL(url.pathname + url.search, `${url.protocol}//${CANONICAL_HOST}`);
     return NextResponse.redirect(canonicalUrl, 307);
   }
-
   return null;
 }
 
 export async function middleware(req: NextRequest) {
-  // Canonical host enforcement - must happen first
+  // Reject .com first: dayforeit.com / www → 308 to dayforeit.sg (prod only; auth skipped)
+  const wrongHost = getWrongHostRedirect(req);
+  if (wrongHost) return wrongHost;
+
   const canonicalRedirect = getCanonicalRedirect(req);
-  if (canonicalRedirect) {
-    return canonicalRedirect;
-  }
+  if (canonicalRedirect) return canonicalRedirect;
 
   const res = NextResponse.next();
 

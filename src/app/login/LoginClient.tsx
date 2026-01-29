@@ -1,9 +1,17 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "../lib/supabaseBrowser";
 
+function isPathOnly(next: string | null): boolean {
+  if (!next?.trim()) return false;
+  const t = next.trim();
+  return t.startsWith("/") && !t.startsWith("//");
+}
+
 export default function LoginClient() {
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,15 +20,6 @@ export default function LoginClient() {
   const [resetSuccess, setResetSuccess] = useState(false);
   const [busy, setBusy] = useState<null | "email" | "google" | "facebook" | "reset">(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Get canonical origin (prefer env var, fallback to current origin)
-  function getCanonicalOrigin(): string {
-    const canonical = process.env.NEXT_PUBLIC_SITE_URL;
-    if (canonical) {
-      return canonical.replace(/\/$/, "");
-    }
-    return window.location.origin.replace(/\/$/, "");
-  }
 
   async function handleEmailAuth() {
     setError(null);
@@ -97,9 +96,12 @@ export default function LoginClient() {
     setBusy("reset");
 
     try {
-      const origin = getCanonicalOrigin();
+      if (typeof window === "undefined") {
+        setBusy(null);
+        return;
+      }
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${origin}/reset-password`,
+        redirectTo: `${window.location.origin}/reset-password`,
       });
 
       if (error) throw error;
@@ -116,9 +118,15 @@ export default function LoginClient() {
     setBusy(provider);
 
     try {
-      const redirectTo = `${window.location.origin}/auth/callback?next=/`;
+      if (typeof window === "undefined") {
+        setBusy(null);
+        return;
+      }
+      const redirectTo = `${window.location.origin}/auth/callback`;
+      const nextParam = searchParams.get("next");
+      const _next = isPathOnly(nextParam) ? nextParam!.trim() : "/";
+      void _next;
 
-      // Dev-only proof log
       if (process.env.NODE_ENV === "development") {
         console.log("OAuth redirectTo =", redirectTo);
       }
@@ -136,8 +144,26 @@ export default function LoginClient() {
     }
   }
 
+  const callbackError = searchParams.get("error");
+  const callbackMsg = searchParams.get("msg");
+  const callbackBanner =
+    !callbackError
+      ? null
+      : callbackError === "missing_code"
+        ? "Sign-in callback didn't complete. Please try again."
+        : "Sign-in failed to finalise. Please try again.";
+  const showCallbackMsg = callbackMsg && process.env.NODE_ENV === "development";
+
   return (
     <div className="flex flex-col items-center">
+      {callbackBanner && (
+        <div className="mb-4 w-full rounded-lg border border-border bg-surface px-3 py-2 text-center text-sm text-foreground">
+          {callbackBanner}
+          {showCallbackMsg && (
+            <span className="mt-2 block font-mono text-xs text-muted">{callbackMsg}</span>
+          )}
+        </div>
+      )}
       {error && (
         <div className="mb-4 w-full rounded-lg border border-border bg-surface px-3 py-2 text-center text-sm text-foreground">
           {error}

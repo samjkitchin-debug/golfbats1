@@ -1,6 +1,8 @@
 import Image from "next/image";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import LoginClient from "./LoginClient";
+import LoginDebugStrip from "./LoginDebugStrip";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
 
 export default async function LoginPage() {
@@ -10,15 +12,13 @@ export default async function LoginPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Already signed in → go home
-  if (user) {
-    redirect("/");
-  }
+  if (user) redirect("/");
+
+  const isDev = process.env.NODE_ENV === "development";
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="mb-8 flex justify-center">
           <Image
             src="/brand/logo-app.png"
@@ -35,8 +35,15 @@ export default async function LoginPage() {
           Your group's home for golf days.
         </p>
 
-        {/* Sign-in */}
-        <LoginClient />
+        <Suspense fallback={null}>
+          <LoginClient />
+        </Suspense>
+
+        {isDev && (
+          <Suspense fallback={null}>
+            <LoginDebugStrip />
+          </Suspense>
+        )}
       </div>
     </div>
   );
