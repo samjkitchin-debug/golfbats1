@@ -444,7 +444,7 @@ export async function POST(req: Request) {
       // Update existing trip - find by legacy_id and verify it belongs to this group
       const { data: existingTrip } = await supabase
         .from("trips")
-        .select("id, group_id, created_by, trip_date, signups_opened_at")
+        .select("id, group_id, created_by, trip_date, signups_opened_at, coordination_status")
         .eq("legacy_id", id)
         .single();
 
@@ -555,7 +555,7 @@ export async function POST(req: Request) {
       if (trip.status !== undefined) {
         updateData.status = trip.status;
       }
-      // Handle signups gates (group trips only, one-way enforcement)
+      // Handle signups gates (group trips only). signups_opened_at is write-once: set only when NULL, never overwrite.
       if ((trip as any).signupsOpenedAt !== undefined || (trip as any).signups_opened_at !== undefined) {
         if (!isGroupTrip) {
           return NextResponse.json(
@@ -563,26 +563,13 @@ export async function POST(req: Request) {
             { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
-        
         const signupsOpenedAtValue = (trip as any).signupsOpenedAt !== undefined ? (trip as any).signupsOpenedAt : (trip as any).signups_opened_at;
-        
-        // One-way rule: reject if null (cannot clear)
         if (signupsOpenedAtValue === null || signupsOpenedAtValue === undefined) {
           return NextResponse.json(
             { error: "Cannot clear signups_opened_at. It can only be set once." },
             { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
-        
-        // One-way rule: reject if already set
-        if (existingTrip.signups_opened_at) {
-          return NextResponse.json(
-            { error: "signups_opened_at can only be set once. It cannot be changed." },
-            { status: 400, headers: { "Cache-Control": "no-store" } }
-          );
-        }
-        
-        // Validate ISO format (basic check)
         const parsed = new Date(signupsOpenedAtValue);
         if (isNaN(parsed.getTime())) {
           return NextResponse.json(
@@ -590,22 +577,11 @@ export async function POST(req: Request) {
             { status: 400, headers: { "Cache-Control": "no-store" } }
           );
         }
-        
-        // Scheduled-only rule: check if trip is still in scheduled phase
-        const { computeSignupOpenAt } = await import('@/app/lib/tripDates');
-        const derivedOpenAt = computeSignupOpenAt(existingTrip.trip_date);
-        const derivedOpenTime = new Date(derivedOpenAt).getTime();
-        const nowTime = new Date().getTime();
-        
-        if (nowTime >= derivedOpenTime) {
-          return NextResponse.json(
-            { error: "Cannot set signups_opened_at. Trip is no longer in scheduled phase." },
-            { status: 400, headers: { "Cache-Control": "no-store" } }
-          );
+        // Write-once: set only when currently NULL. Never overwrite.
+        if (!existingTrip.signups_opened_at) {
+          updateData.signups_opened_at = new Date().toISOString();
         }
-        
-        // Store server time (ignore client-provided timestamp)
-        updateData.signups_opened_at = new Date().toISOString();
+        updateData.coordination_status = "signups_open";
       }
       
       if (trip.cutoffAt !== undefined) {
@@ -639,6 +615,11 @@ export async function POST(req: Request) {
             updateData.cutoff_at = null;
           }
         }
+      }
+      // Manual close/reopen: set coordination_status only. Do not touch signups_opened_at.
+      const coordStatus = (trip as any).coordinationStatus ?? (trip as any).coordination_status;
+      if (isGroupTrip && (coordStatus === "signups_open" || coordStatus === "locked")) {
+        updateData.coordination_status = coordStatus;
       }
       if (trip.courseId !== undefined) {
         updateData.course_id = trip.courseId || null;

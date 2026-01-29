@@ -8,6 +8,8 @@ import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
 import { loadTrips, joinTrip, leaveTrip, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
 import { isTripUpcoming, pickDefaultExpandedTrip, getEffectiveTripPhase, computeSignupOpenAt } from "../../lib/tripDates";
 import { resolveSignupPhase, getEffectiveSignupOpenAt } from "../../lib/tripPhase";
+import { compileTripSnapshot, getCanonicalMeet } from "../../lib/trips/tripSnapshot";
+import TripSnapshotGrid from "../../components/trips/TripSnapshotGrid";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
@@ -658,15 +660,13 @@ export default function TripsListPage() {
     const groupId = trip.groupId || "";
     const rsvpStatus = getUserRsvpStatus(trip);
     const signupTiming = getSignupTiming(trip);
+    const snapshot = compileTripSnapshot({ trip, courses, groupName: trip.groupName || null });
     
-    // Get course name and details
+    // Get course name and details (for collapsed line and TBC helper only)
     const course = trip.courseId ? courses.find((c) => c.id === trip.courseId) : undefined;
     const courseName = course?.name || (courseText.title && courseText.title !== "Course TBD" ? courseText.title.split(" — ")[0] : "Course TBC");
     
-    // Calculate attendance stats
     const confirmedCount = trip.attendees.filter((a) => a.status === "confirmed").length;
-    const waitlistCount = trip.attendees.filter((a) => a.status === "waitlist").length;
-    const maxAttendees = trip.maxAttendees || trip.capacity || 0;
     
     // Status badge: prioritize USER state (Joined > Waitlist > Locked > Open)
     let statusBadge: string = "";
@@ -712,10 +712,10 @@ export default function TripsListPage() {
       year: "numeric",
     });
 
-    // Count TBC fields for helper message
+    const { meetTimeRaw, meetingPoint } = getCanonicalMeet(trip);
     const tbcFields = [
-      !trip.logistics?.meetTime,
-      !trip.logistics?.meetingPoint,
+      !meetTimeRaw,
+      !meetingPoint,
       !trip.ferry,
       courseName === "Course TBC",
     ].filter(Boolean).length;
@@ -821,73 +821,9 @@ export default function TripsListPage() {
               </div>
             )}
 
-            {/* Key logistics - compact key·value rows */}
+            {/* Key logistics — canonical TripSnapshot grid */}
             <div className="space-y-1.5 mb-3">
-              {/* Meet time */}
-              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                <span className="text-secondary">Meet time</span>
-                <span className={`${trip.logistics?.meetTime ? "text-primary" : "text-secondary"}`}>
-                  {trip.logistics?.meetTime || "—"}
-                </span>
-              </div>
-              {/* Meeting point */}
-              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                <span className="text-secondary">Meeting point</span>
-                <span className={`${trip.logistics?.meetingPoint ? "text-primary" : "text-secondary"}`}>
-                  {trip.logistics?.meetingPoint || "—"}
-                </span>
-              </div>
-              {/* Ferry - only show if relevant */}
-              {trip.ferry && trip.ferry !== "-" && trip.ferry !== "—" && (
-                <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                  <span className="text-secondary">Ferry</span>
-                  <span className="text-primary">
-                    {trip.ferry.toLowerCase() === "yes" ? "Yes" : trip.ferry.toLowerCase() === "no" ? "No" : trip.ferry}
-                  </span>
-                </div>
-              )}
-              {/* Course */}
-              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                <span className="text-secondary">Course</span>
-                <span className={`${courseName !== "Course TBC" ? "text-primary" : "text-secondary"}`}>
-                  {courseName}
-                </span>
-              </div>
-              {/* Format */}
-              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                <span className="text-secondary">Format</span>
-                <span className="text-primary">
-                  {(() => {
-                    // Show format only if explicitly set and not the DB default
-                    const format = trip.format?.trim();
-                    if (!format || format === 'Stroke') {
-                      return '—';
-                    }
-                    return format;
-                  })()}
-                </span>
-              </div>
-              {/* Spots */}
-              {maxAttendees > 0 && (
-                <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                  <span className="text-secondary">Spots</span>
-                  <span className="text-primary">{confirmedCount} of {maxAttendees} filled</span>
-                </div>
-              )}
-              {/* Waitlist */}
-              {waitlistCount > 0 && (
-                <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                  <span className="text-secondary">Waitlist</span>
-                  <span className="text-primary">{waitlistCount}</span>
-                </div>
-              )}
-              {/* Sign-ups */}
-              <div className="grid grid-cols-[96px_1fr] gap-x-3 items-baseline text-sm">
-                <span className="text-secondary">Sign-ups</span>
-                <span className="text-primary">
-                  {signupTiming.status === "open" ? "Open" : signupTiming.status === "locked" ? "Closed" : "Not open"}
-                </span>
-              </div>
+              <TripSnapshotGrid rows={snapshot.rows} />
             </div>
 
             {/* Actions - Details and Leave (if joined) only visible in expanded state */}

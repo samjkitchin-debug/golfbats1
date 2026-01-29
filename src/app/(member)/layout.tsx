@@ -51,7 +51,7 @@ export default async function MemberLayout({ children }: { children: React.React
       {/* Content */}
       {/* Header height: pt-3 (12px) + pb-2 (8px) + logo max 51px + brand accent 2px = 73px */}
       {/* Using 81px total (73px header + 8px clearance) with safe-area support for notch */}
-      <main className="mx-auto w-full max-w-md px-4 pt-[calc(env(safe-area-inset-top,0px)+81px)] pb-5">{children}</main>
+      <main className="mx-auto w-full max-w-md px-4 pt-[calc(env(safe-area-inset-top,0px)+40px)] pb-5">{children}</main>
 
       {/* Active GameDay chip */}
       <ActiveGameDayChip />

@@ -140,3 +140,46 @@ export function formatDateForAnchor(ymd: string): string {
   const mon = dateObj.toLocaleDateString("en-GB", { month: "short" });
   return `${dayName} ${dayNum} ${mon}`;
 }
+
+/** Bottom anchor (next phase preview) visible when not completed. */
+export function isBottomAnchorVisible(phase: BaseCampPhase): boolean {
+  return phase !== "completed";
+}
+
+/** Re-open chevron on top anchor active in locked phase. */
+export function isReopenChevronActive(phase: BaseCampPhase): boolean {
+  return phase === "locked";
+}
+
+/** Bottom anchor actionable (open sign-ups / sign-ups modal) in forming or signups_open. */
+export function isSignupsAnchorActionable(phase: BaseCampPhase): boolean {
+  return phase === "forming" || phase === "signups_open";
+}
+
+/** Sign-ups modal and chevron behaviour when signups open. */
+export function isSignupsOpen(phase: BaseCampPhase): boolean {
+  return phase === "signups_open";
+}
+
+/** Re-open modal shown when locked. */
+export function isReopenModalForPhase(phase: BaseCampPhase): boolean {
+  return phase === "locked";
+}
+
+/** Forming phase (open sign-ups action). */
+export function isForming(phase: BaseCampPhase): boolean {
+  return phase === "forming";
+}
+
+/** Next phase in lifecycle order, or null if completed. */
+export function getExpectedNextState(phase: BaseCampPhase): BaseCampPhase | null {
+  switch (phase) {
+    case "forming": return "signups_open";
+    case "signups_open": return "locked";
+    case "locked": return "gameday";
+    case "gameday": return "in_play";
+    case "in_play": return "completed";
+    case "completed": return null;
+    default: return null;
+  }
+}

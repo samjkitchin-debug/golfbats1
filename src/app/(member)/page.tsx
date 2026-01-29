@@ -7,6 +7,7 @@ import { loadTrips, type Trip } from "../lib/tripActions";
 import { loadCourses, type Course } from "../lib/courseActions";
 import { getTripCourseText } from "../lib/tripDisplay";
 import { isTripUpcoming } from "../lib/tripDates";
+import { compileTripSnapshot, getCanonicalMeet } from "../lib/trips/tripSnapshot";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { PromptModal } from "../components/PromptModal";
 import { perfMark, perfMeasure, perfLog } from "../lib/perf";
@@ -534,18 +535,13 @@ export default function HomePage() {
     }
     
     if (!isAuthorized) return null;
-    
-    const hasMeetTime = !!nextGameTrip.logistics?.meetTime;
-    const hasMeetingPoint = !!nextGameTrip.logistics?.meetingPoint;
-    const isMissingDetails = !hasMeetTime || !hasMeetingPoint;
-    
+    const { meetTimeRaw, meetingPoint } = getCanonicalMeet(nextGameTrip);
+    const isMissingDetails = !meetTimeRaw || !meetingPoint;
     if (!isMissingDetails) return null;
-    
-    // Helper to compute hours until meet time
     const getHoursUntilMeet = (): number | null => {
-      if (!nextGameTrip.logistics?.meetTime || !nextGameTrip.date) return null;
+      if (!meetTimeRaw || !nextGameTrip.date) return null;
       try {
-        const meetDateTime = new Date(`${nextGameTrip.date}T${nextGameTrip.logistics.meetTime}`);
+        const meetDateTime = new Date(`${nextGameTrip.date}T${meetTimeRaw}`);
         const now = new Date();
         const diffMs = meetDateTime.getTime() - now.getTime();
         return Math.floor(diffMs / (1000 * 60 * 60));
@@ -620,13 +616,10 @@ export default function HomePage() {
     if (relationship !== 'attending') return false;
     if (!isPlayingToday && daysUntil !== 0) return false;
     
-    // Check if meet time has passed OR host has started GameDay
-    const hasMeetTime = !!nextGameTrip.logistics?.meetTime;
-    if (hasMeetTime) {
+    const { meetTimeRaw } = getCanonicalMeet(nextGameTrip);
+    if (meetTimeRaw && nextGameTrip.date) {
       try {
-        const meetTime = nextGameTrip.logistics?.meetTime || nextGameTrip.decisionLogistics?.meetTime;
-        if (!meetTime) return false;
-        const meetDateTime = new Date(`${nextGameTrip.date}T${meetTime}`);
+        const meetDateTime = new Date(`${nextGameTrip.date}T${meetTimeRaw}`);
         const now = new Date();
         if (now >= meetDateTime) return true;
       } catch {
@@ -1033,23 +1026,22 @@ export default function HomePage() {
       }
     };
 
-    // Build identity and place lines
-    // Use tripName (auto-generated) if present, otherwise fall back to current logic
-    const identity =
-      nextGameTrip?.tripName ||
-      nextGameTrip?.name ||
-      (nextGameTrip?.createdByMemberName ? `${nextGameTrip.createdByMemberName}'s round` : null) ||
-      courseText?.title ||
-      (nextGameTrip ? (getGolfNoun(nextGameTrip) === "trip" ? "Trip" : "Round") : null);
+    // Canonical trip snapshot for identity, date, meta (docs/canon/trip-canonical-and-snapshots.md)
+    const snapshot = nextGameTrip
+      ? compileTripSnapshot({
+          trip: nextGameTrip,
+          courses,
+          groupName: (nextGameTrip as Trip & { groupName?: string }).groupName ?? null,
+        })
+      : null;
 
-    const placeLine =
-      courseText &&
-      courseText.title !== "Course TBD" &&
-      courseText.title !== identity
-        ? courseText.detail
-          ? `${courseText.title} · ${courseText.detail}`
-          : courseText.title
-        : null;
+    const identity = snapshot?.title ?? nextGameTrip?.tripName ?? nextGameTrip?.name ?? courseText?.title ?? (nextGameTrip ? (getGolfNoun(nextGameTrip) === "trip" ? "Trip" : "Round") : null);
+    const placeLine = snapshot?.metaLine ?? (courseText && courseText.title !== "Course TBD" && courseText.title !== identity
+      ? (courseText.detail ? `${courseText.title} · ${courseText.detail}` : courseText.title)
+      : null);
+    const absoluteDateLabel = snapshot?.dateLine ?? (nextGameTrip?.date
+      ? new Date(nextGameTrip.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+      : null);
 
     const relativeDescriptor = getRelativeDescriptor(daysUntil);
     const headline =
@@ -1061,14 +1053,10 @@ export default function HomePage() {
         ? `Up next ${relativeDescriptor}`
         : "Up next";
 
-    const absoluteDateLabel =
-      nextGameTrip && nextGameTrip.date
-        ? new Date(nextGameTrip.date + "T00:00:00").toLocaleDateString("en-GB", {
-            weekday: "short",
-            day: "numeric",
-            month: "short",
-          })
-        : null;
+    const canonMeet = nextGameTrip ? getCanonicalMeet(nextGameTrip) : null;
+    const canonMeetTimeDisplay = canonMeet?.meetTime12 ?? canonMeet?.meetTimeRaw ?? null;
+    const canonMeetingPoint = canonMeet?.meetingPoint ?? null;
+    const hasCanonMeet = !!(canonMeet?.meetTimeRaw && canonMeet?.meetingPoint);
 
     // Helper to determine next step line
     const getNextStepLine = (): string | null => {
@@ -1076,8 +1064,7 @@ export default function HomePage() {
         return "Next: Return to GameDay";
       }
       if (nextGameTrip) {
-        // Check if details are missing (TBC)
-        const hasMissingDetails = !nextGameTrip.logistics?.meetTime || !nextGameTrip.logistics?.meetingPoint;
+        const hasMissingDetails = !hasCanonMeet;
         if (hasMissingDetails) {
           return "Next: Waiting for host details";
         }
@@ -1220,9 +1207,8 @@ export default function HomePage() {
           const bannerTrip = nextGameTrip ?? null;
           
           // Check if meet details are missing for bannerTrip
-          const hasMeetTime = bannerTrip ? !!bannerTrip.logistics?.meetTime : false;
-          const hasMeetingPoint = bannerTrip ? !!bannerTrip.logistics?.meetingPoint : false;
-          const isMissingDetails = !hasMeetTime || !hasMeetingPoint;
+          const bCanon = bannerTrip ? getCanonicalMeet(bannerTrip) : null;
+          const isMissingDetails = !bCanon?.meetTimeRaw || !bCanon?.meetingPoint;
           
           // Compute scoringStartedForTrip for bannerTrip (not nextGameTrip)
           const scoringStartedForTrip = Boolean(
@@ -1291,14 +1277,11 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Orientation block: playing today */}
+            {/* Orientation block: playing today (canonical meet: decisionLogistics then logistics) */}
             {isPlayingToday && (
               <div className="mt-3 space-y-1">
                 {(() => {
-                  const hasMeetTime = !!nextGameTrip.logistics?.meetTime;
-                  const hasMeetingPoint = !!nextGameTrip.logistics?.meetingPoint;
-                  const meetDetailsMissing = !(hasMeetTime && hasMeetingPoint);
-                  
+                  const meetDetailsMissing = !hasCanonMeet;
                   const scoringStartedForTrip = Boolean(
                     nextGameTrip?.id &&
                     (
@@ -1306,18 +1289,15 @@ export default function HomePage() {
                       (activeGameDay?.roundId && String(activeGameDay.roundId) === String(nextGameTrip.id))
                     )
                   );
-                  
                   const canEditMeet = canEditMeetDetails(currentMemberId, nextGameTrip, scoringStartedForTrip, isGroupAdmin);
-                  
-                  // A) If meet details exist, show them
                   if (!meetDetailsMissing) {
                     return (
                       <>
                         <div className="text-primary">
-                          Meet at {nextGameTrip.logistics?.meetTime}
+                          Meet at {canonMeetTimeDisplay}
                         </div>
                         <div className="text-secondary">
-                          {nextGameTrip.logistics?.meetingPoint}
+                          {canonMeetingPoint}
                         </div>
                       </>
                     );

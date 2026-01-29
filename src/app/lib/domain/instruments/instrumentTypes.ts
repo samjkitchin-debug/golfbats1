@@ -1,13 +1,15 @@
 /**
  * Instrument Types
- * 
+ *
  * Type definitions for the instrument registry system.
+ * Phase visibility is declared per instrument via phaseVisibility; resolve with isInstrumentVisible.
  */
 
 import type { ReactElement } from "react";
 import type { EventContext, InstrumentKey } from "../event/eventTypes";
 import type { EventPolicy } from "../policy/eventPolicy";
 import type { Trip } from "../../tripActions";
+import type { BaseCampPhase } from "../lifecycle/phaseDefinitions";
 
 export type InstrumentRenderProps = {
   event: EventContext;
@@ -24,12 +26,14 @@ export type InlineInstrumentDefinition = {
   title: string;
   helper?: string;
   kind: "job" | "status_control";
-  // jobs can show completion tick
-  // status_controls never do
   compactWhenDone?: boolean;
-  // Only applies when kind==="job" and isDone(event)===true.
-  isAvailable: (event: EventContext) => boolean;
+  /** Required. Phases in which this instrument is visible. */
+  phaseVisibility: BaseCampPhase[];
+  /** Display order when multiple instruments visible in same phase. Lower = first. */
+  order: number;
   isDone: (event: EventContext) => boolean;
   RenderBody: (props: InstrumentRenderProps) => ReactElement;
   RightAction?: (props: InstrumentRenderProps) => ReactElement | null;
+  /** Derived from phaseVisibility. Prefer isInstrumentVisible(def, phase) for new code. */
+  isAvailable?: (event: EventContext) => boolean;
 };

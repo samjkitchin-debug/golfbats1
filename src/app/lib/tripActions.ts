@@ -118,7 +118,7 @@ export type Trip = {
 
   capacity: number;
   status: TripStatus;
-  coordinationStatus: "draft" | "forming" | "scheduled" | "completed";
+  coordinationStatus: "draft" | "forming" | "scheduled" | "signups_open" | "locked" | "gameday" | "in_play" | "completed";
 
   /** IMPORTANT: admin UI helper expects string | undefined (not null) */
   cutoffAt?: string;
@@ -229,7 +229,7 @@ function normalizeTrip(input: any): Trip {
 
     capacity: Number.isFinite(Number(t.capacity)) ? Number(t.capacity) : 0,
     status: (t.status ?? "open") as TripStatus,
-    coordinationStatus: ((t as any).coordinationStatus ?? "forming") as "draft" | "forming" | "scheduled" | "completed",
+    coordinationStatus: ((t as any).coordinationStatus ?? "forming") as Trip["coordinationStatus"],
 
     cutoffAt: normalizeCutoffAt((t as any).cutoffAt),
 

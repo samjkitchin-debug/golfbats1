@@ -6,7 +6,9 @@
  * - Derived (runtime): today | in_progress
  */
 
-export type TripCoordinationStatus = 'draft' | 'forming' | 'scheduled' | 'completed';
+export type TripCoordinationStatus =
+  | 'draft' | 'forming' | 'scheduled' | 'completed'
+  | 'signups_open' | 'locked' | 'gameday' | 'in_play';
 export type TripEffectiveCoordinationStatus = TripCoordinationStatus | 'today' | 'in_progress';
 
 /**

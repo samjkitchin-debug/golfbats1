@@ -193,22 +193,22 @@
   --color-danger-light: rgb(var(--color-danger-light));
 
   /* Fonts */
-  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-inter: "Inter", sans-serif;
 }
 
 @layer base {
   html {
-    font-family: var(--font-sans) !important;
+    font-family: var(--font-inter), sans-serif !important;
   }
 
   body {
     background: hsl(var(--background));
     color: var(--foreground);
-    font-family: var(--font-sans) !important;
+    font-family: var(--font-inter), sans-serif !important;
   }
 
   * {
-    font-family: var(--font-sans) !important;
+    font-family: var(--font-inter), sans-serif !important;
   }
 }
 

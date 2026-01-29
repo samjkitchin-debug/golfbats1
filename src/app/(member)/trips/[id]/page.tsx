@@ -7,8 +7,6 @@ import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../../lib/courseActions";
 import {
   isTripLocked,
-  joinTrip,
-  leaveTrip,
   loadTrips,
   loadTripDetail,
   setMyHandicapForTrip,
@@ -29,9 +27,12 @@ import { todayInSGT, computeSignupOpenAt } from "../../../lib/tripDates";
 import { resolveEventContext } from "../../../lib/domain/event/resolveEventContext";
 import { buildEventPolicy } from "../../../lib/domain/policy/eventPolicy";
 import { getInstrumentRegistry } from "../../../lib/domain/instruments/registry";
+import { getOrderedVisibleKeys } from "../../../lib/domain/instruments/instrumentVisibility";
 import { getResultSnapshot } from "../../../lib/domain/results/resultsEngine";
 import type { InstrumentKey, EventContext } from "../../../lib/domain/event/eventTypes";
+import { compileTripSnapshot } from "../../../lib/trips/tripSnapshot";
 import BaseCampLane from "../../../components/BaseCampLane";
+import TripSnapshotGrid from "../../../components/trips/TripSnapshotGrid";
 
 function toTripId(raw: string): number | null {
   const n = Number(raw);
@@ -402,8 +403,6 @@ export default function TripDetailPage() {
   
   const [scoringStarted, setScoringStarted] = useState(false);
   const [showLaterSteps, setShowLaterSteps] = useState(false);
-  const [hostJoining, setHostJoining] = useState(false);
-  const [hostLeaving, setHostLeaving] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }>({
     isOpen: false,
     title: "",
@@ -647,6 +646,57 @@ export default function TripDetailPage() {
       perfLog("refetchTripData: error", { error: error instanceof Error ? error.message : String(error) });
     }
   }, [tripId]);
+
+  const handleCloseSignupsNow = useCallback(async () => {
+    const groupIdForTrip = tripGroupId || activeGroupId;
+    if (!trip || !groupIdForTrip) return;
+    const cutoffAtValue = new Date().toISOString();
+    const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
+      cutoffAt: cutoffAtValue,
+      coordinationStatus: "locked",
+    });
+    setTrips(updatedTrips);
+    const freshTrip = await loadTripDetail(trip.id);
+    if (freshTrip) {
+      setTripDetail(freshTrip);
+      setTrips((prev) => prev.map((t) => (t.id === trip.id ? freshTrip : t)));
+    }
+  }, [trip, trips, tripGroupId, activeGroupId]);
+
+  const handleChangeCloseDate = useCallback(
+    async (dateYmd: string) => {
+      const groupIdForTrip = tripGroupId || activeGroupId;
+      if (!trip || !groupIdForTrip) return;
+      const cutoffAtValue = new Date(`${dateYmd}T23:59:59+08:00`).toISOString();
+      const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
+        cutoffAt: cutoffAtValue,
+      });
+      setTrips(updatedTrips);
+      const freshTrip = await loadTripDetail(trip.id);
+      if (freshTrip) {
+        setTripDetail(freshTrip);
+        setTrips((prev) => prev.map((t) => (t.id === trip.id ? freshTrip : t)));
+      }
+    },
+    [trip, trips, tripGroupId, activeGroupId]
+  );
+
+  const handleReopenSignups = useCallback(async () => {
+    const groupIdForTrip = tripGroupId || activeGroupId;
+    if (!trip || !groupIdForTrip) return;
+    const todaySGT = todayInSGT();
+    const cutoffAtValue = new Date(`${todaySGT}T23:59:59+08:00`).toISOString();
+    const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
+      cutoffAt: cutoffAtValue,
+      coordinationStatus: "signups_open",
+    });
+    setTrips(updatedTrips);
+    const freshTrip = await loadTripDetail(trip.id);
+    if (freshTrip) {
+      setTripDetail(freshTrip);
+      setTrips((prev) => prev.map((t) => (t.id === trip.id ? freshTrip : t)));
+    }
+  }, [trip, trips, tripGroupId, activeGroupId]);
 
   // Cross-session revalidation: refetch on window focus/visibility change
   useEffect(() => {
@@ -1254,6 +1304,18 @@ export default function TripDetailPage() {
     return courses.find((c) => c.id === trip.courseId);
   }, [trip, courses]);
 
+  const snapshot = useMemo(() => {
+    if (!trip || !isGroupTripPage) return null;
+    const visibleKeys = event && instruments ? getOrderedVisibleKeys(instruments, event.state) : undefined;
+    return compileTripSnapshot({
+      trip,
+      courses,
+      groupName: tripGroupName ?? null,
+      visibleInstrumentKeys: visibleKeys,
+      event: event ?? undefined,
+    });
+  }, [trip, event, instruments, isGroupTripPage, courses, tripGroupName]);
+
   const myEntry = useMemo(() => {
     if (!trip) return undefined;
     // Prefer matching by memberId (supabase user id); fall back to name match if needed
@@ -1455,7 +1517,7 @@ export default function TripDetailPage() {
               router.push("/trips");
             }
           }}
-          className="text-sm text-foreground hover:text-foreground"
+          className="text-[13px] font-medium text-ink-700 hover:opacity-80"
         >
           ← Back
         </button>
@@ -1463,179 +1525,32 @@ export default function TripDetailPage() {
         {/* Base Camp UI for group trips only */}
         {isGroupTripPage ? (
           <>
-            {/* Zone A: Identity (Compiled) */}
-            <section aria-label="Trip identity" className="mt-4 space-y-3">
-              {/* Trip name (read-only in Chroma) */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-4xl font-light text-primary">
-                  {trip.tripName || trip.name || (getGolfNoun(trip) === "trip" ? "Trip" : "Round")}
-                </div>
-                {/* Host RSVP toggle (top-right) */}
-                {policy?.isHost && event && currentUserId && activeGroupId && trip && (() => {
-                  const myEntry = event.trip.attendees.find((a) => a.memberId === currentUserId);
-                  const isJoined = myEntry?.status === "confirmed" || myEntry?.status === "waitlist";
-                  const canJoin = policy.canJoinRoster && !isJoined;
-                  const canLeave = policy.canLeaveRoster && myEntry?.status === "confirmed";
-
-                  async function handleHostJoin() {
-                    if (hostJoining || !currentUserId || !activeGroupId || !trip) return;
-                    setHostJoining(true);
-                    try {
-                      const { data: memberData } = await supabase
-                        .from("members")
-                        .select("declared_handicap")
-                        .eq("id", currentUserId)
-                        .maybeSingle();
-                      const existingHandicap = memberData && typeof memberData.declared_handicap === "number" ? memberData.declared_handicap : null;
-                      const updatedTrips = await joinTrip([trip], trip.id, existingHandicap, activeGroupId);
-                      const updatedTrip = updatedTrips.find((t) => t.id === trip.id);
-                      if (updatedTrip) {
-                        setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
-                      }
-                      const freshTrip = await loadTripDetail(trip.id);
-                      if (freshTrip) {
-                        setTripDetail(freshTrip);
-                        // Also update trips array to keep it in sync
-                        setTrips((prev) => prev.map(t => t.id === freshTrip.id ? freshTrip : t));
-                      }
-                    } catch (error) {
-                      console.error("Failed to join trip:", error);
-                      alert(`Failed to join trip: ${error instanceof Error ? error.message : String(error)}`);
-                    } finally {
-                      setHostJoining(false);
-                    }
-                  }
-
-                  async function handleHostLeave() {
-                    if (hostLeaving || !currentUserId || !activeGroupId || !trip) return;
-                    if (!confirm("Leave this trip? You'll be removed from the attendee list.")) return;
-                    setHostLeaving(true);
-                    try {
-                      const updatedTrips = await leaveTrip([trip], trip.id, activeGroupId);
-                      const updatedTrip = updatedTrips.find((t) => t.id === trip.id);
-                      if (updatedTrip) {
-                        setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
-                      }
-                      const freshTrip = await loadTripDetail(trip.id);
-                      if (freshTrip) {
-                        setTripDetail(freshTrip);
-                        // Also update trips array to keep it in sync
-                        setTrips((prev) => prev.map(t => t.id === freshTrip.id ? freshTrip : t));
-                      }
-                    } catch (error) {
-                      console.error("Failed to leave trip:", error);
-                      alert(`Failed to leave trip: ${error instanceof Error ? error.message : String(error)}`);
-                    } finally {
-                      setHostLeaving(false);
-                    }
-                  }
-
-                  if (!canJoin && !canLeave) return null;
-
-                  return (
-                    <div className="flex items-center gap-2">
-                      {canJoin ? (
-                        <button
-                          onClick={handleHostJoin}
-                          disabled={hostJoining}
-                          className="rounded-lg btn-primary px-3 py-1.5 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {hostJoining ? "Joining..." : "Join"}
-                        </button>
-                      ) : isJoined ? (
-                        <div className="flex items-center gap-1.5">
-                          {canLeave && (
-                            <button
-                              onClick={handleHostLeave}
-                              disabled={hostLeaving}
-                              className="text-xs text-muted-foreground hover:text-foreground underline disabled:opacity-50"
-                            >
-                              {hostLeaving ? "Leaving..." : "Leave"}
-                            </button>
-                          )}
-                          <span className="text-sm font-medium text-foreground">Joined</span>
-                          <svg className="h-4 w-4 text-[rgb(var(--brand-green))]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Location · course */}
-              {(courseName || courseText?.title !== "Course TBD") && (
-                <div className="text-base font-medium text-foreground">
-                  {course?.location && (
-                    <span className="text-muted">{course.location} · </span>
-                  )}
-                  {courseName || courseText?.title}
-                </div>
+            {/* Trip Snapshot Header (canonical: docs/canon/trip-canonical-and-snapshots.md, trip-details-snapshot-header.md) */}
+            {snapshot && (
+            <section aria-label="Trip identity" className="mt-4 space-y-2">
+              <h1 className="text-[28px] font-semibold leading-5 text-ink-900">
+                {snapshot.title}
+              </h1>
+              {snapshot.metaLine && (
+                <p className="text-sm font-medium leading-[18px] text-ink-700 truncate">
+                  {snapshot.metaLine}
+                </p>
               )}
-
-              {/* Date / time */}
-              <div className="text-sm text-foreground font-medium">
-                {formatTripDateLong(trip.date)}
-              </div>
-
-              {/* Host indication */}
-              {hostLabel && (
-                <div className="text-sm text-secondary">
-                  {hostLabel}
-                </div>
+              {snapshot.dateLine && (
+                <p className="text-[13px] font-medium leading-[18px] text-ink-700">
+                  {snapshot.dateLine}
+                </p>
               )}
-
-              {/* Chroma must remain identity + compiled facts only */}
-              {/* Timeline preview narrative ("Sign-ups open on {date}") renders in Timeline Preview lane, not Chroma */}
-              {/* Phase status lines removed from Chroma - they belong in Timeline Preview lane only */}
-
-              {/* Compiled operational outputs (structured, curated) */}
-              {event && (() => {
-                const meetTime = event.instruments.meet_details.data.meetTime || "";
-                const meetingPoint = event.instruments.meet_details.data.meetingPoint || "";
-                const hasMeet = Boolean(meetTime.trim() || meetingPoint.trim());
-                
-                // Format time from HH:MM to 12-hour
-                const formatTime12Hour = (timeStr: string): string => {
-                  if (!timeStr) return "";
-                  const [h, m] = timeStr.split(":").map(Number);
-                  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-                  const period = h >= 12 ? "pm" : "am";
-                  return `${hour12}:${String(m).padStart(2, "0")}${period}`;
-                };
-                
-                // Check if there's any content to show
-                const confirmedCount = event.trip.attendees.filter((a) => a.status === "confirmed").length;
-                const hasAttendees = confirmedCount > 0;
-                
-                if (!hasMeet && !hasAttendees) return null;
-                
-                return (
-                  <div className="border-t border-border/60 pt-2 space-y-1">
-                    {hasMeet && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Meet</span>
-                        <span className="text-sm text-foreground">
-                          {meetTime.trim() && meetingPoint.trim()
-                            ? `${formatTime12Hour(meetTime.trim())} · ${meetingPoint.trim()}`
-                            : meetTime.trim()
-                            ? formatTime12Hour(meetTime.trim())
-                            : meetingPoint.trim()}
-                        </span>
-                      </div>
-                    )}
-                    {hasAttendees && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Attendees</span>
-                        <span className="text-sm text-foreground">{confirmedCount} joined</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
+              {(snapshot.hostLine ?? hostLabel) && (
+                <p className="text-[13px] font-medium leading-[18px] text-ink-700">
+                  {snapshot.hostLine ?? hostLabel}
+                </p>
+              )}
+              <div className="border-t border-ink-300 pt-2 mt-1">
+                <TripSnapshotGrid rows={snapshot.rows} />
+              </div>
             </section>
+            )}
 
             {/* Zone B: Base Camp (Narrative Spine) - group trips only */}
             {baseCampAccessResolved ? (
@@ -1655,6 +1570,9 @@ export default function TripDetailPage() {
                 trip={trip}
                 isGroupTripPage={isGroupTripPage}
                 onOpenSignupsRequested={() => setPendingAction({ kind: "open_signups_now" })}
+                onCloseSignupsNow={handleCloseSignupsNow}
+                onChangeCloseDate={handleChangeCloseDate}
+                onReopenSignups={handleReopenSignups}
               />
             ) : (
               <section aria-label="Base Camp" className="mt-6">
@@ -2123,11 +2041,10 @@ export default function TripDetailPage() {
                 break;
               }
               case "close_signups_now": {
-                // Set cutoffAt = now ISO
                 const cutoffAtValue = new Date().toISOString();
-                
                 const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
                   cutoffAt: cutoffAtValue,
+                  coordinationStatus: "locked",
                 });
                 
                 // Optimistic UI update
@@ -2144,12 +2061,11 @@ export default function TripDetailPage() {
                 break;
               }
               case "reopen_signups": {
-                // Set cutoffAt to end of today (23:59 SGT)
-                const todaySGT = todayInSGT(); // YYYY-MM-DD
+                const todaySGT = todayInSGT();
                 const cutoffAtValue = new Date(`${todaySGT}T23:59:59+08:00`).toISOString();
-                
                 const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
                   cutoffAt: cutoffAtValue,
+                  coordinationStatus: "signups_open",
                 });
                 
                 // Optimistic UI update

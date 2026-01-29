@@ -112,28 +112,19 @@ export async function GET(
     const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id).filter(Boolean)));
 
     // Fetch member profile data (public fields only - no passport/compliance data)
-    const membersById: Record<string, { 
-      display_name: string | null; 
-      full_name: string | null;
-      nationality: string | null;
-    }> = {};
+    const membersById: Record<string, { display_name: string | null; full_name: string | null }> = {};
 
     if (memberIds.length > 0) {
-      // Fetch members (profile fields only - no passport data)
       const { data: membersData, error: membersError } = await supabase
         .from("members")
-        .select("id,display_name,full_name,nationality")
+        .select("id,display_name,full_name")
         .in("id", memberIds);
 
       if (membersError) {
         console.warn("[trips/[id] API] Failed to fetch members:", membersError);
       } else if (membersData) {
         for (const m of membersData) {
-          membersById[m.id] = { 
-            display_name: m.display_name, 
-            full_name: m.full_name,
-            nationality: m.nationality,
-          };
+          membersById[m.id] = { display_name: m.display_name, full_name: m.full_name };
         }
       }
     }
@@ -249,6 +240,10 @@ export async function GET(
       };
     }
 
+    // Trip origin: use explicit value, or default to 'group' only when group_id present (ensure we never emit group trip without groupId)
+    const rawOrigin = (tripData as any).trip_origin;
+    const tripOrigin = rawOrigin || ((tripData as any).group_id ? "group" : "member");
+
     // Build TripDetail response
     const tripDetail = {
       id: numericId,
@@ -277,16 +272,16 @@ export async function GET(
         : undefined,
       createdAtUtc: tripData.created_at,
       updatedAtUtc: tripData.updated_at,
-      tripOrigin: (tripData as any).trip_origin || 'group',
+      tripOrigin,
       createdByMemberId: (tripData as any).created_by_member_id || null,
       isPostedToGroup: (tripData as any).is_posted_to_group !== undefined ? (tripData as any).is_posted_to_group : true,
       createdByMemberName,
       // Compute canonical hosted_by_label
       hostedByLabel: (() => {
-        const tripOrigin = (tripData as any).trip_origin || 'group';
-        if (tripOrigin === 'group' && groupName) {
+        if (tripOrigin === "group" && groupName) {
           return `Hosted by ${groupName}`;
-        } else if (tripOrigin !== 'group' && createdByMemberName) {
+        }
+        if (tripOrigin !== "group" && createdByMemberName) {
           return `Hosted by ${createdByMemberName}`;
         }
         return undefined;

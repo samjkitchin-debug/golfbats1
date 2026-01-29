@@ -1,11 +1,13 @@
 /**
  * Instrument Registry
- * 
+ *
  * Central registry for all event instruments.
+ * Phase visibility is explicit via phaseVisibility; use isInstrumentVisible / getOrderedVisibleKeys.
  */
 
 import type { InstrumentKey, EventContext } from "../event/eventTypes";
 import type { InlineInstrumentDefinition } from "./instrumentTypes";
+import { isInstrumentVisible } from "./instrumentVisibility";
 import { MeetDetailsBody } from "./meetDetailsInstrument";
 import { SignupsWindowBody } from "./signupsWindowInstrument";
 import { RosterBody } from "./rosterInstrument";
@@ -18,18 +20,25 @@ import { FlightsPlanBody } from "./flightsPlanInstrument";
 import { CapacityBody } from "./capacityInstrument";
 import { ExportDocsBody } from "./exportDocsInstrument";
 
-export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentDefinition> {
+function withAvailability(
+  def: InlineInstrumentDefinition
+): InlineInstrumentDefinition {
   return {
+    ...def,
+    isAvailable: (e) => isInstrumentVisible(def, e.state),
+  };
+}
+
+export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentDefinition> {
+  const raw: Record<InstrumentKey, InlineInstrumentDefinition> = {
     trip_name: {
       key: "trip_name",
       title: "Trip name",
       helper: undefined,
       kind: "job",
       compactWhenDone: true,
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in forming phase
-        return event.state === "forming";
-      },
+      phaseVisibility: ["forming"],
+      order: 1,
       isDone: (event: EventContext) => event.instruments.trip_name.status === "done",
       RenderBody: TripNameBody,
     },
@@ -39,10 +48,8 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       helper: undefined,
       kind: "job",
       compactWhenDone: true,
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in forming phase
-        return event.state === "forming";
-      },
+      phaseVisibility: ["forming"],
+      order: 2,
       isDone: (event: EventContext) => event.instruments.capacity.status === "done",
       RenderBody: CapacityBody,
     },
@@ -51,24 +58,18 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       title: "",
       helper: undefined,
       kind: "status_control",
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in signups_open phase
-        // NOT available in forming, locked, gameday, in_play, or completed
-        // (In locked phase, the phase anchor label "Sign-ups closed" is sufficient)
-        return event.state === "signups_open";
-      },
+      phaseVisibility: [], // anchor-only; not in lane
+      order: 11,
       isDone: () => false,
       RenderBody: SignupsWindowBody,
     },
     roster: {
       key: "roster",
-      title: "Attendees",
-      helper: "Monitor sign-ups and chase missing details.",
+      title: "",
+      helper: undefined,
       kind: "status_control",
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in signups_open phase
-        return event.state === "signups_open";
-      },
+      phaseVisibility: ["signups_open"],
+      order: 3,
       isDone: () => false,
       RenderBody: RosterBody,
     },
@@ -78,10 +79,8 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       helper: "Set tee groups before the day. GameDay allows tiny tee-box fixes only.",
       kind: "job",
       compactWhenDone: true,
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in locked phase
-        return event.state === "locked";
-      },
+      phaseVisibility: ["locked"],
+      order: 4,
       isDone: (event: EventContext) => event.instruments.flights_plan.status === "done",
       RenderBody: FlightsPlanBody,
     },
@@ -91,10 +90,8 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       helper: "Set the time and place so everyone's ready.",
       kind: "job",
       compactWhenDone: true,
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in locked phase
-        return event.state === "locked";
-      },
+      phaseVisibility: ["locked"],
+      order: 7,
       isDone: (event: EventContext) => event.instruments.meet_details.status === "done",
       RenderBody: MeetDetailsBody,
     },
@@ -103,10 +100,8 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       title: "Results",
       helper: "Publish results when the round is complete.",
       kind: "job",
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in completed phase
-        return event.state === "completed";
-      },
+      phaseVisibility: ["completed"],
+      order: 9,
       isDone: (event: EventContext) => event.instruments.results_publish.status === "done",
       RenderBody: ResultsPublishBody,
     },
@@ -115,10 +110,8 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       title: "GameDay",
       helper: "Enter scoring when the round begins.",
       kind: "status_control",
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in gameday phase
-        return event.state === "gameday";
-      },
+      phaseVisibility: ["gameday"],
+      order: 8,
       isDone: () => true,
       RenderBody: GameDayEntryBody,
     },
@@ -127,7 +120,8 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       title: "Participants",
       helper: undefined,
       kind: "status_control",
-      isAvailable: () => false, // Not in BaseCamp phase ownership mapping
+      phaseVisibility: [],
+      order: 10,
       isDone: () => true,
       RenderBody: ParticipantsBody,
       RightAction: ParticipantsRightAction,
@@ -138,10 +132,8 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       helper: undefined,
       kind: "job",
       compactWhenDone: true,
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in locked phase
-        return event.state === "locked";
-      },
+      phaseVisibility: ["locked"],
+      order: 5,
       isDone: (event: EventContext) => event.instruments.logistics.status === "done",
       RenderBody: LogisticsBody,
     },
@@ -151,12 +143,15 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       helper: undefined,
       kind: "job",
       compactWhenDone: true,
-      isAvailable: (event: EventContext) => {
-        // Available ONLY in locked phase
-        return event.state === "locked";
-      },
+      phaseVisibility: ["locked"],
+      order: 6,
       isDone: (event: EventContext) => event.instruments.export_docs.status === "done",
       RenderBody: ExportDocsBody,
     },
   };
+  return Object.fromEntries(
+    (Object.entries(raw) as [InstrumentKey, InlineInstrumentDefinition][]).map(
+      ([k, d]) => [k, withAvailability(d)]
+    )
+  ) as Record<InstrumentKey, InlineInstrumentDefinition>;
 }
