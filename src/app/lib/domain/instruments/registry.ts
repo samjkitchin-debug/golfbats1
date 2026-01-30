@@ -15,7 +15,6 @@ import { TripNameBody } from "./tripNameInstrument";
 import { ResultsPublishBody } from "./resultsPublishInstrument";
 import { GameDayEntryBody } from "./gamedayEntryInstrument";
 import { ParticipantsBody, ParticipantsRightAction } from "./participantsInstrument";
-import { LogisticsBody } from "./logisticsInstrument";
 import { FlightsPlanBody } from "./flightsPlanInstrument";
 import { CapacityBody } from "./capacityInstrument";
 import { ExportDocsBody } from "./exportDocsInstrument";
@@ -86,12 +85,12 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
     },
     meet_details: {
       key: "meet_details",
-      title: "Meet details",
-      helper: "Set the time and place so everyone's ready.",
+      title: "Meeting and travel plans",
+      helper: "Set where and when everyone meets.",
       kind: "job",
       compactWhenDone: true,
-      phaseVisibility: ["locked"],
-      order: 7,
+      phaseVisibility: ["signups_open", "locked"],
+      order: 1,
       isDone: (event: EventContext) => event.instruments.meet_details.status === "done",
       RenderBody: MeetDetailsBody,
     },
@@ -125,17 +124,6 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
       isDone: () => true,
       RenderBody: ParticipantsBody,
       RightAction: ParticipantsRightAction,
-    },
-    logistics: {
-      key: "logistics",
-      title: "Logistics",
-      helper: undefined,
-      kind: "job",
-      compactWhenDone: true,
-      phaseVisibility: ["locked"],
-      order: 5,
-      isDone: (event: EventContext) => event.instruments.logistics.status === "done",
-      RenderBody: LogisticsBody,
     },
     export_docs: {
       key: "export_docs",

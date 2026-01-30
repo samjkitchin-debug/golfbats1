@@ -1191,7 +1191,7 @@ export default function HomePage() {
                 </Link>
                 <Link
                   href="/host"
-                  className="btn-ghost px-4 py-2 text-sm font-medium text-center rounded-lg hover:opacity-80"
+                  className="btn-anticipation px-4 py-2 text-sm font-medium text-center rounded-lg hover:opacity-90"
                 >
                   Host a round
                 </Link>
@@ -1493,7 +1493,7 @@ export default function HomePage() {
                 )}
                 <Link
                   href="/host"
-                  className="block w-full py-3 text-sm font-medium text-center btn-ghost hover:opacity-80 rounded-lg active:scale-[0.98] transition-transform"
+                  className="block w-full py-3 text-sm font-medium text-center btn-anticipation hover:opacity-90 rounded-lg active:scale-[0.98] transition-transform"
                 >
                   Host a round
                 </Link>
@@ -1501,7 +1501,7 @@ export default function HomePage() {
             ) : (
               <Link
                 href="/host"
-                className="block w-full py-4 text-base font-medium text-center btn-ghost rounded-lg active:scale-[0.98] transition-transform"
+                className="block w-full py-4 text-base font-medium text-center btn-anticipation rounded-lg active:scale-[0.98] transition-transform"
               >
                 Host a round
               </Link>

@@ -12,7 +12,7 @@ import { resolveViewerRole } from "../roles/roleEngine";
 import { getTripRequirements } from "../requirements/requirementsEngine";
 import { computeAttendeeCompliance, summariseCompliance } from "../compliance/complianceEngine";
 import { getReadyToLockBlockers, getReadyForAgentPackBlockers } from "../readiness/readinessEngine";
-import type { EventContext, EventKind, MeetDetailsData, SignupsWindowData, RosterData, FlightsPlanData, TripNameData, ResultsPublishData, GameDayEntryData, ParticipantsData, LogisticsData, CapacityData, ExportDocsData } from "./eventTypes";
+import type { EventContext, EventKind, MeetDetailsData, SignupsWindowData, RosterData, FlightsPlanData, TripNameData, ResultsPublishData, GameDayEntryData, ParticipantsData, CapacityData, ExportDocsData } from "./eventTypes";
 import type { Trip } from "../../tripActions";
 
 export function resolveEventContext(args: {
@@ -274,7 +274,7 @@ export function resolveEventContext(args: {
     instruments: {
       meet_details: {
         key: "meet_details",
-        title: "Meet details",
+        title: "Meet-up",
         status: meetDetailsStatus,
         data: meetDetailsData,
       },
@@ -357,12 +357,6 @@ export function resolveEventContext(args: {
         title: "Participants",
         status: "done", // Always available
         data: {} as ParticipantsData, // Empty data - derived from event.trip.attendees
-      },
-      logistics: {
-        key: "logistics",
-        title: "Logistics",
-        status: (trip.logistics as any)?.transportConfirmed === true ? "done" : "todo",
-        data: {} as LogisticsData, // Empty data - derived from event.trip.logistics and event.trip.ferry
       },
       capacity: {
         key: "capacity",

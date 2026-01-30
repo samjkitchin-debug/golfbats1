@@ -684,6 +684,44 @@ function checkLifecycleLegacyWrites() {
   return failures;
 }
 
+const TIMEPICKER01_MSG =
+  "TIMEPICKER-01: Only TimePicker.tsx may import PixelTimePicker. Use the canonical TimePicker from src/app/components/ui/TimePicker.tsx everywhere.";
+const TIMEPICKER02_MSG =
+  "TIMEPICKER-02: Legacy time pickers (TimeDialPicker, (member) TimePicker) are removed. Use TimePicker from src/app/components/ui/TimePicker.tsx only.";
+
+const CANONICAL_TIME_PICKER_PATH = path.join(SRC_DIR, "app", "components", "ui", "TimePicker.tsx");
+
+function checkTimePickerCanonical() {
+  let failures = 0;
+  const allFiles = walk(SRC_DIR);
+
+  for (const file of allFiles) {
+    const content = fs.readFileSync(file, "utf8");
+    const normalizedFile = path.normalize(file);
+
+    // PixelTimePicker may only be referenced by TimePicker.tsx (single entry point)
+    if (content.includes("PixelTimePicker")) {
+      const canonicalNormalized = path.normalize(CANONICAL_TIME_PICKER_PATH);
+      if (normalizedFile !== canonicalNormalized) {
+        console.error(`${file}: ${TIMEPICKER01_MSG}`);
+        failures++;
+      }
+    }
+
+    // Legacy pickers: must not import TimeDialPicker or (member) TimePicker
+    if (content.includes("TimeDialPicker")) {
+      console.error(`${file}: ${TIMEPICKER02_MSG}`);
+      failures++;
+    }
+    if (content.includes("components/TimePicker") && !content.includes("components/ui/TimePicker")) {
+      console.error(`${file}: ${TIMEPICKER02_MSG}`);
+      failures++;
+    }
+  }
+
+  return failures;
+}
+
 const files = walk(SRC_DIR);
 let failures = 0;
 
@@ -724,6 +762,9 @@ failures += checkAnchorBoundary();
 
 // Lifecycle legacy quarantine (write paths)
 failures += checkLifecycleLegacyWrites();
+
+// Time picking canonical (single entry point; PixelTimePicker internal only)
+failures += checkTimePickerCanonical();
 
 if (failures > 0) {
   console.error(`Hardening audit failed: ${failures} issue(s).`);
@@ -845,6 +886,20 @@ console.log("Hardening audit passed.");
  *     - Checks: src/app/api route handlers for patterns that write draft/scheduled to coordination_status or coordinationStatus.
  *     - If fails: Remove legacy writes; use only canonical values (forming, signups_open, locked, gameday, in_play, completed).
  *       See: docs/canon/v1.md "Lifecycle legacy quarantine" / coordination_status section.
- * 
+ *
+ * 13. SW + OAuth redirect (scripts/sw-oauth-audit.mjs, run via same hardening:audit pipeline)
+ *     - Protects against: Service worker registration reappearing; OAuth redirectTo with query strings or hardcoded domains.
+ *     - See: docs/canon/hardening-audits.md "HARDENING: SW + OAuth Redirect Safety (v1)".
+ *
+ * 14. TIMEPICKER-01: PixelTimePicker internal only (checkTimePickerCanonical)
+ *     - Protects against: Direct use of PixelTimePicker outside the canonical TimePicker wrapper.
+ *     - Canon: Only src/app/components/ui/TimePicker.tsx may reference PixelTimePicker. All time picking uses TimePicker.
+ *     - If fails: Import and use TimePicker from src/app/components/ui/TimePicker.tsx; do not import PixelTimePicker.
+ *
+ * 15. TIMEPICKER-02: No legacy time pickers (checkTimePickerCanonical)
+ *     - Protects against: Reintroduction of TimeDialPicker or (member) TimePicker.
+ *     - Canon: Single entry point TimePicker (ui); legacy pickers removed.
+ *     - If fails: Remove TimeDialPicker / (member) TimePicker imports; use TimePicker from src/app/components/ui/TimePicker.tsx only.
+ *
  * All rules exit with code 1 on violation to prevent builds with contract breaches.
  */

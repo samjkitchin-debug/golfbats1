@@ -9,7 +9,7 @@
     "lint": "eslint",
     "lint:colors": "node scripts/lint-colors.js",
     "brand:audit": "node scripts/brand-audit.mjs",
-    "hardening:audit": "node scripts/repo-hardening-audit.mjs",
+    "hardening:audit": "node scripts/repo-hardening-audit.mjs && node scripts/sw-oauth-audit.mjs",
     "role:audit": "node scripts/role-visibility-audit.mjs",
     "prebuild": "npm run brand:audit && npm run hardening:audit && npm run role:audit"
   },

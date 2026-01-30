@@ -354,9 +354,9 @@ button:disabled {
 }
 
 .chip-success {
-  background: var(--green-soft);
-  color: var(--brand-green);
-  border: 1px solid rgba(var(--brand-green), 0.35);
+  background: rgb(var(--anticipation) / 0.12);
+  color: rgb(var(--anticipation));
+  border: 1px solid rgb(var(--anticipation) / 0.35);
 }
 
 .text-primary {

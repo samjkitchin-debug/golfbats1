@@ -9,6 +9,8 @@
 
 - All read surfaces (**Trips expanded row**, **Home trip summary**, **Trip Details chroma**) consume a single compiled read model: **TripSnapshot**.
 - Surfaces must not duplicate meet time / meeting point / course / format / spots / sign-ups derivation.
+- **Trips expanded view** may render a curated subset of TripSnapshot rows ("signals only": meet time, meeting point, course, sign-ups, transport).
+- **Trip Details** header uses full TripSnapshot rows; non-admin Trip Details adds narrative from canonical trip fields (Meeting, Transport, Notes) in a read-only details card. Admins see BaseCamp (edit lane).
 
 ## C) Mutators rule
 
@@ -35,7 +37,7 @@
 ### Optional rows (only if instrument exists; registry-driven; max 10 rows total)
 
 7. Logistics  
-8. Flights  
+8. Transport (readiness only: "Planned" when trip.logistics has itinerary/ferry details; else "—")  
 9. Travel docs  
 10. Agent pack  
 
@@ -82,6 +84,6 @@
 
 ## Acceptance criteria
 
-- [ ] For the **same trip**, Trips expanded row and Trip Details chroma show **identical values** for shared fields (meet time, meeting point, course, format, spots, sign-ups).
+- [ ] For the **same trip**, Trips expanded row and Trip Details chroma show **identical values** for shared fields (meet time, meeting point, course, format, spots, sign-ups) when both show the same row keys.
 - [ ] **No duplicated logic** for meet time / meeting point / course / format / sign-ups / spots across surfaces.
 - [ ] Meet time / Meeting point use **one rule** across all consumers (decisionLogistics → logistics).

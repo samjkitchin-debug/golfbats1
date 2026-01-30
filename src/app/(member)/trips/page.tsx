@@ -484,19 +484,20 @@ export default function TripsListPage() {
     return hostedRounds.filter(filterTrip);
   }, [hostedRounds, searchQuery, courses]);
 
-  // Set default expanded trip: first group trip if exists, else first hosted round (only on first render)
-  // Note: User can collapse all trips by clicking the expanded one
+  // Single chronological list (group + hosted, earliest first)
+  const combinedTrips = useMemo(() => {
+    return [...groupTripsFiltered, ...hostedRoundsFiltered].sort((a, b) => a.date.localeCompare(b.date));
+  }, [groupTripsFiltered, hostedRoundsFiltered]);
+
+  const groupTripIds = useMemo(() => new Set(groupTripsFiltered.map((t) => t.id)), [groupTripsFiltered]);
+
+  // Set default expanded trip: first trip in chronological list (only on first render)
   useEffect(() => {
-    if (!didInitExpandRef.current && expandedTripId === null) {
-      if (groupTripsFiltered.length > 0) {
-        setExpandedTripId(groupTripsFiltered[0].id);
-        didInitExpandRef.current = true;
-      } else if (hostedRoundsFiltered.length > 0) {
-        setExpandedTripId(hostedRoundsFiltered[0].id);
-        didInitExpandRef.current = true;
-      }
+    if (!didInitExpandRef.current && expandedTripId === null && combinedTrips.length > 0) {
+      setExpandedTripId(combinedTrips[0].id);
+      didInitExpandRef.current = true;
     }
-  }, [groupTripsFiltered, hostedRoundsFiltered, expandedTripId]);
+  }, [combinedTrips, expandedTripId]);
 
   // Fetch coordination status data for all trips (batch query)
   const allUpcomingFiltered = useMemo(() => {
@@ -620,6 +621,9 @@ export default function TripsListPage() {
     };
   }
 
+  // Signal row keys for Trips expanded view (curated subset; same snapshot source)
+  const SIGNAL_KEYS = ["meet_time", "meeting_point", "course", "signups", "transport"];
+
   // Helper to format full date with day for expanded view
   function formatTripFullDate(date: string): string {
     return new Date(date + "T00:00:00").toLocaleDateString("en-GB", {
@@ -645,12 +649,13 @@ export default function TripsListPage() {
   }, []);
 
   // Trip list rows: continuous canvas, instrument-style layout
-  const TripRow = memo(function TripRow({ trip, isExpanded, onToggle, onJoin, onLeave }: { 
+  const TripRow = memo(function TripRow({ trip, isExpanded, onToggle, onJoin, onLeave, isOfficialGroupTrip }: { 
     trip: Trip & { groupName?: string; groupId?: string; maxAttendees?: number }; 
     isExpanded: boolean; 
     onToggle: () => void;
     onJoin: () => void;
     onLeave: () => void;
+    isOfficialGroupTrip?: boolean;
   }) {
     const courseText = getTripCourseText(trip, courses);
     // Use tripName (auto-generated) if present, otherwise fall back to current logic
@@ -668,11 +673,11 @@ export default function TripsListPage() {
     
     const confirmedCount = trip.attendees.filter((a) => a.status === "confirmed").length;
     
-    // Status badge: prioritize USER state (Joined > Waitlist > Locked > Open)
+    // Status badge: prioritize USER state (In > Waitlist > Locked > Open)
     let statusBadge: string = "";
     let statusStyles: string = "";
     if (rsvpStatus === "joined") {
-      statusBadge = "Joined";
+      statusBadge = "Going";
       statusStyles = "chip-success";
     } else if (rsvpStatus === "waitlist") {
       statusBadge = "Waitlist";
@@ -730,7 +735,14 @@ export default function TripsListPage() {
     const eventKind = trip.tripOrigin === 'member' ? 'hosted_round' : 'group_event';
     
     return (
-      <div className="border-b border-border last:border-b-0">
+      <div className={`border-b border-border last:border-b-0 ${isOfficialGroupTrip ? "relative" : ""}`}>
+        {isOfficialGroupTrip && (
+          <span
+            aria-hidden="true"
+            className="absolute left-0 top-0 bottom-0 w-[3px] rounded-r"
+            style={{ background: "var(--event-official-border)" }}
+          />
+        )}
         {/* Collapsed row - continuous canvas, no card borders */}
         <div
           onClick={onToggle}
@@ -746,19 +758,19 @@ export default function TripsListPage() {
           
           {/* Trip name column (2 lines: trip name + identity • course) */}
           <div className="min-w-0 flex flex-col gap-0.5 sm:gap-0.5">
-            <span className="text-sm font-medium text-primary break-words sm:truncate">{tripName}</span>
+            <span className="text-sm font-medium text-primary break-words sm:truncate min-w-0">{tripName}</span>
             <span className="text-[11px] sm:text-xs text-secondary break-words sm:truncate leading-tight">
-              {(() => {
-                // Use canonical hosted_by_label if available
-                if (trip.hostedByLabel) {
-                  return `${trip.hostedByLabel} • ${courseName}`;
-                }
-                // Fallback for older trips without hostedByLabel
-                if (eventKind === 'group_event' && groupName) {
-                  return `${groupName} • ${courseName}`;
-                }
-                return courseName;
-              })()}
+                {(() => {
+                  // Use canonical hosted_by_label if available
+                  if (trip.hostedByLabel) {
+                    return `${trip.hostedByLabel} • ${courseName}`;
+                  }
+                  // Fallback for older trips without hostedByLabel
+                  if (eventKind === 'group_event' && groupName) {
+                    return `${groupName} • ${courseName}`;
+                  }
+                  return courseName;
+                })()}
             </span>
           </div>
           
@@ -766,9 +778,15 @@ export default function TripsListPage() {
           <div className="flex items-center gap-2 shrink-0">
             {/* Status badge - hide "Open" if Join button is present */}
             {!(rsvpStatus !== "joined" && signupTiming.status === "open" && statusBadge === "Open") && (
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusStyles} shrink-0 whitespace-nowrap`}>
-                {statusBadge}
-              </span>
+              rsvpStatus === "joined" ? (
+                <span className="chip-success inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium leading-none shrink-0 whitespace-nowrap">
+                  Going
+                </span>
+              ) : (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusStyles} shrink-0 whitespace-nowrap`}>
+                  {statusBadge}
+                </span>
+              )
             )}
             {/* Join button - only show if not joined and signups open */}
             {rsvpStatus !== "joined" && signupTiming.status === "open" && (
@@ -821,9 +839,28 @@ export default function TripsListPage() {
               </div>
             )}
 
-            {/* Key logistics — canonical TripSnapshot grid */}
+            {/* Dopamine acknowledgement when joined */}
+            {rsvpStatus === "joined" && (() => {
+              const meetTimeRow = snapshot.rows.find((r) => r.key === "meet_time");
+              const meetPointRow = snapshot.rows.find((r) => r.key === "meeting_point");
+              const meetTimeVal = (meetTimeRow?.value ?? "").trim() && meetTimeRow?.value !== "—" ? meetTimeRow.value : "";
+              const meetPointVal = (meetPointRow?.value ?? "").trim() && meetPointRow?.value !== "—" ? meetPointRow.value : "";
+              let copy: string;
+              if (meetTimeVal && meetPointVal) {
+                copy = `You're going to this trip — meet at ${meetTimeVal} at ${meetPointVal}.`;
+              } else if (meetTimeVal) {
+                copy = "You're going to this trip — meet at " + meetTimeVal + ". Meeting point coming soon.";
+              } else if (meetPointVal) {
+                copy = "You're going to this trip — meeting time coming soon at " + meetPointVal + ".";
+              } else {
+                copy = "You're going to this trip — meeting details coming soon.";
+              }
+              return <p className="text-sm text-anticipation mb-3">{copy}</p>;
+            })()}
+
+            {/* Key logistics — signals only (curated subset of TripSnapshot) */}
             <div className="space-y-1.5 mb-3">
-              <TripSnapshotGrid rows={snapshot.rows} />
+              <TripSnapshotGrid rows={snapshot.rows.filter((r) => SIGNAL_KEYS.includes(r.key))} />
             </div>
 
             {/* Actions - Details and Leave (if joined) only visible in expanded state */}
@@ -903,54 +940,25 @@ export default function TripsListPage() {
         )}
       </div>
 
-      {/* Continuous canvas list container */}
+      {/* Continuous canvas list container — single chronological list */}
       <div className="bg-surface rounded-lg">
-        {/* Upcoming group trips section */}
-        {groupTripsFiltered.length > 0 && (
-          <section>
-            <div className="px-5 pt-6 pb-3">
-              <h2 className="text-sm font-semibold text-primary uppercase tracking-wider">Upcoming group trips</h2>
-            </div>
-            <div>
-              {groupTripsFiltered.map((trip) => (
-                <TripRow
-                  key={trip.id}
-                  trip={trip}
-                  isExpanded={expandedTripId === trip.id}
-                  onToggle={() => handleRowToggle(trip.id)}
-                  onJoin={() => void handleJoinTrip(trip.id, trip)}
-                  onLeave={() => void handleLeaveTrip(trip.id)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Other rounds section */}
-        {hostedRoundsFiltered.length > 0 && (
-          <section>
-            <div className={`px-5 pt-4 pb-3 ${groupTripsFiltered.length > 0 ? 'border-t border-border' : ''}`}>
-              <h2 className="text-xs font-medium text-secondary uppercase tracking-wide">Other rounds</h2>
-            </div>
-            <div>
-              {hostedRoundsFiltered.map((trip) => (
-                <TripRow
-                  key={trip.id}
-                  trip={trip}
-                  isExpanded={expandedTripId === trip.id}
-                  onToggle={() => handleRowToggle(trip.id)}
-                  onJoin={() => void handleJoinTrip(trip.id, trip)}
-                  onLeave={() => void handleLeaveTrip(trip.id)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Empty state */}
-        {groupTripsFiltered.length === 0 && hostedRoundsFiltered.length === 0 && (
+        {combinedTrips.length === 0 ? (
           <div className="px-5 py-8 text-center">
             <div className="text-sm text-secondary">No upcoming trips</div>
+          </div>
+        ) : (
+          <div>
+            {combinedTrips.map((trip) => (
+              <TripRow
+                key={trip.id}
+                trip={trip}
+                isExpanded={expandedTripId === trip.id}
+                onToggle={() => handleRowToggle(trip.id)}
+                onJoin={() => void handleJoinTrip(trip.id, trip)}
+                onLeave={() => void handleLeaveTrip(trip.id)}
+                isOfficialGroupTrip={groupTripIds.has(trip.id)}
+              />
+            ))}
           </div>
         )}
       </div>

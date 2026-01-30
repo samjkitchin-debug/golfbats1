@@ -2,7 +2,7 @@
 
 ## A) Purpose and organiser mental model
 
-The Trip Snapshot Header is the **chroma** above BaseCamp on the Trip Details page. It provides a **glance loop**: title, meta, date, host, and a compact **snapshot grid** of key facts. Organisers scan it to confirm meet time, meeting point, course, format, spots, sign-ups, and—when present—logistics, flights, travel docs, and agent pack status. No actions, no prose. Identity and compiled facts only.
+The Trip Snapshot Header is the **chroma** above BaseCamp on the Trip Details page. It provides a **glance loop**: title, meta, date, host, and a compact **snapshot grid** of key facts. Organisers scan it to confirm meet time, meeting point, course, format, spots, sign-ups, and—when present—logistics, transport, travel docs, and agent pack status. No actions, no prose. Identity and compiled facts only.
 
 ## B) Visual hierarchy and typography tokens
 
@@ -35,7 +35,7 @@ Use **Inter** and **ink** tokens only. No raw hex.
 ### Optional slots (only if instrument exists, appended after core in this order; max 10 rows total)
 
 7. Logistics  
-8. Flights  
+8. Transport  
 9. Travel docs  
 10. Agent pack  
 
@@ -69,7 +69,7 @@ Use **Inter** and **ink** tokens only. No raw hex.
 | Slot | Rule |
 |------|------|
 | Logistics | "Complete" / "{n} missing" / "—" from existing deterministic signals; else "—" |
-| Flights | "Set" / "{n} pending" / "—" from existing deterministic signals; else "—" |
+| Transport | Transport readiness only: "Planned" if trip.logistics has itinerary/ferry details; else "—". No narrative text. |
 | Travel docs | "{complete}/{total} complete" if counts exist; else "—" |
 | Agent pack | "Exported" / "Not exported" if tracked; else "—" |
 
@@ -96,3 +96,26 @@ No new business logic or DB fields. Do not fabricate when not derivable.
 - [ ] No actions in header.  
 - [ ] Typography and tokens match spec.  
 - [ ] UK English, sentence case.
+
+---
+
+## I) Non-admin Trip Details structure (participant view, canonical)
+
+For **participants** (canEdit === false), Trip Details is read-only. No BaseCamp instruments. The structure is fixed:
+
+**Order:**
+
+1. **Header** — Title, meta (group · course), date line, host line.
+2. **Confirmation line** — "You're confirmed for this trip." or "You're on the waitlist." when applicable.
+3. **Curated participant snapshot** — Snapshot grid with **only** these rows (in order): Meet time, Meeting point, Course, Format, Transport (Planned / —). No Spots, Sign-ups, Agent pack, or other admin-only rows.
+4. **Narrative details card** — Single card with:
+   - **Meeting** — Meet time, Meeting point (from canonical meet).
+   - **Transport details** — Generic freeform; see rule below.
+   - **Notes** — trip.logistics.notes or "—".
+
+**Transport details display rule (v1 lock):**
+
+- The UI must **not** imply a transport modality taxonomy (no "Itinerary" / "Ferry" labels in the narrative card).
+- "Transport details" is a **generic** section. Content is derived from `trip.logistics.itineraryDetails` and `trip.logistics.ferryDetails`.
+- **De-duplicate at render time:** If both fields contain the same string, show it once. If they differ, show both (e.g. as a bulleted list) without labelling modality.
+- The same string must never appear twice.

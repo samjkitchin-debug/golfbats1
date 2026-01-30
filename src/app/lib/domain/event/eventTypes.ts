@@ -14,7 +14,7 @@ export type EventState = BaseCampPhase;
 
 export type EventKind = "hosted_round" | "group_trip";
 
-export type InstrumentKey = "meet_details" | "signups_window" | "roster" | "flights_plan" | "trip_name" | "results_publish" | "gameday_entry" | "participants" | "logistics" | "capacity" | "export_docs";
+export type InstrumentKey = "meet_details" | "signups_window" | "roster" | "flights_plan" | "trip_name" | "results_publish" | "gameday_entry" | "participants" | "capacity" | "export_docs";
 
 export type EventInstrument<T> = {
   key: InstrumentKey;
@@ -73,10 +73,6 @@ export type ParticipantsData = {
   // Empty for now - data is derived from event.trip.attendees
 };
 
-export type LogisticsData = {
-  // Empty - data is derived from event.trip.logistics and event.trip.ferry
-};
-
 export type FlightsPlanData = {
   // Empty for now - snapshot is loaded via API in instrument body
 };
@@ -108,7 +104,6 @@ export type EventContext = {
     results_publish: EventInstrument<ResultsPublishData>;
     gameday_entry: EventInstrument<GameDayEntryData>;
     participants: EventInstrument<ParticipantsData>;
-    logistics: EventInstrument<LogisticsData>;
     capacity: EventInstrument<CapacityData>;
     export_docs: EventInstrument<ExportDocsData>;
   };

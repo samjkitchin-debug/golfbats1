@@ -19,6 +19,10 @@ export type InstrumentRenderProps = {
   activeGroupId: string | null;
   onTripUpdate: (updatedTrip: EventContext["trip"]) => void;
   saveTripPatch: (patch: Partial<Trip>) => Promise<{ ok: true; trip: Trip } | { ok: false; error: string }>;
+  /** Called when instrument enters expanded/edit mode (so lane can keep it in "incomplete" order). */
+  onExpand?: () => void;
+  /** Called when instrument leaves expanded mode (so lane can re-order). */
+  onCollapse?: () => void;
 };
 
 export type InlineInstrumentDefinition = {

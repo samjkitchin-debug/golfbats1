@@ -30,7 +30,7 @@ import { getInstrumentRegistry } from "../../../lib/domain/instruments/registry"
 import { getOrderedVisibleKeys } from "../../../lib/domain/instruments/instrumentVisibility";
 import { getResultSnapshot } from "../../../lib/domain/results/resultsEngine";
 import type { InstrumentKey, EventContext } from "../../../lib/domain/event/eventTypes";
-import { compileTripSnapshot } from "../../../lib/trips/tripSnapshot";
+import { compileTripSnapshot, getCanonicalMeet } from "../../../lib/trips/tripSnapshot";
 import BaseCampLane from "../../../components/BaseCampLane";
 import TripSnapshotGrid from "../../../components/trips/TripSnapshotGrid";
 
@@ -398,7 +398,10 @@ export default function TripDetailPage() {
     | { kind: "set_signups_close_date"; dateIso: string };
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   
-  // v2.1.1: Control Zone C visibility for group trips (A+B only when false)
+  // DDD HARD STOP (v1):
+  // Zone C TravelInstrument performs direct trips table writes.
+  // All trip mutations MUST occur via BaseCamp instruments + authorised API routes.
+  // This flag must remain FALSE for v1. Do not enable without explicit architecture review.
   const SHOW_ZONE_C_GROUP_TRIPS = false;
   
   const [scoringStarted, setScoringStarted] = useState(false);
@@ -914,6 +917,9 @@ export default function TripDetailPage() {
 
       // Update local state immediately with authoritative row (replaces current trip, not merged)
       setTrips((prev) => prev.map((t) => (t.id === trip.id ? transformedTrip : t)));
+      if (tripId && sameTripId(transformedTrip.id, tripId)) {
+        setTripDetail(transformedTrip);
+      }
 
       return { ok: true, trip: transformedTrip };
     } catch (error) {
@@ -1547,33 +1553,97 @@ export default function TripDetailPage() {
                 </p>
               )}
               <div className="border-t border-ink-300 pt-2 mt-1">
-                <TripSnapshotGrid rows={snapshot.rows} />
+                <TripSnapshotGrid
+                  rows={
+                    canEdit
+                      ? snapshot.rows
+                      : snapshot.rows.filter((r) =>
+                          ["meet_time", "meeting_point", "course", "format", "transport"].includes(r.key)
+                        )
+                  }
+                />
               </div>
             </section>
             )}
 
-            {/* Zone B: Base Camp (Narrative Spine) - group trips only */}
+            {/* Zone B: Base Camp (admin) or read-only Details (non-admin) - group trips only */}
             {baseCampAccessResolved ? (
-              <BaseCampLane
-                event={event}
-                policy={policy}
-                instruments={instruments}
-                baseCampInstruments={baseCampInstruments}
-                currentUserId={currentUserId}
-                supabase={supabase}
-                activeGroupId={activeGroupId}
-                onTripUpdate={(updatedTrip) => {
-                  setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
-                }}
-                saveTripPatch={saveTripPatch}
-                canEdit={canEdit}
-                trip={trip}
-                isGroupTripPage={isGroupTripPage}
-                onOpenSignupsRequested={() => setPendingAction({ kind: "open_signups_now" })}
-                onCloseSignupsNow={handleCloseSignupsNow}
-                onChangeCloseDate={handleChangeCloseDate}
-                onReopenSignups={handleReopenSignups}
-              />
+              canEdit ? (
+                <BaseCampLane
+                  event={event}
+                  policy={policy}
+                  instruments={instruments}
+                  baseCampInstruments={baseCampInstruments}
+                  currentUserId={currentUserId}
+                  supabase={supabase}
+                  activeGroupId={activeGroupId}
+                  onTripUpdate={(updatedTrip) => {
+                    setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
+                    if (tripId && sameTripId(updatedTrip.id, tripId)) {
+                      setTripDetail(updatedTrip);
+                    }
+                  }}
+                  saveTripPatch={saveTripPatch}
+                  canEdit={canEdit}
+                  trip={trip}
+                  isGroupTripPage={isGroupTripPage}
+                  onOpenSignupsRequested={() => setPendingAction({ kind: "open_signups_now" })}
+                  onCloseSignupsNow={handleCloseSignupsNow}
+                  onChangeCloseDate={handleChangeCloseDate}
+                  onReopenSignups={handleReopenSignups}
+                />
+              ) : (
+                <>
+                  {/* Dopamine acknowledgement for non-admin */}
+                  {myEntry?.status === "confirmed" && (
+                    <p className="mt-4 text-sm text-anticipation">You're confirmed for this trip.</p>
+                  )}
+                  {myEntry?.status === "waitlist" && (
+                    <p className="mt-4 text-sm text-muted">You're on the waitlist.</p>
+                  )}
+                  {/* Read-only Details card: Meeting, Transport, Notes */}
+                  <section aria-label="Trip details" className="mt-4 rounded-xl border bg-surface p-5 shadow-sm space-y-4">
+                    <div>
+                      <div className="text-xs font-semibold text-muted mb-1">Meeting</div>
+                      <div className="text-sm text-foreground space-y-0.5">
+                        <div>Meet time: {getCanonicalMeet(trip).meetTime12 ?? "—"}</div>
+                        <div>Meeting point: {getCanonicalMeet(trip).meetingPoint ?? "—"}</div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-muted mb-1">Transport details</div>
+                      <div className="text-sm text-foreground">
+                        {(() => {
+                          const itinerary = (trip.logistics?.itineraryDetails ?? "").trim();
+                          const ferry = (trip.logistics?.ferryDetails ?? "").trim();
+                          const transportLines: string[] = [];
+                          if (itinerary) transportLines.push(itinerary);
+                          if (ferry && ferry !== itinerary) transportLines.push(ferry);
+                          if (transportLines.length === 0) return <span>—</span>;
+                          if (transportLines.length === 1) {
+                            return (
+                              <span className="whitespace-pre-wrap">{transportLines[0]}</span>
+                            );
+                          }
+                          return (
+                            <ul className="list-disc list-inside space-y-1">
+                              {transportLines.map((line, i) => (
+                                <li key={i} className="whitespace-pre-wrap">{line}</li>
+                              ))}
+                            </ul>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-muted mb-1">Notes</div>
+                      <div className="text-sm text-foreground whitespace-pre-wrap">
+                        {(trip.logistics?.notes ?? "").trim() ? (trip.logistics?.notes ?? "").trim() : "—"}
+                      </div>
+                    </div>
+                  </section>
+                </>
+              )
             ) : (
               <section aria-label="Base Camp" className="mt-6">
                 <div className="rounded-xl border bg-surface p-5 shadow-sm">

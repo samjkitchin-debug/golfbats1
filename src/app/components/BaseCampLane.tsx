@@ -67,10 +67,12 @@ export default function BaseCampLane({
   onChangeCloseDate,
   onReopenSignups,
 }: BaseCampLaneProps) {
+  const [expandedInstrumentKey, setExpandedInstrumentKey] = useState<InstrumentKey | null>(null);
+
   const orderedDomainKeys = useMemo(() => {
     if (!event || !instruments) return [];
-    return getOrderedVisibleKeys(instruments, event.state);
-  }, [event?.state, instruments]);
+    return getOrderedVisibleKeys(instruments, event.state, event, expandedInstrumentKey);
+  }, [event, instruments, expandedInstrumentKey]);
 
   type SignupsModalStep = "choice" | "change_date";
   const [signupsModalOpen, setSignupsModalOpen] = useState(false);
@@ -111,6 +113,8 @@ export default function BaseCampLane({
       activeGroupId,
       onTripUpdate,
       saveTripPatch,
+      onExpand: () => setExpandedInstrumentKey(key),
+      onCollapse: () => setExpandedInstrumentKey(null),
     };
 
     return (
@@ -213,8 +217,6 @@ export default function BaseCampLane({
                           ? "gameday-entry"
                           : key === "results_publish"
                           ? "results-publish"
-                          : key === "logistics"
-                          ? "logistics"
                           : key === "capacity"
                           ? "capacity"
                           : key === "export_docs"

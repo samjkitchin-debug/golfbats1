@@ -293,6 +293,9 @@ async function fetchTripsData(
       travelNote: null,
       // phase_override not yet in DB - set to null
       phaseOverride: null,
+      // Group ID (required for group_trip DTO contract in resolveEventContext)
+      groupId: groupId,
+      group_id: groupId,
     };
   });
 
@@ -644,6 +647,12 @@ export async function POST(req: Request) {
         updateData.meet_time = trip.logistics?.meetTime || null;
         updateData.ferry_details = trip.logistics?.ferryDetails || null;
         updateData.notes = trip.logistics?.notes || null;
+        // Persist full logistics JSON so meetConfirmed, itineraryDetails, etc. are stored
+        updateData.logistics = typeof trip.logistics === "object" && trip.logistics !== null ? trip.logistics : undefined;
+      }
+      // Persist decision_logistics JSON when provided (meet time/point for decision display)
+      if (trip.decisionLogistics !== undefined) {
+        updateData.decision_logistics = typeof trip.decisionLogistics === "object" && trip.decisionLogistics !== null ? trip.decisionLogistics : undefined;
       }
 
       // Handle travel fields (group trips only - ignore for hosted rounds)

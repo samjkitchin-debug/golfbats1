@@ -27,7 +27,7 @@ export type CompileTripSnapshotArgs = {
   trip: Trip;
   courses?: Course[];
   groupName?: string | null;
-  /** When provided with event, optional slots (Logistics, Flights, Agent pack) are appended up to row cap. */
+  /** When provided with event, optional slots (Logistics, Transport, Agent pack) are appended up to row cap. */
   visibleInstrumentKeys?: InstrumentKey[];
   event?: EventContext | null;
 };
@@ -123,13 +123,11 @@ export function compileTripSnapshot(args: CompileTripSnapshotArgs): TripSnapshot
 
   if (visibleInstrumentKeys && event) {
     const opt: TripSnapshotRow[] = [];
-    if (visibleInstrumentKeys.includes("logistics")) {
-      const done = event.instruments.logistics.status === "done";
-      opt.push({ key: "logistics", label: "Logistics", value: done ? "Complete" : "—" });
-    }
     if (visibleInstrumentKeys.includes("flights_plan")) {
-      const done = event.instruments.flights_plan.status === "done";
-      opt.push({ key: "flights_plan", label: "Flights", value: done ? "Set" : "—" });
+      const hasTransport = Boolean(
+        (trip.logistics?.itineraryDetails ?? "").trim() || (trip.logistics?.ferryDetails ?? "").trim()
+      );
+      opt.push({ key: "transport", label: "Transport", value: hasTransport ? "Planned" : "—" });
     }
     if (visibleInstrumentKeys.includes("export_docs")) {
       const done = event.instruments.export_docs.status === "done";
