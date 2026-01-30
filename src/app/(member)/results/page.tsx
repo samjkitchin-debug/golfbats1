@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { loadCourses, type Course } from "../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
 import { loadTrips, type Trip } from "../../lib/tripActions";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
 import { getGolfNoun } from "../../lib/roundNounHelper";
+import { logClubhouseEvent } from "../../lib/clubhouseEvents";
 
 // Get today's date in Singapore time (SGT = UTC+8)
 function getTodaySGT(): string {
@@ -45,6 +46,15 @@ export default function ResultsPage() {
   const [allTripsWithGroups, setAllTripsWithGroups] = useState<Array<Trip & { groupName: string; groupId: string }>>([]);
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [expandedTripId, setExpandedTripId] = useState<number | null>(null);
+
+  const tabSurfaceLoggedRef = useRef(false);
+  useEffect(() => {
+    if (tabSurfaceLoggedRef.current) return;
+    tabSurfaceLoggedRef.current = true;
+    try {
+      logClubhouseEvent({ event_type: "room_entered", room_id: "tab:results" });
+    } catch { /* non-blocking */ }
+  }, []);
 
   useEffect(() => {
     document.title = "DayForeIt - Results";

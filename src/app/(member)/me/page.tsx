@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter, useSearchParams } from "next/navigation";
 import Cropper from "react-easy-crop";
 import type { Area, Point } from "react-easy-crop";
 import { COUNTRIES } from "@/app/lib/countries";
 import { formatHandicap } from "@/app/lib/format";
+import { logClubhouseEvent } from "@/app/lib/clubhouseEvents";
 
 type MemberStatus = "pending" | "active" | string;
 
@@ -141,6 +142,15 @@ export default function MePage() {
 
   // Sign out state
   const [signingOut, setSigningOut] = useState(false);
+
+  const tabSurfaceLoggedRef = useRef(false);
+  useEffect(() => {
+    if (tabSurfaceLoggedRef.current) return;
+    tabSurfaceLoggedRef.current = true;
+    try {
+      logClubhouseEvent({ event_type: "room_entered", room_id: "tab:me" });
+    } catch { /* non-blocking */ }
+  }, []);
 
   useEffect(() => {
     document.title = "DayForeIt - Profile";
@@ -749,6 +759,19 @@ export default function MePage() {
           </div>
         )}
       </div>
+
+      {/* My golf (Personal Locker) - read-only entry */}
+      {!loading && member && (
+        <div className="px-5 py-3 border-t border-border">
+          <Link
+            href="/me/golf"
+            className="block rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-sm font-medium text-foreground hover:bg-surface"
+          >
+            My golf
+          </Link>
+          <p className="mt-1 text-xs text-muted">Your rounds, handicap and progress</p>
+        </div>
+      )}
 
       {/* Boxed sections - keep their own padding */}
       <div className="space-y-6">

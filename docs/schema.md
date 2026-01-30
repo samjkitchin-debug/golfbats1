@@ -172,7 +172,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 - `secondary_scenario_key IS NULL OR secondary_scenario_key IN ('local_round', 'carpool_round', 'away_day', 'overnight_trip', 'organiser_booking', 'cross_border_agent', 'casual_round')`
 **Foreign Keys:**
 - `created_by` → `auth.users.id`
-- Referenced by: `group_members.group_id`, `trips.group_id`, `member_handicap_index.group_id`, `handicap_rounds.group_id`, `trip_events.group_id`, `members.last_active_group_id`, `trip_results.group_id`, `trip_attendees.group_id`
+- Referenced by: `group_members.group_id`, `trips.group_id`, `member_handicap_index.group_id`, `handicap_rounds.group_id`, `trip_events.group_id`, `clubhouse_events.group_id`, `members.last_active_group_id`, `trip_results.group_id`, `trip_attendees.group_id`
 
 ---
 
@@ -505,6 +505,30 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 **Primary Key:** `id`  
 **Foreign Keys:**
 - `group_id` → `groups.id` (ON DELETE CASCADE)
+
+---
+
+### clubhouse_events
+**Purpose:** Instrumentation only (Clubhouse tile/room watchers). Insert-only from client; no SELECT for anon. See [docs/canon/telemetry.md](canon/telemetry.md) for event types, field meanings, and analysis snippets.  
+**RLS:** Enabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | bigserial | NO | - | Primary key |
+| created_at | timestamptz | NO | now() | Creation timestamp |
+| user_id | uuid | YES | - | auth.uid() when available |
+| group_id | uuid | YES | - | Foreign key to groups |
+| event_type | text | NO | - | Event type (allowlisted) |
+| tile_id | text | YES | - | Tile identifier |
+| room_id | text | YES | - | Room identifier |
+| metadata | jsonb | NO | '{}' | Metadata JSON |
+
+**Primary Key:** `id`  
+**Foreign Keys:**
+- `group_id` → `groups.id` (ON DELETE CASCADE)
+- `user_id`: no FK (auth.uid() at insert; analytics only)
+
+**Policies:** INSERT for authenticated (own user_id or null); no SELECT for client.
 
 ---
 

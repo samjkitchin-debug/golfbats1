@@ -247,6 +247,17 @@ button:disabled {
   display: none;
 }
 
+/* Clubhouse hero: soft chroma anchor, gradient bleeds down and fades (this page only) */
+.clubhouse-hero {
+  background: linear-gradient(
+    to bottom,
+    rgb(46 143 99 / 0.14) 0%,
+    rgb(231 162 60 / 0.05) 35%,
+    rgb(var(--bg)) 65%,
+    transparent 100%
+  );
+}
+
 /* Header warmth gradient */
 .header-warmth-gradient {
   background: linear-gradient(to bottom, rgb(var(--header-bg)) 0%, var(--green-softer) 100%);

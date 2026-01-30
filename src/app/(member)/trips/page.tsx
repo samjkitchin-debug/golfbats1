@@ -20,6 +20,7 @@ import { getEffectiveCoordinationStatus } from "../../lib/tripCoordination";
 import { coordinationTripsStatusApi } from "../../lib/routes";
 import { apiJson } from "../../lib/apiClient";
 import { validateTripsStatus } from "../../lib/apiContracts";
+import { logClubhouseEvent } from "../../lib/clubhouseEvents";
 
 // Helper function to check if cutoff has passed
 function isCutoffPassed(cutoffAt: string | undefined): boolean {
@@ -87,6 +88,15 @@ export default function TripsListPage() {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
+  }, []);
+
+  const tabSurfaceLoggedRef = useRef(false);
+  useEffect(() => {
+    if (tabSurfaceLoggedRef.current) return;
+    tabSurfaceLoggedRef.current = true;
+    try {
+      logClubhouseEvent({ event_type: "room_entered", room_id: "tab:trips" });
+    } catch { /* non-blocking */ }
   }, []);
 
   useEffect(() => {
