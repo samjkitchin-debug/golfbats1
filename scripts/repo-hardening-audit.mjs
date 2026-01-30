@@ -690,6 +690,7 @@ const TIMEPICKER02_MSG =
   "TIMEPICKER-02: Legacy time pickers (TimeDialPicker, (member) TimePicker) are removed. Use TimePicker from src/app/components/ui/TimePicker.tsx only.";
 
 const CANONICAL_TIME_PICKER_PATH = path.join(SRC_DIR, "app", "components", "ui", "TimePicker.tsx");
+const PIXEL_TIME_PICKER_PATH = path.join(SRC_DIR, "app", "components", "ui", "PixelTimePicker.tsx");
 
 function checkTimePickerCanonical() {
   let failures = 0;
@@ -699,10 +700,11 @@ function checkTimePickerCanonical() {
     const content = fs.readFileSync(file, "utf8");
     const normalizedFile = path.normalize(file);
 
-    // PixelTimePicker may only be referenced by TimePicker.tsx (single entry point)
+    // PixelTimePicker may only be referenced by TimePicker.tsx (single entry point) or defined in PixelTimePicker.tsx
     if (content.includes("PixelTimePicker")) {
       const canonicalNormalized = path.normalize(CANONICAL_TIME_PICKER_PATH);
-      if (normalizedFile !== canonicalNormalized) {
+      const pixelNormalized = path.normalize(PIXEL_TIME_PICKER_PATH);
+      if (normalizedFile !== canonicalNormalized && normalizedFile !== pixelNormalized) {
         console.error(`${file}: ${TIMEPICKER01_MSG}`);
         failures++;
       }
