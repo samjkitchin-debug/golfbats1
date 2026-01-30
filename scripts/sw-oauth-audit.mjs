@@ -151,12 +151,14 @@ function checkRedirectTo() {
       if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
 
       if (!line.includes("redirectTo")) continue;
-      const isDef = /redirectTo\s*[:=]/.test(line);
+      // Only treat as assignment when it's a variable declaration/assignment, not e.g. console.log("redirectTo =", ...)
+      const isDef = /\b(const|let)\s+redirectTo\s*=|^\s*redirectTo\s*=/.test(line.trim());
       if (!isDef) continue;
 
       const window = lines.slice(i, Math.min(i + 3, lines.length)).join(" ");
       const hasOrigin = /location\.origin|window\.location\.origin/.test(window);
-      const hasQuery = /\?|&(?!&)/.test(window);
+      // Check only the assignment line for URL query chars to avoid false positives from ternary ? on next lines
+      const hasQuery = /\?|&(?!&)/.test(line);
       const hasDayforeit = /dayforeit\./i.test(window);
 
       if (!hasOrigin) {
