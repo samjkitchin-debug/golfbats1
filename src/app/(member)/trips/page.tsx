@@ -843,8 +843,8 @@ export default function TripsListPage() {
             {rsvpStatus === "joined" && (() => {
               const meetTimeRow = snapshot.rows.find((r) => r.key === "meet_time");
               const meetPointRow = snapshot.rows.find((r) => r.key === "meeting_point");
-              const meetTimeVal = (meetTimeRow?.value ?? "").trim() && meetTimeRow?.value !== "—" ? meetTimeRow.value : "";
-              const meetPointVal = (meetPointRow?.value ?? "").trim() && meetPointRow?.value !== "—" ? meetPointRow.value : "";
+              const meetTimeVal = (meetTimeRow?.value ?? "").trim() && meetTimeRow?.value !== "—" ? (meetTimeRow?.value ?? "") : "";
+              const meetPointVal = (meetPointRow?.value ?? "").trim() && meetPointRow?.value !== "—" ? (meetPointRow?.value ?? "") : "";
               let copy: string;
               if (meetTimeVal && meetPointVal) {
                 copy = `You're going to this trip — meet at ${meetTimeVal} at ${meetPointVal}.`;
