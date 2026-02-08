@@ -7,7 +7,7 @@
  */
 
 export const runtime = "nodejs";
-export const maxDuration = 900; // 15 min for long-running SEA ingest
+export const maxDuration = 300; // Vercel Hobby plan max; Pro allows 900
 
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/app/lib/supabaseServer";
