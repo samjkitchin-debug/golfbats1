@@ -61,6 +61,10 @@ export type TripLogistics = {
   bookingConfirmed?: boolean;
   /** Travel docs required flag - when true, organiser needs passport details for all attendees */
   travelDocsRequired?: boolean;
+  /** Transport operator (e.g. ferry company name) — flat editor in Adjust Trip Details */
+  transportOperator?: string;
+  /** Transport details (e.g. booking ref, times) — flat editor in Adjust Trip Details */
+  transportDetails?: string;
 };
 
 /**
@@ -85,6 +89,8 @@ export type DecisionLogistics = {
   rosterConfirmed?: boolean;
   flightsConfirmed?: boolean;
   exportDocsConfirmed?: boolean;
+  /** When set, organiser manually closed sign-ups (override). Reopen clears this; time-based close still applies. */
+  manualCloseAt?: string | null;
 };
 
 export type TripResult = {

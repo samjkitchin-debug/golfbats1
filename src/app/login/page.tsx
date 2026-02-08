@@ -2,19 +2,21 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import LoginClient from "./LoginClient";
-import LoginDebugStrip from "./LoginDebugStrip";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
 
 export default async function LoginPage() {
   const supabase = await createSupabaseServerClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user: { id: string } | null = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data?.user ?? null;
+  } catch {
+    // Invalid or expired refresh token: treat as unauthenticated and show login form
+    user = null;
+  }
 
   if (user) redirect("/");
-
-  const isDev = process.env.NODE_ENV === "development";
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
@@ -38,12 +40,6 @@ export default async function LoginPage() {
         <Suspense fallback={null}>
           <LoginClient />
         </Suspense>
-
-        {isDev && (
-          <Suspense fallback={null}>
-            <LoginDebugStrip />
-          </Suspense>
-        )}
       </div>
     </div>
   );

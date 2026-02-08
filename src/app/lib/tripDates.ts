@@ -126,11 +126,24 @@ export function computeDefaultCutoffAt(
 }
 
 /**
- * Get effective trip phase based on trip state and current time.
+ * Time-derived timeline phase (distinct from canonical lifecycle phase).
+ * Use for "where in time" filtering/labels only; do not confuse with BaseCamp/lifecycle phase (forming/signups_open/locked/...).
+ */
+export type TripTimelinePhase =
+  | 'scheduled'
+  | 'openForSignups'
+  | 'signupsClosed'
+  | 'gameDay'
+  | 'results'
+  | 'archived';
+
+/**
+ * Get effective trip timeline phase based on trip state and current time.
  * 
- * This is the source of truth for UI labels and filtering.
+ * This is the source of truth for time-based UI filtering (e.g. upcoming lists).
+ * Distinct from canonical lifecycle phase (see lifecycle engine / BaseCamp).
  * 
- * ARCHITECTURE: Phase answers "where in time" - it's time-based, not status-based.
+ * ARCHITECTURE: Timeline phase answers "where in time" - it's time-based, not status-based.
  * - Trips automatically become "openForSignups" 30 days before trip date (auto-open)
  * - Phase is computed from trip_date, cutoffAt, and current time (SGT)
  * - trip.status is informational but does NOT override phase calculation
@@ -141,13 +154,13 @@ export function computeDefaultCutoffAt(
  * @param trip - Trip object
  * @param now - Current date/time (defaults to now, interpreted as SGT)
  * @param timezone - IANA timezone (default: Asia/Singapore, currently only SGT is supported)
- * @returns Phase identifier
+ * @returns Timeline phase identifier
  */
-export function getEffectiveTripPhase(
+export function getEffectiveTripTimelinePhase(
   trip: Trip,
   now: Date = new Date(),
   timezone: string = 'Asia/Singapore'
-): 'scheduled' | 'openForSignups' | 'signupsClosed' | 'gameDay' | 'results' | 'archived' {
+): TripTimelinePhase {
   // Archived trips are always archived
   if (trip.status === 'archived') {
     return 'archived';
@@ -232,8 +245,8 @@ export function generateDefaultTripName(tripDate: string, groupName: string): st
 /**
  * Check if a trip is "upcoming" (should be shown in upcoming lists).
  * 
- * Uses getEffectiveTripPhase() to determine if trip is upcoming.
- * A trip is upcoming if its phase is NOT 'results' or 'archived'.
+ * Uses getEffectiveTripTimelinePhase() to determine if trip is upcoming.
+ * A trip is upcoming if its timeline phase is NOT 'results' or 'archived'.
  * 
  * @param trip - Trip object
  * @param now - Current date/time (defaults to now)
@@ -245,7 +258,7 @@ export function isTripUpcoming(
   now: Date = new Date(),
   timezone: string = 'Asia/Singapore'
 ): boolean {
-  const phase = getEffectiveTripPhase(trip, now, timezone);
+  const phase = getEffectiveTripTimelinePhase(trip, now, timezone);
   return phase !== 'results' && phase !== 'archived';
 }
 
@@ -265,7 +278,7 @@ export function isTripJoinable(
   now: Date = new Date(),
   timezone: string = 'Asia/Singapore'
 ): boolean {
-  const phase = getEffectiveTripPhase(trip, now, timezone);
+  const phase = getEffectiveTripTimelinePhase(trip, now, timezone);
   return phase === 'openForSignups';
 }
 
@@ -286,7 +299,7 @@ export function isTripLockedForEdits(
   now: Date = new Date(),
   timezone: string = 'Asia/Singapore'
 ): boolean {
-  const phase = getEffectiveTripPhase(trip, now, timezone);
+  const phase = getEffectiveTripTimelinePhase(trip, now, timezone);
   // For now, trips are never locked for edits
   // In the future, we might lock course/tee at certain phases
   return false;
@@ -337,9 +350,9 @@ export function pickDefaultExpandedTrip(
     }
   }
 
-  // 2. Find earliest trip in 'openForSignups' phase
+  // 2. Find earliest trip in 'openForSignups' timeline phase
   const openTrip = sorted.find((trip) => {
-    const phase = getEffectiveTripPhase(trip, now, timezone);
+    const phase = getEffectiveTripTimelinePhase(trip, now, timezone);
     return phase === 'openForSignups';
   });
 

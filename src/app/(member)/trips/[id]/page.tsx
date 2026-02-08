@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { Fragment, useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../../lib/courseActions";
 import {
@@ -27,16 +27,14 @@ import { getGolfNoun } from "../../../lib/roundNounHelper";
 import { todayInSGT, computeSignupOpenAt } from "../../../lib/tripDates";
 import { resolveEventContext } from "../../../lib/domain/event/resolveEventContext";
 import { buildEventPolicy } from "../../../lib/domain/policy/eventPolicy";
-import { getInstrumentRegistry } from "../../../lib/domain/instruments/registry";
-import { getOrderedVisibleKeys } from "../../../lib/domain/instruments/instrumentVisibility";
 import { getResultSnapshot } from "../../../lib/domain/results/resultsEngine";
-import type { InstrumentKey, EventContext } from "../../../lib/domain/event/eventTypes";
-import { compileTripSnapshot, getCanonicalMeet } from "../../../lib/trips/tripSnapshot";
+import type { EventContext } from "../../../lib/domain/event/eventTypes";
+import { compileTripSnapshot, getCanonicalMeet, getMeetReadiness } from "../../../lib/trips/tripSnapshot";
 import { selectTripDetailsRenderSpec } from "../../../lib/domain/basecamp/tripDetailsRenderSpec";
 import { selectTripDetailsBlocks } from "../../../lib/domain/tripDetails/tripDetailsBlocksSelector";
 import { isCapacityUnconfirmedDefault } from "../../../lib/domain/tripDetails/capacityConfirmation";
-import BaseCampLane from "../../../components/BaseCampLane";
 import TripSnapshotGrid from "../../../components/trips/TripSnapshotGrid";
+import { TimePicker } from "../../../components/ui/TimePicker";
 import { formatHandicap } from "@/app/lib/format";
 
 function toTripId(raw: string): number | null {
@@ -52,6 +50,97 @@ function sameTripId(a: unknown, b: unknown): boolean {
 // Helper to check if trip is a hosted round
 function isHostedRound(trip: Trip): boolean {
   return trip.scenarioKey === "hosted_round" || trip.tripOrigin === "member";
+}
+
+/** Page-local inline action: text + chevron, no pill. For Rename, Change (sign-ups), Set meet details. */
+function InlineAction({
+  children,
+  onClick,
+  ariaLabel,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  ariaLabel?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className="inline-flex items-center gap-0.5 text-sm font-medium text-muted hover:opacity-80 focus:outline-none"
+    >
+      {children}
+      <svg className="w-3.5 h-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M9 18l6-6-6-6" />
+      </svg>
+    </button>
+  );
+}
+
+/** Parse legacy meet time (e.g. "7:30am") to canonical "H:MM". Returns "" if not parseable. */
+function legacyMeetTimeRawToCanonical(raw: string): string {
+  const trimmed = raw?.trim();
+  if (!trimmed) return "";
+  const match = trimmed.match(/^(\d{1,2})\s*:\s*(\d{2})\s*(am|pm)?$/i);
+  if (!match) return /^\d{1,2}:\d{2}$/.test(trimmed) ? trimmed : "";
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const period = match[3]?.toLowerCase();
+  let h24: number;
+  if (period === "am") h24 = h === 12 ? 0 : h;
+  else if (period === "pm") h24 = h === 12 ? 12 : h + 12;
+  else return `${h}:${String(m).padStart(2, "0")}`;
+  const mm = String(m).padStart(2, "0");
+  return `${h24}:${mm}`;
+}
+
+/** Canonical "H:MM" to "HH:MM" for TimePicker. Returns undefined if empty/invalid. */
+function meetTimeCanonicalToHHMM(s: string): string | undefined {
+  const trimmed = s?.trim();
+  if (!trimmed || !/^\d{1,2}:\d{2}$/.test(trimmed)) return undefined;
+  const [hStr, mStr] = trimmed.split(":");
+  const h = parseInt(hStr!, 10);
+  const m = parseInt(mStr!, 10);
+  if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return undefined;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** TimePicker "HH:MM" to canonical "H:MM" for storage. */
+function meetTimeHHMMToCanonical(hhmm: string): string {
+  const trimmed = hhmm?.trim();
+  if (!trimmed || !/^\d{1,2}:\d{2}$/.test(trimmed)) return "";
+  const [hStr, mStr] = trimmed.split(":");
+  const h = parseInt(hStr!, 10);
+  const m = parseInt(mStr!, 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return "";
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
+/** Shared milestone row: leading text + emphasized milestone date, then actions below. Used for "Sign-ups open on …" in both block and stage render. */
+function SignupMilestoneRow({
+  leadingText,
+  milestoneDate,
+  actions,
+}: {
+  leadingText: ReactNode;
+  milestoneDate: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="mt-5 pt-1">
+      <p className="text-sm text-muted">
+        {leadingText}
+        {milestoneDate != null && String(milestoneDate).trim() !== "" ? (
+          <> <span className="font-semibold text-foreground">{milestoneDate}</span>.</>
+        ) : null}
+      </p>
+      {actions != null && (
+        <div className="mt-2 inline-flex flex-wrap items-center gap-2">
+          {actions}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Helper to check if trip is a group trip
@@ -420,7 +509,8 @@ export default function TripDetailPage() {
     | { kind: "set_signups_close_date"; dateIso: string }
     | { kind: "cancel_trip" };
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  
+  const [meetGateToast, setMeetGateToast] = useState<{ title: string; description: string } | null>(null);
+
   // DDD HARD STOP (v1):
   // Zone C TravelInstrument performs direct trips table writes.
   // All trip mutations MUST occur via BaseCamp instruments + authorised API routes.
@@ -447,10 +537,19 @@ export default function TripDetailPage() {
   });
   const [editingSignupsOpen, setEditingSignupsOpen] = useState(false);
   const [signupsOpenEditYmd, setSignupsOpenEditYmd] = useState("");
+  const [editingSignupsClose, setEditingSignupsClose] = useState(false);
+  const [signupsCloseEditYmd, setSignupsCloseEditYmd] = useState("");
   const [capacityModalOpen, setCapacityModalOpen] = useState(false);
   const [capacityModalValue, setCapacityModalValue] = useState("");
   const [capacityModalSaving, setCapacityModalSaving] = useState(false);
   const [adjustTripDetailsSheetOpen, setAdjustTripDetailsSheetOpen] = useState(false);
+  const [adjustTripDetailsOpenSection, setAdjustTripDetailsOpenSection] = useState<"menu" | "meet" | "transport">("menu");
+  const [meetSheetTime, setMeetSheetTime] = useState("");
+  const [meetSheetPoint, setMeetSheetPoint] = useState("");
+  const [meetSheetSaving, setMeetSheetSaving] = useState(false);
+  const [transportSheetOperator, setTransportSheetOperator] = useState("");
+  const [transportSheetDetails, setTransportSheetDetails] = useState("");
+  const [transportSheetSaving, setTransportSheetSaving] = useState(false);
   const [formatModalOpen, setFormatModalOpen] = useState(false);
   const [formatModalSelected, setFormatModalSelected] = useState("");
   const [formatModalAck, setFormatModalAck] = useState(false);
@@ -708,6 +807,7 @@ export default function TripDetailPage() {
     const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
       cutoffAt: cutoffAtValue,
       coordinationStatus: "locked",
+      decisionLogistics: { ...(trip.decisionLogistics || {}), manualCloseAt: new Date().toISOString() },
     });
     setTrips(updatedTrips);
     const freshTrip = await loadTripDetail(trip.id);
@@ -1012,16 +1112,6 @@ export default function TripDetailPage() {
     }
   }
 
-  const instruments = useMemo(() => getInstrumentRegistry(), []);
-
-  // Map BaseCamp instrument IDs to domain InstrumentKeys
-  // Only instruments that exist in both systems are listed here
-  const baseCampInstrumentKeys: InstrumentKey[] = [
-    "meet_details",
-    // Add more as they are migrated to the domain instrument system
-  ];
-
-
   // Load group name and admin status for the trip (for group trips) - must be after trip is defined
   useEffect(() => {
     if (!tripId || !trip || !currentUserId) return;
@@ -1093,25 +1183,6 @@ export default function TripDetailPage() {
     loadTripGroupInfo();
   }, [tripId, trip, currentUserId, activeGroupId, approvedGroups, supabase]);
 
-
-  // Base Camp Instrument Registry types and computation (must be before early returns)
-  type BaseCampBoundary =
-    | "before_signups_open"
-    | "before_signups_close"
-    | "before_gameday"
-    | "any";
-
-  type BaseCampInstrument = {
-    id: "meet_details"; // Only meet_details remains as legacy; trip_name is now a domain instrument
-    boundary: BaseCampBoundary;
-    label: string;
-    isRelevant: boolean;
-    isDone: boolean;
-    chromeLine?: string | null;
-    renderInline?: (() => React.ReactElement) | null;
-    renderLink?: (() => React.ReactElement) | null;
-    pastLine?: string | null;
-  };
 
   // Convert simple derived values from useMemo to plain const (reduce hooks)
   const isHostedRoundTrip = trip ? isHostedRound(trip) : false;
@@ -1197,11 +1268,33 @@ export default function TripDetailPage() {
     const effectiveOpenMomentTime = new Date(effectiveOpenMomentIso).getTime();
     const nowTime = Date.now();
 
+    // Manual close override (undoable via Reopen). Precedence: manualCloseAt > open/close window.
+    const manualCloseAt = (trip.decisionLogistics as { manualCloseAt?: string | null } | undefined)?.manualCloseAt;
+    const signupsManuallyClosed = Boolean(manualCloseAt?.trim());
+
+    // Compute effective close moment: trip.cutoffAt (if exists) or default (trip.date - 4 days at 23:59 SGT)
+    const defaultCloseYmd = trip.date ? (() => {
+      const [year, month, day] = trip.date.split('-').map(Number);
+      const tripDateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+      tripDateObj.setUTCDate(tripDateObj.getUTCDate() - 4);
+      const closeYear = tripDateObj.getUTCFullYear();
+      const closeMonth = String(tripDateObj.getUTCMonth() + 1).padStart(2, '0');
+      const closeDay = String(tripDateObj.getUTCDate()).padStart(2, '0');
+      return `${closeYear}-${closeMonth}-${closeDay}`;
+    })() : null;
+    const persistedCloseYmd = trip.cutoffAt ? cutoffAtToSgtDate(trip.cutoffAt) : null;
+    const effectiveCloseYmd = persistedCloseYmd || defaultCloseYmd;
+    const effectiveCloseMomentIso = effectiveCloseYmd ? toCutoffAtIsoFromYmd(effectiveCloseYmd) : null;
+    const effectiveCloseMomentTime = effectiveCloseMomentIso ? new Date(effectiveCloseMomentIso).getTime() : null;
+
     // Scheduled state: before effective open moment
     const isScheduledValue = nowTime < effectiveOpenMomentTime;
 
-    // Signups open state: after effective open moment and before close moment
-    const signupsOpenNow = nowTime >= effectiveOpenMomentTime;
+    // Signups open: not manually closed, and within open moment, and before close moment (or no close set)
+    const signupsOpenNow =
+      !signupsManuallyClosed &&
+      nowTime >= effectiveOpenMomentTime &&
+      (!effectiveCloseMomentTime || nowTime < effectiveCloseMomentTime);
 
     // Extract signup open date YMD for display (use effective open moment)
     const openMomentDate = new Date(effectiveOpenMomentIso);
@@ -1244,26 +1337,6 @@ export default function TripDetailPage() {
       return `Travel: ${parts.join(" · ")}`;
     })() : null;
 
-    // Compute effective close moment: trip.cutoffAt (if exists) or default (trip.date - 4 days at 23:59 SGT)
-    const defaultCloseYmd = trip.date ? (() => {
-      // Calculate trip.date - 4 days in SGT
-      const [year, month, day] = trip.date.split('-').map(Number);
-      const tripDateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-      tripDateObj.setUTCDate(tripDateObj.getUTCDate() - 4);
-      const closeYear = tripDateObj.getUTCFullYear();
-      const closeMonth = String(tripDateObj.getUTCMonth() + 1).padStart(2, '0');
-      const closeDay = String(tripDateObj.getUTCDate()).padStart(2, '0');
-      return `${closeYear}-${closeMonth}-${closeDay}`;
-    })() : null;
-    
-    // Get persisted close date from cutoffAt (interpreted as SGT date)
-    const persistedCloseYmd = trip.cutoffAt ? cutoffAtToSgtDate(trip.cutoffAt) : null;
-    const effectiveCloseYmd = persistedCloseYmd || defaultCloseYmd;
-    
-    // Compute effective close moment as ISO instant (23:59 SGT on close date)
-    const effectiveCloseMomentIso = effectiveCloseYmd ? toCutoffAtIsoFromYmd(effectiveCloseYmd) : null;
-    const effectiveCloseMomentTime = effectiveCloseMomentIso ? new Date(effectiveCloseMomentIso).getTime() : null;
-    
     // Format close date for display: "Fri 13 Jan"
     const formatCloseDate = (ymd: string | null): string | null => {
       if (!ymd) return null;
@@ -1295,6 +1368,7 @@ export default function TripDetailPage() {
 
     return {
       isScheduled: isScheduledValue,
+      signupsManuallyClosed,
       signupsOpenNow,
       signupOpenDateYmd,
       isTripToday,
@@ -1308,6 +1382,7 @@ export default function TripDetailPage() {
       travelSummaryLine,
       signupsCloseDateYmd: effectiveCloseYmd,
       signupsCloseDateFormatted,
+      persistedCloseYmd,
       openMomentTime: effectiveOpenMomentTime,
       effectiveCloseMomentTime,
       effectiveCloseMomentIso,
@@ -1316,56 +1391,6 @@ export default function TripDetailPage() {
     };
   }, [trip, isGroupTripPage]);
 
-
-  // Build instrument registry (group trips only) - must be before early returns
-  const baseCampInstruments: BaseCampInstrument[] = useMemo(() => {
-    if (!signals || !event || !trip) return [];
-    
-    // canEdit is defined at component level, accessible here
-    
-    // meet_details instrument
-    // Boundary: only shown when sign-ups are open
-    // Note: meet_details is now rendered via domain instrument system, but legacy registry structure kept for compatibility
-    const meetDetailsBoundary: BaseCampBoundary =
-      event.state === "signups_open"
-        ? "before_signups_close"
-        : "before_gameday";
-
-    const meetDetailsInstrument: BaseCampInstrument = {
-      id: "meet_details",
-      boundary: meetDetailsBoundary,
-      label: "Where and when are the group meeting",
-      isRelevant: signals.groupMeetup === true, // Only relevant when group meetup is true
-      isDone: signals.hasMeetDetails,
-      chromeLine: signals.meetSummaryLine || null,
-      pastLine: signals.hasMeetDetails ? "Meet details set" : null,
-      renderInline: null, // Meet details now rendered via domain instrument system
-      renderLink: null, // Handled in rendering (row is clickable)
-    };
-
-    // Build base instruments array (only meet_details remains as legacy)
-    // Note: trip_name and signups_close instruments removed - now domain instruments
-    const baseInstruments: BaseCampInstrument[] = [meetDetailsInstrument];
-    
-    
-    return baseInstruments;
-  }, [signals, event, trip, currentUserId, supabase, activeGroupId, isGroupTripPage, scoringStarted, isTripGroupAdmin, policy]);
-
-
-
-  // Scroll to meet-details anchor if hash is present
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.hash === '#meet-details') {
-      // Small delay to ensure DOM is ready
-      setTimeout(() => {
-        const element = document.getElementById('meet-details');
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
-    }
-  }, [trip]);
-
   // Redirect when viewing a cancelled trip (removed from active lists)
   useEffect(() => {
     if (trip?.status === "cancelled") {
@@ -1373,26 +1398,23 @@ export default function TripDetailPage() {
     }
   }, [trip?.status, router]);
 
-  // Handle ?edit=meet query param: scroll to meet-details section
+  // Handle ?edit=meet query param: open Adjust trip details sheet focused on Meet editor
   useEffect(() => {
     if (!trip) return;
     const editParam = searchParams?.get("edit");
     if (editParam === "meet") {
-      // Scroll to meet-details section (if it exists in BaseCamp lane)
-      setTimeout(() => {
-        const element = document.getElementById('meet-details');
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
-      // Remove query param after scrolling
+      setAdjustTripDetailsOpenSection("meet");
+      setAdjustTripDetailsSheetOpen(true);
+      const { meetTimeRaw, meetingPoint } = getCanonicalMeet(trip);
+      const raw = (meetTimeRaw ?? "").trim();
+      const canonicalTime = legacyMeetTimeRawToCanonical(raw);
+      setMeetSheetTime(canonicalTime !== "" ? canonicalTime : (/^\d{1,2}:\d{2}$/.test(raw) ? raw : ""));
+      setMeetSheetPoint(meetingPoint ?? "");
       if (router && tripId) {
         router.replace(`/trips/${tripId}`, { scroll: false });
       }
     }
   }, [trip, searchParams, router, tripId]);
-
-
 
   // Scheduled: open trip, but signups only open within 30 days of trip date (computed in signals for group trips, duplicated here for hosted rounds)
   const tripDateUtc = trip ? new Date(trip.date + "T00:00:00Z").getTime() : NaN;
@@ -1422,30 +1444,38 @@ export default function TripDetailPage() {
 
   const snapshot = useMemo(() => {
     if (!trip || !isGroupTripPage) return null;
-    const visibleKeys = event && instruments ? getOrderedVisibleKeys(instruments, event.state) : undefined;
     return compileTripSnapshot({
       trip,
       courses,
       groupName: tripGroupName ?? null,
-      visibleInstrumentKeys: visibleKeys,
       event: event ?? undefined,
     });
-  }, [trip, event, instruments, isGroupTripPage, courses, tripGroupName]);
+  }, [trip, event, isGroupTripPage, courses, tripGroupName]);
 
   const tripDetailsBlocks = useMemo(() => {
-    if (renderSpec?.stage !== "post_create" || !snapshot || !trip) return [];
+    const stage = renderSpec?.stage;
+    const allowLocked = stage === "locked" && (signals?.signupsManuallyClosed === true);
+    if ((stage !== "post_create" && stage !== "signups_open" && !allowLocked) || !snapshot || !trip) return [];
     return selectTripDetailsBlocks({
-      stage: renderSpec.stage,
+      stage: (allowLocked ? "locked" : stage)!,
       snapshot,
       trip,
       canEdit,
+      currentMemberId: currentUserId,
+      scoringStarted,
       signups: {
         opensOnLabel: signals?.signupsOpenDateFormatted ?? "",
         showOpenNow: !(signals?.signupsOpenNow ?? false),
+        signupsOpenNow: signals?.signupsOpenNow ?? false,
+        signupsManuallyClosed: signals?.signupsManuallyClosed ?? false,
+        closesOnLabel: signals?.persistedCloseYmd
+          ? (signals?.signupsCloseDateFormatted ?? "Not set yet")
+          : "Not set yet",
+        closesOnDateYmd: signals?.signupsCloseDateYmd ?? null,
       },
       hostLineDisplay: snapshot.hostLine ?? hostLabel ?? null,
     });
-  }, [renderSpec?.stage, snapshot, trip, canEdit, signals?.signupsOpenDateFormatted, signals?.signupsOpenNow, hostLabel]);
+  }, [renderSpec?.stage, snapshot, trip, canEdit, currentUserId, scoringStarted, signals?.signupsOpenDateFormatted, signals?.signupsOpenNow, signals?.signupsManuallyClosed, signals?.persistedCloseYmd, signals?.signupsCloseDateFormatted, signals?.signupsCloseDateYmd, hostLabel]);
 
   const myEntry = useMemo(() => {
     if (!trip) return undefined;
@@ -1650,9 +1680,20 @@ export default function TripDetailPage() {
   const adjustDetailsEnabled =
     event?.state === "forming" || event?.state === "signups_open" || event?.state === "locked";
   const showCancelTrip = showTripOverflow && trip.status !== "cancelled";
+  const { meetTimeRaw: canonicalMeetTimeRaw, meetingPoint: canonicalMeetingPoint } = getCanonicalMeet(trip);
+  const hasMeetDetails = Boolean(canonicalMeetTimeRaw?.trim() || canonicalMeetingPoint?.trim());
+  const canAdjustTripDetails = showTripOverflow && adjustDetailsEnabled;
 
   return (
     <div className={isHostedRoundTrip ? "space-y-3 pb-24" : "space-y-4 pb-24"}>
+      {meetGateToast && (
+        <InlineNotice
+          title={meetGateToast.title}
+          body={meetGateToast.description}
+          onDismiss={() => setMeetGateToast(null)}
+          dismissLabel="Dismiss"
+        />
+      )}
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -1686,16 +1727,33 @@ export default function TripDetailPage() {
             </button>
             {tripOverflowOpen && (
               <div className="absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-border bg-surface shadow-lg py-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTripOverflowOpen(false);
-                    setAdjustTripDetailsSheetOpen(true);
-                  }}
-                  className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-background"
-                >
-                  Adjust trip details
-                </button>
+                {canAdjustTripDetails && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTripOverflowOpen(false);
+                      setAdjustTripDetailsOpenSection("menu");
+                      setAdjustTripDetailsSheetOpen(true);
+                    }}
+                    className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-background"
+                  >
+                    Adjust trip details
+                  </button>
+                )}
+                {canAdjustTripDetails && hasMeetDetails && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTripOverflowOpen(false);
+                      const params = new URLSearchParams(searchParams?.toString() ?? "");
+                      params.set("edit", "meet");
+                      router.push(`/trips/${trip.id}?${params.toString()}`);
+                    }}
+                    className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-background"
+                  >
+                    Edit meet details
+                  </button>
+                )}
                 {showReopenSignups && (
                   <button
                     type="button"
@@ -1738,60 +1796,69 @@ export default function TripDetailPage() {
               {tripDetailsBlocks.length > 0 ? (
                 <>
                   {tripDetailsBlocks.map((block) => {
+                    if (block.kind === "signups_gate") return null;
                     if (block.kind === "identity") {
-                      const renameAction = block.actions?.find((a) => a.id === "rename");
+                      const signupsGateBlock = tripDetailsBlocks.find((b) => b.kind === "signups_gate");
+                      const btnClass = "inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40";
+                      const whatsNextBanner = signupsGateBlock ? (() => {
+                        const { isManuallyClosed, isOpenNow, opensOnLabel, canEdit: gateCanEdit, showOpenNow, closesOnLabel } = signupsGateBlock.content;
+                        const leadingText = isManuallyClosed ? "Sign-ups are closed." : isOpenNow ? "Sign-ups close on " : "Sign-ups open on ";
+                        const milestoneDate = isManuallyClosed ? null : (isOpenNow ? (closesOnLabel ?? "Not set yet") : (opensOnLabel ?? ""));
+                        const actionsNode = gateCanEdit ? (
+                          isManuallyClosed ? (
+                            <button type="button" onClick={() => setPendingAction({ kind: "reopen_signups" })} className={btnClass}>
+                              Reopen sign-ups
+                            </button>
+                          ) : isOpenNow ? (
+                            <button type="button" onClick={() => setPendingAction({ kind: "close_signups_now" })} className={btnClass}>
+                              Close sign-ups now
+                            </button>
+                          ) : showOpenNow ? (
+                            <button type="button" onClick={() => setPendingAction({ kind: "open_signups_now" })} className={btnClass}>
+                              Open now
+                            </button>
+                          ) : undefined
+                        ) : undefined;
+                        return (
+                          <div key="whats-next" className="mt-3 rounded-xl bg-surface/60 ring-1 ring-border/50 px-4 py-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-[11px] font-semibold text-muted-foreground tracking-wide uppercase">What&apos;s next</div>
+                              {actionsNode != null && <div className="shrink-0">{actionsNode}</div>}
+                            </div>
+                            <div className="mt-1 text-sm text-foreground">
+                              {leadingText}
+                              {milestoneDate != null && milestoneDate !== "" && (
+                                <span className="font-semibold">{milestoneDate}</span>
+                              )}
+                              {isManuallyClosed ? "" : milestoneDate != null && milestoneDate !== "" ? "." : ""}
+                            </div>
+                          </div>
+                        );
+                      })() : null;
                       return (
-                        <div key={block.kind}>
-                          {showDevBlockLabels && (
-                            <div className="text-[10px] uppercase tracking-wide text-muted/70 mb-1">DEV — Identity</div>
-                          )}
-                          <div className="flex items-baseline gap-2">
-                            <h1 className="text-4xl font-light text-primary mb-2">
-                              {block.title}
-                            </h1>
-                            {canEdit && renameAction && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPromptModal({
-                                    isOpen: true,
-                                    title: renameAction.label === "Add name" ? "Name this trip" : "Rename trip",
-                                    message: "Give this trip a short name people will recognise.",
-                                    defaultValue: trip.tripName ?? "",
-                                    placeholder: "e.g. Swingapore — Demo National (Sat 9 May)",
-                                    onConfirm: async (value) => {
-                                      const next = value.trim();
-                                      if (next.length === 0) {
-                                        const result = await saveTripPatch({ tripName: undefined, decisionLogistics: { tripNameConfirmed: false } });
-                                        if (result.ok) setPromptModal((prev) => ({ ...prev, isOpen: false }));
-                                        else alert(result.error);
-                                      } else {
-                                        const result = await saveTripPatch({ tripName: next, decisionLogistics: { tripNameConfirmed: true } });
-                                        if (result.ok) setPromptModal((prev) => ({ ...prev, isOpen: false }));
-                                        else alert(result.error);
-                                      }
-                                    },
-                                    onCancel: () => setPromptModal((prev) => ({ ...prev, isOpen: false })),
-                                  });
-                                }}
-                                className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40"
-                                aria-label="Edit trip name"
-                              >
-                                {renameAction.label}
-                              </button>
+                        <Fragment key={block.kind}>
+                          <div>
+                            {showDevBlockLabels && (
+                              <div className="text-[10px] uppercase tracking-wide text-muted/70 mb-1">DEV — Identity</div>
                             )}
+                            <div className="flex items-baseline gap-2">
+                              <h1 className="text-4xl font-light text-primary mb-2">
+                                {block.title}
+                              </h1>
+                            </div>
+                            <div className="space-y-1">
+                              {block.rows.map((row) => (
+                                <p
+                                  key={row.key}
+                                  className={row.key === "venue" ? "text-sm font-medium leading-[18px] text-ink-700 truncate" : "text-[13px] font-medium leading-[18px] text-ink-700"}
+                                >
+                                  {row.value}
+                                </p>
+                              ))}
+                            </div>
                           </div>
-                          <div className="space-y-1">
-                            {block.rows.map((row) => (
-                              <p
-                                key={row.key}
-                                className={row.key === "venue" ? "text-sm font-medium leading-[18px] text-ink-700 truncate" : "text-[13px] font-medium leading-[18px] text-ink-700"}
-                              >
-                                {row.value}
-                              </p>
-                            ))}
-                          </div>
-                        </div>
+                          {whatsNextBanner}
+                        </Fragment>
                       );
                     }
                     if (block.kind === "trip_shape") {
@@ -1824,76 +1891,29 @@ export default function TripDetailPage() {
                         </div>
                       );
                     }
-                    if (block.kind === "signups_gate") {
-                      const { opensOnLabel, canEdit: gateCanEdit, showOpenNow } = block.content;
+                    if (block.kind === "meet") {
+                      const meetTimeMissing = !block.meetTimeLabel || String(block.meetTimeLabel).trim() === "" || block.meetTimeLabel === "—";
+                      const meetingPointMissing = !block.meetingPointLabel || String(block.meetingPointLabel).trim() === "" || block.meetingPointLabel === "—";
+                      const showMeetNudge = meetTimeMissing && meetingPointMissing;
                       return (
                         <div key={block.kind}>
-                          {showDevBlockLabels && (
-                            <div className="text-[10px] uppercase tracking-wide text-muted/70 mb-1">DEV — Sign-ups gate</div>
-                          )}
-                          <div className="mt-3 text-sm text-foreground">
-                            Sign-ups open on <span className="font-medium">{opensOnLabel}</span>.
-                            {gateCanEdit && (
-                              <span className="ml-2 inline-flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSignupsOpenEditYmd(signals?.signupOpenDateYmd ?? "");
-                                    setEditingSignupsOpen(true);
-                                  }}
-                                  className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40"
-                                >
-                                  Change
-                                </button>
-                                {showOpenNow && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setPendingAction({ kind: "open_signups_now" })}
-                                    className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40"
-                                  >
-                                    Open now
-                                  </button>
-                                )}
-                              </span>
-                            )}
+                          <div className="border-t border-border/60 mt-2 pt-2" aria-hidden="true" />
+                          <div className="text-xs font-semibold text-muted mb-1">Meeting</div>
+                          <div className="text-sm text-foreground space-y-0.5">
+                            <div>Meet time: {block.meetTimeLabel ?? "—"}</div>
+                            <div>Meeting point: {block.meetingPointLabel ?? "—"}</div>
                           </div>
-                          {gateCanEdit && editingSignupsOpen && (
-                            <div className="mt-2 space-y-2">
-                              <input
-                                type="date"
-                                value={signupsOpenEditYmd}
-                                onChange={(e) => setSignupsOpenEditYmd(e.target.value)}
-                                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
-                              />
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => { setEditingSignupsOpen(false); setSignupsOpenEditYmd(""); }}
-                                  className="rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const ymd = signupsOpenEditYmd.trim();
-                                    if (!ymd) return;
-                                    const computedIso = ymdToOpenIso(ymd);
-                                    const result = await saveTripPatch({
-                                      decisionLogistics: {
-                                        ...(trip.decisionLogistics ?? {}),
-                                        signupsOpensAtIso: computedIso,
-                                        signupsWindowConfirmed: true,
-                                      },
-                                    });
-                                    if (result.ok) { setEditingSignupsOpen(false); setSignupsOpenEditYmd(""); }
-                                    else alert(result.error);
-                                  }}
-                                  className="rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
-                                >
-                                  Save
-                                </button>
-                              </div>
+                          {showMeetNudge && (
+                            <div className="mt-2">
+                              <InlineAction
+                                onClick={() => {
+                                  const params = new URLSearchParams(searchParams?.toString() ?? "");
+                                  params.set("edit", "meet");
+                                  router.push(`/trips/${trip.id}?${params.toString()}`);
+                                }}
+                              >
+                                Add meeting details
+                              </InlineAction>
                             </div>
                           )}
                         </div>
@@ -1909,38 +1929,6 @@ export default function TripDetailPage() {
                     <h1 className="text-[28px] font-semibold leading-8 text-ink-900">
                       {snapshot.title}
                     </h1>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const label = (!trip.tripName || trip.tripName.trim() === "" || snapshot.title === "Group trip") ? "Add name" : "Rename";
-                          setPromptModal({
-                            isOpen: true,
-                            title: label === "Add name" ? "Name this trip" : "Rename trip",
-                            message: "Give this trip a short name people will recognise.",
-                            defaultValue: trip.tripName ?? "",
-                            placeholder: "e.g. Swingapore — Demo National (Sat 9 May)",
-                            onConfirm: async (value) => {
-                              const next = value.trim();
-                              if (next.length === 0) {
-                                const result = await saveTripPatch({ tripName: undefined, decisionLogistics: { tripNameConfirmed: false } });
-                                if (result.ok) setPromptModal((prev) => ({ ...prev, isOpen: false }));
-                                else alert(result.error);
-                              } else {
-                                const result = await saveTripPatch({ tripName: next, decisionLogistics: { tripNameConfirmed: true } });
-                                if (result.ok) setPromptModal((prev) => ({ ...prev, isOpen: false }));
-                                else alert(result.error);
-                              }
-                            },
-                            onCancel: () => setPromptModal((prev) => ({ ...prev, isOpen: false })),
-                          });
-                        }}
-                        className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40"
-                        aria-label="Edit trip name"
-                      >
-                        {(!trip.tripName || trip.tripName.trim() === "" || snapshot.title === "Group trip") ? "Add name" : "Rename"}
-                      </button>
-                    )}
                   </div>
                   {snapshot.metaLine && (
                     <p className="text-sm font-medium leading-[18px] text-ink-700 truncate">
@@ -1970,32 +1958,63 @@ export default function TripDetailPage() {
                       </>
                     ) : null;
                   })()}
-                  {renderSpec?.stage === "post_create" && signals?.signupsOpenDateFormatted && (
+                  {renderSpec?.stage === "post_create" && (signals?.signupsOpenDateFormatted || signals?.signupsOpenNow) && (
                     <>
-                      <div className="mt-3 text-sm text-foreground">
-                        Sign-ups open on <span className="font-medium">{signals.signupsOpenDateFormatted}</span>.
-                        {canEdit && (
-                          <span className="ml-2 inline-flex items-center gap-2">
+                      <SignupMilestoneRow
+                        leadingText={signals?.signupsOpenNow ? "Sign-ups close on " : "Sign-ups open on "}
+                        milestoneDate={signals?.signupsOpenNow
+                          ? (signals?.persistedCloseYmd ? (signals?.signupsCloseDateFormatted ?? "Not set yet") : "Not set yet")
+                          : (signals?.signupsOpenDateFormatted ?? "")}
+                        actions={canEdit && !signals?.signupsOpenNow ? (
+                          <button
+                            type="button"
+                            onClick={() => setPendingAction({ kind: "open_signups_now" })}
+                            className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40"
+                          >
+                            Open now
+                          </button>
+                        ) : undefined}
+                      />
+                      {canEdit && editingSignupsClose && signals?.signupsOpenNow && (
+                        <div className="mt-2 space-y-2">
+                          <input
+                            type="date"
+                            value={signupsCloseEditYmd}
+                            onChange={(e) => setSignupsCloseEditYmd(e.target.value)}
+                            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
+                          />
+                          <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => { setSignupsOpenEditYmd(signals?.signupOpenDateYmd ?? ""); setEditingSignupsOpen(true); }}
-                              className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40"
+                              onClick={async () => {
+                                const ymd = signupsCloseEditYmd.trim();
+                                if (!ymd) return;
+                                await handleChangeCloseDate(ymd);
+                                setEditingSignupsClose(false);
+                                setSignupsCloseEditYmd("");
+                              }}
+                              className="rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
                             >
-                              Change
+                              Save
                             </button>
-                            {!signals?.signupsOpenNow && (
-                              <button
-                                type="button"
-                                onClick={() => setPendingAction({ kind: "open_signups_now" })}
-                                className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40"
-                              >
-                                Open now
-                              </button>
-                            )}
-                          </span>
-                        )}
-                      </div>
-                      {canEdit && editingSignupsOpen && (
+                            <button
+                              type="button"
+                              onClick={() => { setEditingSignupsClose(false); setSignupsCloseEditYmd(""); }}
+                              className="rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-surface"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingSignupsClose(false); setPendingAction({ kind: "close_signups_now" }); }}
+                              className="rounded-lg border border-danger bg-transparent px-4 py-2 text-sm font-medium text-danger hover:bg-danger/10"
+                            >
+                              Close sign-ups now
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {canEdit && editingSignupsOpen && !signals?.signupsOpenNow && (
                         <div className="mt-2 space-y-2">
                           <input
                             type="date"
@@ -2043,7 +2062,7 @@ export default function TripDetailPage() {
                 const LOGISTICS_KEYS = ["meet_time", "meeting_point", "travel", "transport_summary", "notes"];
                 const chromaHiddenKeys = renderSpec?.chromaHiddenKeys ?? [];
                 const logisticsRows = snapshot.rows.filter(
-                  (r) => LOGISTICS_KEYS.includes(r.key) && !chromaHiddenKeys.includes(r.key)
+                  (r) => LOGISTICS_KEYS.includes(r.key) && !chromaHiddenKeys.includes(r.key) && r.key !== "meet_time" && r.key !== "meeting_point"
                 );
                 return logisticsRows.length > 0 ? (
                   <>
@@ -2055,44 +2074,19 @@ export default function TripDetailPage() {
             </section>
             )}
 
-            {/* Zone B: Base Camp (admin) or read-only Details (non-admin) - group trips only */}
+            {/* Trip Details is a projection only (post-BaseCamp). No lanes/instruments here; edits via kebab only. */}
             {baseCampAccessResolved ? (
-              canEdit ? (
-                <BaseCampLane
-                  event={event}
-                  policy={policy}
-                  instruments={instruments}
-                  baseCampInstruments={baseCampInstruments}
-                  currentUserId={currentUserId}
-                  supabase={supabase}
-                  activeGroupId={activeGroupId}
-                  renderSpec={renderSpec}
-                  onTripUpdate={(updatedTrip) => {
-                    setTrips((prev) => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
-                    if (tripId && sameTripId(updatedTrip.id, tripId)) {
-                      setTripDetail(updatedTrip);
-                    }
-                  }}
-                  saveTripPatch={saveTripPatch}
-                  canEdit={canEdit}
-                  trip={trip}
-                  isGroupTripPage={isGroupTripPage}
-                  onOpenSignupsRequested={() => setPendingAction({ kind: "open_signups_now" })}
-                  onCloseSignupsNow={handleCloseSignupsNow}
-                  onChangeCloseDate={handleChangeCloseDate}
-                  onReopenSignups={handleReopenSignups}
-                />
-              ) : (
-                <>
-                  {/* Dopamine acknowledgement for non-admin */}
-                  {isAttendeeIn(myEntry?.status ?? null) && (
-                    <p className="mt-4 text-sm text-anticipation">You're confirmed for this trip.</p>
-                  )}
-                  {myEntry?.status === "waitlist" && (
-                    <p className="mt-4 text-sm text-muted">You're on the waitlist.</p>
-                  )}
-                  {/* Read-only Details card: Meeting, Transport, Notes */}
-                  <section aria-label="Trip details" className="mt-4 rounded-xl border bg-surface p-5 shadow-sm space-y-4">
+              <>
+                {isAttendeeIn(myEntry?.status ?? null) && (
+                  <p className="mt-4 text-sm text-anticipation">You're confirmed for this trip.</p>
+                )}
+                {myEntry?.status === "waitlist" && (
+                  <p className="mt-4 text-sm text-muted">You're on the waitlist.</p>
+                )}
+                {/* Read-only projection: Meeting (when not already shown by meet block), Notes — hidden in signups_open to avoid empty card */}
+                {renderSpec?.stage !== "signups_open" && (
+                <section aria-label="Trip details" className="mt-4 rounded-xl border bg-surface p-5 shadow-sm space-y-4">
+                  {!tripDetailsBlocks.some((b) => b.kind === "meet") && (
                     <div>
                       <div className="text-xs font-semibold text-muted mb-1">Meeting</div>
                       <div className="text-sm text-foreground space-y-0.5">
@@ -2100,282 +2094,96 @@ export default function TripDetailPage() {
                         <div>Meeting point: {getCanonicalMeet(trip).meetingPoint ?? "—"}</div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-xs font-semibold text-muted mb-1">Transport details</div>
-                      <div className="text-sm text-foreground">
-                        {(() => {
-                          const itinerary = (trip.logistics?.itineraryDetails ?? "").trim();
-                          const ferry = (trip.logistics?.ferryDetails ?? "").trim();
-                          const transportLines: string[] = [];
-                          if (itinerary) transportLines.push(itinerary);
-                          if (ferry && ferry !== itinerary) transportLines.push(ferry);
-                          if (transportLines.length === 0) return <span>—</span>;
-                          if (transportLines.length === 1) {
-                            return (
-                              <span className="whitespace-pre-wrap">{transportLines[0]}</span>
-                            );
-                          }
-                          return (
-                            <ul className="list-disc list-inside space-y-1">
-                              {transportLines.map((line, i) => (
-                                <li key={i} className="whitespace-pre-wrap">{line}</li>
-                              ))}
-                            </ul>
-                          );
-                        })()}
+                  )}
+                  {(() => {
+                    const notesText = (trip.logistics?.notes ?? "").trim();
+                    return (
+                      <div>
+                        <div className="text-xs font-semibold text-muted mb-1">Notes</div>
+                        <div className="text-sm text-foreground whitespace-pre-wrap">
+                          {notesText ? notesText : "—"}
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-muted mb-1">Notes</div>
-                      <div className="text-sm text-foreground whitespace-pre-wrap">
-                        {(trip.logistics?.notes ?? "").trim() ? (trip.logistics?.notes ?? "").trim() : "—"}
-                      </div>
-                    </div>
-                  </section>
+                    );
+                  })()}
+                </section>
+                )}
 
-                  {/* Attendees (read-only) */}
-                  <div className="mt-4 space-y-3">
-                    <h2 className="text-sm font-medium text-foreground">Attendees</h2>
-                    <input
-                      type="text"
-                      placeholder="Search attendees…"
-                      value={attendeeSearch}
-                      onChange={(e) => setAttendeeSearch(e.target.value)}
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
-                    />
-                    {filteredAttendees.length === 0 ? (
-                      <div className="rounded-lg border border-border bg-surface p-6 text-center">
-                        <p className="text-sm text-muted">
-                          {attendeeSearch.trim() ? "No matches." : "No attendees yet."}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {filteredAttendees.map((attendee) => {
-                          const displayName = attendee.displayName || attendee.fullName || attendee.name || "—";
-                          const photoUrl = attendee.profilePhotoPath
-                            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${attendee.profilePhotoPath}`
-                            : null;
-                          return (
-                            <div
-                              key={attendee.memberId ?? attendee.name}
-                              className="w-full flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 text-left"
-                            >
-                              <div className="flex items-center gap-3 min-w-0 flex-1">
-                                {photoUrl ? (
-                                  <img
-                                    src={photoUrl}
-                                    alt={displayName}
-                                    className="h-10 w-10 flex-shrink-0 rounded-full object-cover border border-border"
-                                  />
-                                ) : (
-                                  <div className="h-10 w-10 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-xs font-medium text-muted">
-                                    {displayName.charAt(0).toUpperCase()}
-                                  </div>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                  <div className="text-sm font-medium text-foreground truncate">
-                                    {displayName}
-                                  </div>
-                                  <div className="text-xs text-muted capitalize">{attendee.status}</div>
+                {/* Attendees (read-only) */}
+                <div className="mt-4 pt-4 border-t border-border/60 space-y-3">
+                  <h2 className="text-sm font-medium text-foreground">Attendees</h2>
+                  <input
+                    type="text"
+                    placeholder="Search attendees…"
+                    value={attendeeSearch}
+                    onChange={(e) => setAttendeeSearch(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                  />
+                  {filteredAttendees.length === 0 ? (
+                    <div className="rounded-lg border border-border bg-surface p-6 text-center">
+                      <p className="text-sm text-muted">
+                        {attendeeSearch.trim() ? "No matches." : "No attendees yet."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {filteredAttendees.map((attendee) => {
+                        const displayName = attendee.displayName || attendee.fullName || attendee.name || "—";
+                        const photoUrl = attendee.profilePhotoPath
+                          ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${attendee.profilePhotoPath}`
+                          : null;
+                        return (
+                          <div
+                            key={attendee.memberId ?? attendee.name}
+                            className="w-full flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 text-left"
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              {photoUrl ? (
+                                <img
+                                  src={photoUrl}
+                                  alt={displayName}
+                                  className="h-10 w-10 flex-shrink-0 rounded-full object-cover border border-border"
+                                />
+                              ) : (
+                                <div className="h-10 w-10 flex-shrink-0 rounded-full bg-background border border-border flex items-center justify-center text-xs font-medium text-muted">
+                                  {displayName.charAt(0).toUpperCase()}
                                 </div>
-                              </div>
-                              <div className="flex-shrink-0">
-                                {attendee.handicapForTrip != null ? (
-                                  <div className="member-chip flex flex-col items-center justify-center">
-                                    <span className="text-[10px] font-medium text-secondary uppercase tracking-wide leading-tight">
-                                      HCP
-                                    </span>
-                                    <span className="text-sm font-semibold text-primary leading-tight">
-                                      {formatHandicap(attendee.handicapForTrip)}
-                                    </span>
-                                  </div>
-                                ) : null}
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium text-foreground truncate">
+                                  {displayName}
+                                </div>
+                                <div className="text-xs text-muted capitalize">{attendee.status}</div>
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )
+                            <div className="flex-shrink-0">
+                              {attendee.handicapForTrip != null ? (
+                                <div className="member-chip flex flex-col items-center justify-center">
+                                  <span className="text-[10px] font-medium text-secondary uppercase tracking-wide leading-tight">
+                                    HCP
+                                  </span>
+                                  <span className="text-sm font-semibold text-primary leading-tight">
+                                    {formatHandicap(attendee.handicapForTrip)}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
             ) : (
-              <section aria-label="Base Camp" className="mt-6">
+              <section aria-label="Trip details" className="mt-6">
                 <div className="rounded-xl border bg-surface p-5 shadow-sm">
-                  <div className="text-sm text-muted">Loading trip tools…</div>
+                  <div className="text-sm text-muted">Loading…</div>
                 </div>
               </section>
             )}
 
-            {/* Zone C: Secondary surfaces (below Base Camp) */}
-            {/* Large instrument cards and coordination surfaces live here */}
-            {/* v2.1.1: All post-BaseCamp content wrapped behind flag */}
-            {SHOW_ZONE_C_GROUP_TRIPS && (
-              <>
-
-            {/* Travel instrument (group trips only, when travel involved) */}
-            {isGroupTripPage && trip.travelInvolved && (
-            <div id="travel-details" className="mt-6">
-              <TravelInstrument
-                trip={trip}
-                currentUserId={currentUserId}
-                supabase={supabase}
-                activeGroupId={activeGroupId}
-                canEdit={canEdit}
-                onUpdate={(updatedTrip) => {
-                  setTrips((prev) => prev.map((t) => (t.id === trip.id ? updatedTrip : t)));
-                }}
-              />
-            </div>
-            )}
-
-            {/* Trip coordination section (organiser area) */}
-            <section aria-label="Trip coordination" className="mt-6 space-y-4">
-            {/* Next steps (host only) - only shown in Created phase */}
-            {trip.createdByMemberId === currentUserId && !isHostedRound(trip) && isCreatedPhase && (() => {
-              const isGroupTrip = trip.tripOrigin === "group" || trip.isPostedToGroup;
-              const isHost = trip.createdByMemberId === currentUserId;
-              const signupsOpen = trip.status === "open" && !isScheduled;
-              const signupsClosed = trip.status === "closed";
-              const hasLogistics = Boolean(trip.logistics?.meetingPoint || trip.ferry || trip.logistics?.itineraryDetails || trip.logistics?.ferryDetails || trip.logistics?.notes);
-              
-              // Build steps array
-              const steps: Array<{
-                id: string;
-                intent: string;
-                action: string;
-                onClick: () => void;
-              }> = [];
-
-              // 1) Meet details - scroll to meet-details section (only if user can edit)
-              if (isGroupTrip && !signals?.hasMeetDetails && policy?.canEditMeetDetails) {
-                steps.push({
-                  id: "meet_details",
-                  intent: "Set the meetup time and place.",
-                  action: "Add meet details",
-                  onClick: () => {
-                    // Scroll to meet-details section in BaseCamp lane
-                    setTimeout(() => {
-                      const element = document.getElementById('meet-details');
-                      if (element) {
-                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }
-                    }, 100);
-                  },
-                });
-              }
-
-              // 2) Signups
-              if (isGroupTrip && !signupsOpen && !signupsClosed) {
-                steps.push({
-                  id: "signups",
-                  intent: "Let people lock in for the day.",
-                  action: "Open signups",
-                  onClick: async () => {
-                    // TODO: Implement open signups action
-                    alert("Open signups functionality to be implemented");
-                  },
-                });
-              }
-
-              // 3) Logistics
-              if (isGroupTrip && !hasLogistics) {
-                steps.push({
-                  id: "logistics",
-                  intent: "Share the plan once it's settled.",
-                  action: "Publish logistics",
-                  onClick: () => {
-                    // TODO: Implement publish logistics action
-                    alert("Publish logistics functionality to be implemented");
-                  },
-                });
-              }
-
-              // 4) Flights
-              if (signupsClosed) {
-                steps.push({
-                  id: "flights",
-                  intent: "Balance flights once signups close.",
-                  action: "Set flights",
-                  onClick: () => {
-                    router.push(`/trips/${trip.id}/flights`);
-                  },
-                });
-              }
-
-              // 5) Exports (only for later, all group trips when appropriate)
-              const exportStep = isGroupTrip && (signupsClosed || hasLogistics) ? {
-                id: "exports",
-                intent: "Export details when needed.",
-                action: "Export",
-                onClick: () => {
-                  // TODO: Implement export action
-                  alert("Export functionality to be implemented");
-                },
-              } : null;
-
-              if (steps.length === 0 && !exportStep) return null;
-
-              const defaultVisible = steps.slice(0, 2);
-              const laterSteps = steps.slice(2);
-              const allLaterSteps = [...laterSteps, ...(exportStep ? [exportStep] : [])];
-
-              return (
-                <section className="rounded-xl border bg-surface p-5 shadow-sm">
-                  <div className="mb-4 text-sm font-medium text-foreground">Next steps</div>
-                  
-                  <div className="space-y-3">
-                    {defaultVisible.map((step) => (
-                      <div key={step.id} className="flex items-start justify-between gap-3">
-                        <p className="text-sm text-muted flex-1">{step.intent}</p>
-                        <button
-                          onClick={step.onClick}
-                          className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background shrink-0"
-                        >
-                          {step.action}
-                        </button>
-                      </div>
-                    ))}
-
-                    {allLaterSteps.length > 0 && (
-                      <>
-                        {showLaterSteps ? (
-                          <>
-                            {allLaterSteps.map((step) => (
-                              <div key={step.id} className="flex items-start justify-between gap-3">
-                                <p className="text-sm text-muted flex-1">{step.intent}</p>
-                                <button
-                                  onClick={step.onClick}
-                                  className="rounded-md border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background shrink-0"
-                                >
-                                  {step.action}
-                                </button>
-                              </div>
-                            ))}
-                            <button
-                              onClick={() => setShowLaterSteps(false)}
-                              className="text-xs text-muted hover:text-foreground underline"
-                            >
-                              Hide
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            onClick={() => setShowLaterSteps(true)}
-                            className="text-xs text-muted hover:text-foreground underline"
-                          >
-                            Later
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </section>
-              );
-            })()}
-
-            {/* Flights (host only, when signups closed) */}
+            {/* Flights link (host only, when signups closed) */}
             {trip.status === "closed" && trip.createdByMemberId === currentUserId && (
               <section className="rounded-xl border bg-surface p-5 shadow-sm">
                 <div className="mb-3">
@@ -2392,51 +2200,8 @@ export default function TripDetailPage() {
                 </Link>
               </section>
             )}
-            </section>
 
-            {/* Participant area */}
-            <div className="mt-6 space-y-4">
-
-            {/* Handicap snapshot */}
-            <section className="border-t border-border bg-transparent px-1 pt-4">
-              <div className="mb-3 text-sm font-medium text-muted">Handicap snapshot</div>
-
-              {!myEntry ? (
-                <div className="text-sm text-muted">RSVP first to save a handicap snapshot for this trip.</div>
-              ) : (
-                <div className="flex gap-2">
-                  <input
-                    value={hcp}
-                    onChange={(e) => setHcp(e.target.value)}
-                    placeholder={profileHandicap !== null ? String(profileHandicap) : "e.g. 12.4"}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                    inputMode="decimal"
-                  />
-                  <button
-                    onClick={saveHandicap}
-                    className={`rounded-md px-4 py-2 text-sm font-medium hover:opacity-95 ${
-                      // Demote to tertiary if RSVP section has primary Join button
-                      trip.status === "open" && !isScheduled && !myEntry
-                        ? "border border-border bg-transparent text-foreground hover:bg-surface"
-                        : "btn-primary"
-                    }`}
-                  >
-                    Save
-                  </button>
-                </div>
-              )}
-
-              {myEntry && (
-                <div className="mt-2 space-y-0.5">
-                  <div className="text-xs text-muted">This comes from your profile.</div>
-                  <div className="text-xs text-secondary">Saving updates your profile handicap.</div>
-                </div>
-              )}
-            </section>
-          </div>
-                </>
-            )}
-          </>
+      </>
       ) : (
         /* Hosted rounds: keep existing structure unchanged */
         <>
@@ -2838,10 +2603,15 @@ export default function TripDetailPage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/50 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-t-xl bg-surface border-t border-l border-r border-border p-6 sm:rounded-xl sm:border-b shadow-lg">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Adjust trip details</h3>
+              <h3 className="text-lg font-semibold text-foreground">
+                {adjustTripDetailsOpenSection === "meet" ? "Meet details" : adjustTripDetailsOpenSection === "transport" ? "Transport details" : "Adjust trip details"}
+              </h3>
               <button
                 type="button"
-                onClick={() => setAdjustTripDetailsSheetOpen(false)}
+                onClick={() => {
+                  setAdjustTripDetailsOpenSection("menu");
+                  setAdjustTripDetailsSheetOpen(false);
+                }}
                 className="text-muted hover:text-foreground"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2849,6 +2619,121 @@ export default function TripDetailPage() {
                 </svg>
               </button>
             </div>
+            {adjustTripDetailsOpenSection === "meet" ? (
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => setAdjustTripDetailsOpenSection("menu")}
+                  className="text-sm text-muted hover:text-foreground"
+                >
+                  ← Back
+                </button>
+                <div>
+                  <TimePicker
+                    label="Meet time"
+                    valueHHMM={meetSheetTime ? meetTimeCanonicalToHHMM(meetSheetTime) ?? undefined : undefined}
+                    onChangeHHMM={(hhmm) => setMeetSheetTime(meetTimeHHMMToCanonical(hhmm))}
+                    placeholder="Select a time"
+                    defaultPeriod="AM"
+                    minuteStep={15}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted mb-1">Meeting point</label>
+                  <input
+                    type="text"
+                    value={meetSheetPoint}
+                    onChange={(e) => setMeetSheetPoint(e.target.value)}
+                    placeholder="e.g. Clubhouse entrance"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={meetSheetSaving}
+                  onClick={async () => {
+                    if (!trip) return;
+                    setMeetSheetSaving(true);
+                    const result = await saveTripPatch({
+                      decisionLogistics: {
+                        ...(trip.decisionLogistics ?? {}),
+                        meetTime: meetSheetTime.trim() || undefined,
+                        meetingPoint: meetSheetPoint.trim() || undefined,
+                      },
+                    });
+                    setMeetSheetSaving(false);
+                    if (result.ok) {
+                      setTripDetail(result.trip);
+                      setTrips((prev) => prev.map((t) => (t.id === trip.id ? result.trip : t)));
+                      setAdjustTripDetailsOpenSection("menu");
+                      setAdjustTripDetailsSheetOpen(false);
+                    } else {
+                      alert(result.error);
+                    }
+                  }}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {meetSheetSaving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            ) : adjustTripDetailsOpenSection === "transport" ? (
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => setAdjustTripDetailsOpenSection("menu")}
+                  className="text-sm text-muted hover:text-foreground"
+                >
+                  ← Back
+                </button>
+                <div>
+                  <label className="block text-xs font-semibold text-muted mb-1">Transport operator</label>
+                  <input
+                    type="text"
+                    value={transportSheetOperator}
+                    onChange={(e) => setTransportSheetOperator(e.target.value)}
+                    placeholder="Batam FAST"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted mb-1">Transport details</label>
+                  <textarea
+                    value={transportSheetDetails}
+                    onChange={(e) => setTransportSheetDetails(e.target.value)}
+                    placeholder="SQ 913 departing 8:00am, return trip SQ 914 departs Tanah Merah 8:30am"
+                    rows={3}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30 resize-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={transportSheetSaving}
+                  onClick={async () => {
+                    if (!trip) return;
+                    setTransportSheetSaving(true);
+                    const result = await saveTripPatch({
+                      logistics: {
+                        ...(trip.logistics ?? {}),
+                        transportOperator: transportSheetOperator.trim() || undefined,
+                        transportDetails: transportSheetDetails.trim() || undefined,
+                      },
+                    });
+                    setTransportSheetSaving(false);
+                    if (result.ok) {
+                      setTripDetail(result.trip);
+                      setTrips((prev) => prev.map((t) => (t.id === trip.id ? result.trip : t)));
+                      setAdjustTripDetailsOpenSection("menu");
+                      setAdjustTripDetailsSheetOpen(false);
+                    } else {
+                      alert(result.error);
+                    }
+                  }}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {transportSheetSaving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            ) : (
             <ul className="space-y-1">
               <li>
                 {adjustDetailsEnabled ? (
@@ -2894,6 +2779,20 @@ export default function TripDetailPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    const log = trip?.logistics as { transportOperator?: string; transportDetails?: string } | undefined;
+                    setTransportSheetOperator((log?.transportOperator ?? "").toString());
+                    setTransportSheetDetails((log?.transportDetails ?? "").toString());
+                    setAdjustTripDetailsOpenSection("transport");
+                  }}
+                  className="w-full rounded-lg px-4 py-2 text-left text-sm text-foreground hover:bg-background"
+                >
+                  Transport details
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
                     const cap = (trip?.logistics as { capacityLimit?: number | null })?.capacityLimit ?? (trip?.capacity != null ? Number(trip.capacity) : null);
                     setCapacityModalValue(cap != null ? String(cap) : "");
                     setAdjustTripDetailsSheetOpen(false);
@@ -2927,6 +2826,7 @@ export default function TripDetailPage() {
                 )}
               </li>
             </ul>
+            )}
           </div>
         </div>
       )}
@@ -3013,9 +2913,19 @@ export default function TripDetailPage() {
           try {
             switch (pendingAction.kind) {
               case "open_signups_now": {
-                // Set signupsOpenedAt = now ISO
+                // Set signupsOpenedAt = now ISO; persist default close (trip.date - 4 days SGT) when cutoffAt missing
+                const signupsOpenedAtIso = new Date().toISOString();
+                let defaultCutoffAt: string | undefined;
+                if (!trip.cutoffAt && trip.date) {
+                  const [y, m, d] = trip.date.split('-').map(Number);
+                  const tripDateObj = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+                  tripDateObj.setUTCDate(tripDateObj.getUTCDate() - 4);
+                  const closeYmd = `${tripDateObj.getUTCFullYear()}-${String(tripDateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(tripDateObj.getUTCDate()).padStart(2, '0')}`;
+                  defaultCutoffAt = toCutoffAtIsoFromYmd(closeYmd);
+                }
                 const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
-                  signupsOpenedAt: new Date().toISOString(),
+                  signupsOpenedAt: signupsOpenedAtIso,
+                  ...(defaultCutoffAt !== undefined && { cutoffAt: defaultCutoffAt }),
                 });
                 
                 // NO optimistic update - wait for authoritative DB response
@@ -3034,10 +2944,23 @@ export default function TripDetailPage() {
                 break;
               }
               case "close_signups_now": {
+                const meetReady = getMeetReadiness(trip);
+                if (!meetReady.ok) {
+                  setPendingAction(null);
+                  const params = new URLSearchParams(searchParams?.toString() ?? "");
+                  params.set("edit", "meet");
+                  router.push(`/trips/${trip.id}?${params.toString()}`);
+                  setMeetGateToast({
+                    title: "Meet details required",
+                    description: "Add a meet time and meeting point to close sign-ups.",
+                  });
+                  return;
+                }
                 const cutoffAtValue = new Date().toISOString();
                 const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
                   cutoffAt: cutoffAtValue,
                   coordinationStatus: "locked",
+                  decisionLogistics: { ...(trip.decisionLogistics || {}), manualCloseAt: new Date().toISOString() },
                 });
                 
                 // Optimistic UI update
@@ -3054,11 +2977,10 @@ export default function TripDetailPage() {
                 break;
               }
               case "reopen_signups": {
-                const todaySGT = todayInSGT();
-                const cutoffAtValue = new Date(`${todaySGT}T23:59:59+08:00`).toISOString();
+                const { manualCloseAt: _mc, ...restDecisionLogistics } = trip.decisionLogistics || {};
                 const updatedTrips = await updateTrip(trips, trip.id, groupIdForTrip, {
-                  cutoffAt: cutoffAtValue,
                   coordinationStatus: "signups_open",
+                  decisionLogistics: restDecisionLogistics as Trip["decisionLogistics"],
                 });
                 
                 // Optimistic UI update

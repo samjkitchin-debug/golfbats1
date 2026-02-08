@@ -33,11 +33,24 @@ export type CompileTripSnapshotArgs = {
 };
 
 function formatTime12(s: string): string {
-  if (!s?.trim()) return "";
-  const [h, m] = s.trim().split(":").map(Number);
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  const period = h >= 12 ? "pm" : "am";
-  return `${h12}:${String(m ?? 0).padStart(2, "0")}${period}`;
+  const trimmed = s?.trim();
+  if (!trimmed) return "";
+  const match = trimmed.match(/^(\d{1,2})\s*:\s*(\d{2})\s*(am|pm)?$/i);
+  if (!match) return "";
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const periodIn = match[3]?.toLowerCase();
+  let h24: number;
+  if (periodIn === "am") {
+    h24 = h === 12 ? 0 : h;
+  } else if (periodIn === "pm") {
+    h24 = h === 12 ? 12 : h + 12;
+  } else {
+    h24 = h;
+  }
+  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  const periodOut = h24 >= 12 ? "pm" : "am";
+  return `${h12}:${String(m).padStart(2, "0")}${periodOut}`;
 }
 
 /** Single canonical source for meet time/point: decisionLogistics then logistics. */
@@ -57,6 +70,17 @@ export function getCanonicalMeet(trip: Trip): {
     meetTime12: meetTimeRaw ? formatTime12(meetTimeRaw) : null,
     meetingPoint,
   };
+}
+
+export function getMeetReadiness(trip: Trip): {
+  ok: boolean;
+  missing: Array<"meetTime" | "meetingPoint">;
+} {
+  const { meetTimeRaw, meetingPoint } = getCanonicalMeet(trip);
+  const missing: Array<"meetTime" | "meetingPoint"> = [];
+  if (!meetTimeRaw?.trim()) missing.push("meetTime");
+  if (!meetingPoint?.trim()) missing.push("meetingPoint");
+  return { ok: missing.length === 0, missing };
 }
 
 /**

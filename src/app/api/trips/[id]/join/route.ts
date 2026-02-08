@@ -213,7 +213,7 @@ export async function POST(
     }
 
     // Build trip payload to check joinability using isTripJoinable helper
-    // This uses getEffectiveTripPhase which implements auto-open logic (30 days before)
+    // This uses getEffectiveTripTimelinePhase which implements auto-open logic (30 days before)
     const tripIdentifier = isLegacyId ? legacyId : trip.id;
     const tripPayload = await buildTripPayload(supabase, tripIdentifier);
     if (!tripPayload) {

@@ -647,8 +647,37 @@ export async function POST(req: Request) {
         updateData.meet_time = trip.logistics?.meetTime || null;
         updateData.ferry_details = trip.logistics?.ferryDetails || null;
         updateData.notes = trip.logistics?.notes || null;
-        // Persist full logistics JSON so meetConfirmed, itineraryDetails, etc. are stored
-        updateData.logistics = typeof trip.logistics === "object" && trip.logistics !== null ? trip.logistics : undefined;
+        // Merge semantics: preserve logistics keys set by dedicated endpoints (e.g. capacityLimit from
+        // /api/trips/[id]/settings) when the client omits them. undefined = omit; null = explicitly clear.
+        let existingLogistics: Record<string, unknown> = {};
+        const { data: existingRow } = await supabase
+          .from("trips")
+          .select("logistics")
+          .eq("id", existingTrip.id)
+          .single();
+        if (existingRow?.logistics != null) {
+          existingLogistics =
+            typeof existingRow.logistics === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(existingRow.logistics) as Record<string, unknown>;
+                  } catch {
+                    return {};
+                  }
+                })()
+              : (existingRow.logistics as Record<string, unknown>) ?? {};
+        }
+        const incoming =
+          typeof trip.logistics === "object" && trip.logistics !== null
+            ? (trip.logistics as Record<string, unknown>)
+            : {};
+        const mergedLogistics: Record<string, unknown> = { ...existingLogistics };
+        for (const [k, v] of Object.entries(incoming)) {
+          if (v !== undefined) {
+            mergedLogistics[k] = v;
+          }
+        }
+        updateData.logistics = mergedLogistics;
       }
       // Persist decision_logistics JSON when provided (meet time/point for decision display)
       if (trip.decisionLogistics !== undefined) {

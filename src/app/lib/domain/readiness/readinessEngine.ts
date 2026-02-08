@@ -7,6 +7,7 @@
 import type { ViewerRole } from "../roles/roleEngine";
 import type { Trip } from "../../tripActions";
 import type { BaseCampPhase } from "../lifecycle/phaseDefinitions";
+import { getMeetReadiness } from "../../trips/tripSnapshot";
 
 export type BlockerCode =
   | "no_privilege"
@@ -69,6 +70,14 @@ export function getReadyToLockBlockers(args: {
     blockers.push({
       code: "missing_trip_basics",
       message: "Trip date and name are required.",
+    });
+  }
+
+  const meetReady = getMeetReadiness(trip);
+  if (!meetReady.ok) {
+    blockers.push({
+      code: "missing_meet_details",
+      message: "Meet time and meeting point are required to close sign-ups.",
     });
   }
 

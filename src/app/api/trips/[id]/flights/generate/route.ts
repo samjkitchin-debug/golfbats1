@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
 import { requireAuthedUser, isGroupAdmin } from "@/app/lib/serverAuth";
-import { getEffectiveTripPhase } from "@/app/lib/tripDates";
+import { getEffectiveTripTimelinePhase } from "@/app/lib/tripDates";
 import { generateQuartileFlights } from "@/app/lib/flightGenerator";
 
 /**
@@ -73,7 +73,7 @@ export async function POST(
       cutoffAt: tripData.cutoff_at ?? undefined,
       signupsOpenedAt: (tripData as { signups_opened_at?: string }).signups_opened_at ?? undefined,
     };
-    const phase = getEffectiveTripPhase(tripLike as Parameters<typeof getEffectiveTripPhase>[0]);
+    const phase = getEffectiveTripTimelinePhase(tripLike as Parameters<typeof getEffectiveTripTimelinePhase>[0]);
 
     if (phase !== "signupsClosed") {
       return NextResponse.json(

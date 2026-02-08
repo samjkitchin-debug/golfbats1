@@ -2,10 +2,14 @@
  * Trip Details blocks selector — pure projection of "what to show" by stage.
  * Single source of truth for Trip Details header blocks; no React.
  * See docs/canon/trip-details-snapshot-header.md.
+ *
+ * Trip Details is a projection (post-BaseCamp). No lanes/instruments here; edits via kebab only.
  */
 
+import { canEditMeetDetails } from "../../permissions";
 import type { Trip } from "../../tripActions";
 import type { TripSnapshot } from "../../trips/tripSnapshot";
+import { getCanonicalMeet } from "../../trips/tripSnapshot";
 
 export type TripDetailsBlock =
   | {
@@ -23,10 +27,25 @@ export type TripDetailsBlock =
       kind: "signups_gate";
       title?: string;
       content: {
+        /** When false/undefined: show "Sign-ups open on …" + Open now. When true: show "Sign-ups close on …" + Change only. */
+        isOpenNow?: boolean;
         opensOnLabel: string;
         canEdit: boolean;
         showOpenNow: boolean;
+        /** When isOpenNow: label for close date line (formatted date or "Not set yet"). */
+        closesOnLabel?: string;
+        /** When isOpenNow: YMD for the close-date editor (effective close date). */
+        closesOnDateYmd?: string | null;
+        /** When true: show "Sign-ups are closed." + Reopen action (manual close override). */
+        isManuallyClosed?: boolean;
       };
+    }
+  | {
+      kind: "meet";
+      meetTimeLabel: string | null;
+      meetingPointLabel: string | null;
+      hasMeetDetails: boolean;
+      primaryAction?: { id: "set_meet_details"; label: "Set meet details" };
     }
   | { kind: "spacer" };
 
@@ -41,13 +60,29 @@ export function selectTripDetailsBlocks(args: {
   snapshot: TripSnapshot | null;
   trip: Trip;
   canEdit: boolean;
-  signups: { opensOnLabel: string; showOpenNow: boolean };
+  /** Current member id (for meet-details permission). Pass null if unknown. */
+  currentMemberId?: string | null;
+  /** Whether scoring has started (for meet-details permission). */
+  scoringStarted?: boolean;
+  signups: {
+    opensOnLabel: string;
+    showOpenNow: boolean;
+    /** Canonical "sign-ups are open now" (e.g. manual open or past open moment). When true, gate shows close semantics. */
+    signupsOpenNow?: boolean;
+    /** Formatted close date when open (or "Not set yet"). */
+    closesOnLabel?: string;
+    /** Close date YMD for edit UI when open. */
+    closesOnDateYmd?: string | null;
+    /** When true, organiser manually closed (override); gate shows "Sign-ups are closed." + Reopen. */
+    signupsManuallyClosed?: boolean;
+  };
   /** Resolved host line (snapshot.hostLine ?? hostLabel) for identity block */
   hostLineDisplay?: string | null;
 }): TripDetailsBlock[] {
-  const { stage, snapshot, trip, canEdit, signups, hostLineDisplay } = args;
+  const { stage, snapshot, trip, canEdit, currentMemberId, scoringStarted, signups, hostLineDisplay } = args;
 
-  if (stage !== "post_create" || !snapshot) {
+  const allowLockedWithManualClose = stage === "locked" && (signups.signupsManuallyClosed === true);
+  if ((stage !== "post_create" && stage !== "signups_open" && !allowLockedWithManualClose) || !snapshot) {
     return [];
   }
 
@@ -103,15 +138,44 @@ export function selectTripDetailsBlocks(args: {
     });
   }
 
-  // Sign-ups gate: "Sign-ups open on …" + flags
-  if (signups.opensOnLabel) {
+  // Sign-ups gate: manually closed (Reopen) | open now (close on … + Change) | scheduled (open on … + Change/Open now).
+  const showSignupsGate = signups.signupsManuallyClosed || signups.opensOnLabel || signups.signupsOpenNow;
+  if (showSignupsGate) {
     blocks.push({
       kind: "signups_gate",
       content: {
+        isManuallyClosed: signups.signupsManuallyClosed ?? false,
+        isOpenNow: signups.signupsOpenNow ?? false,
         opensOnLabel: signups.opensOnLabel,
         canEdit,
         showOpenNow: signups.showOpenNow,
+        ...(signups.signupsOpenNow && {
+          closesOnLabel: signups.closesOnLabel ?? "Not set yet",
+          closesOnDateYmd: signups.closesOnDateYmd ?? null,
+        }),
       },
+    });
+  }
+
+  // Meet block: sign-ups open only. Read-only meet time + meeting point; single CTA when missing.
+  if (stage === "signups_open") {
+    const { meetTime12, meetTimeRaw, meetingPoint } = getCanonicalMeet(trip);
+    const meetTimeLabel = meetTime12 ?? null;
+    const meetingPointLabel = (meetingPoint?.trim() ?? "") || null;
+    const hasMeetDetails = Boolean(meetTimeRaw && meetingPoint?.trim());
+    const maySetMeetDetails =
+      !hasMeetDetails &&
+      (typeof scoringStarted === "boolean"
+        ? canEditMeetDetails(currentMemberId ?? null, trip, scoringStarted)
+        : canEdit);
+    blocks.push({
+      kind: "meet",
+      meetTimeLabel,
+      meetingPointLabel,
+      hasMeetDetails,
+      ...(maySetMeetDetails && {
+        primaryAction: { id: "set_meet_details", label: "Set meet details" },
+      }),
     });
   }
 

@@ -6,7 +6,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
 import { loadTrips, joinTrip, leaveTrip, isAttendeeIn, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
-import { isTripUpcoming, pickDefaultExpandedTrip, getEffectiveTripPhase, computeSignupOpenAt } from "../../lib/tripDates";
+import { isTripUpcoming, pickDefaultExpandedTrip, computeSignupOpenAt } from "../../lib/tripDates";
 import { resolveSignupPhase, getEffectiveSignupOpenAt } from "../../lib/tripPhase";
 import { compileTripSnapshot, getCanonicalMeet } from "../../lib/trips/tripSnapshot";
 import TripSnapshotGrid from "../../components/trips/TripSnapshotGrid";
@@ -438,7 +438,7 @@ export default function TripsListPage() {
   const [expandedTripId, setExpandedTripId] = useState<number | null>(null);
   const didInitExpandRef = useRef(false);
 
-  // Upcoming trips: Use getEffectiveTripPhase() to determine if trip is upcoming
+  // Upcoming trips: Use getEffectiveTripTimelinePhase() to determine if trip is upcoming
   // This ensures trip_date < today => never upcoming, even if status is wrong
   const upcomingTrips = useMemo(() => {
     const now = new Date();
