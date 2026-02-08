@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 
@@ -112,25 +112,30 @@ export async function GET(
     const memberIds = Array.from(new Set(attendees.map((a: any) => a.member_id).filter(Boolean)));
 
     // Fetch member profile data (public fields only - no passport/compliance data)
-    const membersById: Record<string, { display_name: string | null; full_name: string | null }> = {};
+    const membersById: Record<string, { display_name: string | null; full_name: string | null; profile_photo_path: string | null }> = {};
 
     if (memberIds.length > 0) {
       const { data: membersData, error: membersError } = await supabase
         .from("members")
-        .select("id,display_name,full_name")
+        .select("id,display_name,full_name,profile_photo_path")
         .in("id", memberIds);
 
       if (membersError) {
         console.warn("[trips/[id] API] Failed to fetch members:", membersError);
       } else if (membersData) {
         for (const m of membersData) {
-          membersById[m.id] = { display_name: m.display_name, full_name: m.full_name };
+          membersById[m.id] = {
+            display_name: m.display_name,
+            full_name: m.full_name,
+            profile_photo_path: m.profile_photo_path ?? null,
+          };
         }
       }
     }
 
-    // Fetch results
-    const { data: resultData, error: resultError } = await supabase
+    // Fetch results (result_rows is RLS-restricted; use service client)
+    const supabaseService = await createSupabaseServiceClient();
+    const { data: resultData, error: resultError } = await supabaseService
       .from("trip_results")
       .select("id,trip_id,published,published_at,notes,result_rows(id,position,display_name,metric_label,metric_value)")
       .eq("trip_id", tripId)
@@ -154,6 +159,7 @@ export async function GET(
         // Include member profile fields (public only)
         fullName: member.full_name || null,
         displayName: member.display_name || null,
+        profilePhotoPath: member.profile_photo_path || null,
       };
     });
 

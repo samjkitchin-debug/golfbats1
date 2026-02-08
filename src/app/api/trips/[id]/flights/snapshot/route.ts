@@ -22,28 +22,19 @@ export async function GET(
   try {
     const { id } = await params;
     const supabase = await createSupabaseServerClient();
-    
+
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
 
-    // Resolve tripId (can be legacy numeric ID or UUID)
-    const numericId = parseInt(id, 10);
-    const isNumeric = !isNaN(numericId);
-
-    let tripQuery = supabase
-      .from("trips")
-      .select("id");
-
-    if (isNumeric) {
-      tripQuery = tripQuery.eq("legacy_id", numericId);
-    } else {
-      tripQuery = tripQuery.eq("id", id);
-    }
-
-    const { data: tripData, error: tripError } = await tripQuery.single();
+    // Invariant: Route param [id] may be legacy numeric id or UUID. We always resolve to canonical trips.id (UUID) before role checks and mutations.
+    const isNumeric = /^[0-9]+$/.test(id);
+    const parsed = isNumeric ? Number(id) : null;
+    let tripQuery = supabase.from("trips").select("id").limit(1);
+    tripQuery = isNumeric ? tripQuery.eq("legacy_id", parsed) : tripQuery.eq("id", id);
+    const { data: tripData, error: tripError } = await tripQuery.maybeSingle();
 
     if (tripError || !tripData) {
       return NextResponse.json(
@@ -52,10 +43,10 @@ export async function GET(
       );
     }
 
-    const tripUuidId = tripData.id;
+    const tripUuid = tripData.id;
 
-    // Get snapshot using server client (RLS applies)
-    const snapshot = await getFlightsSnapshotServer(supabase, tripUuidId);
+    // Get snapshot using server client (RLS applies); use canonical trip UUID
+    const snapshot = await getFlightsSnapshotServer(supabase, tripUuid);
 
     return NextResponse.json({ ok: true, snapshot });
   } catch (error) {

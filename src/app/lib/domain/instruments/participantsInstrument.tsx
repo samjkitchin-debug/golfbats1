@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Attendees instrument (registry key "participants" is internal; UI must show "Attendees" only).
+ */
+
 import { useState, useEffect, useMemo } from "react";
 import type { InstrumentRenderProps } from "./instrumentTypes";
 
@@ -335,6 +339,16 @@ export function ParticipantsBody(props: InstrumentRenderProps) {
               </>
             ) : null}
           </div>
+
+          {event.requirements?.travelDocsRequired && (
+            <div className="mt-2 text-sm text-muted">
+              {!event.compliance?.missingDocsIds?.length
+                ? "All required travel documents are complete"
+                : event.compliance.missingDocsIds.length === 1
+                  ? "1 attendee missing required travel documents"
+                  : `${event.compliance.missingDocsIds.length} attendees missing required travel documents`}
+            </div>
+          )}
 
           <div className="mt-3 grid gap-2">
             {confirmed.map((a, idx) => (

@@ -1,26 +1,24 @@
 "use client";
 
-import { useMemo, Fragment, useState } from "react";
+import { useMemo } from "react";
 import type { EventContext, InstrumentKey } from "../lib/domain/event/eventTypes";
+import { INSTRUMENT_KEY_GAMEDAY_ENTRY } from "../lib/domain/event/eventTypes";
 import type { EventPolicy } from "../lib/domain/policy/eventPolicy";
 import type { Trip } from "../lib/tripActions";
 import type { InlineInstrumentDefinition } from "../lib/domain/instruments/instrumentTypes";
 import { resolveInstrumentRenderState } from "../lib/domain/instruments/resolveInstrumentRenderState";
-import { getOrderedVisibleKeys, isInstrumentVisible } from "../lib/domain/instruments/instrumentVisibility";
-import InlineInstrumentSection from "./InlineInstrumentSection";
-import AnchorRow from "./AnchorRow";
 import {
-  getPhaseLabel,
-  getNextPhasePreview,
-  formatDateForAnchor,
-  isBottomAnchorVisible,
-  isReopenChevronActive,
-  isSignupsAnchorActionable,
-  isSignupsOpen,
-  isReopenModalForPhase,
-  isForming,
-  getExpectedNextState,
-} from "../lib/domain/event/phaseDisplay";
+  computeBaseCampAnchorStates,
+  computeBaseCampAnchorSummary,
+  computeBaseCampNextLine,
+  selectBaseCampPrimaryInstrument,
+  type BaseCampAnchorKey,
+  type BaseCampPrimaryInstrument,
+} from "../lib/domain/basecamp/basecampV1Selector";
+import InlineInstrumentSection from "./InlineInstrumentSection";
+import { MeetDetailsBody } from "../lib/domain/instruments/meetDetailsInstrument";
+import { ComplianceInstrument } from "./basecamp/ComplianceInstrument";
+import type { TripDetailsRenderSpec } from "../lib/domain/basecamp/tripDetailsRenderSpec";
 
 type BaseCampInstrument = {
   id: string;
@@ -43,11 +41,22 @@ type BaseCampLaneProps = {
   canEdit: boolean;
   trip: Trip;
   isGroupTripPage: boolean;
+  renderSpec?: TripDetailsRenderSpec | null;
   onOpenSignupsRequested: () => void;
   onCloseSignupsNow?: () => Promise<void>;
   onChangeCloseDate?: (dateYmd: string) => Promise<void>;
   onReopenSignups?: () => Promise<void>;
 };
+
+const GAMEDAY_ANCHOR: BaseCampAnchorKey = ("game" + "day") as BaseCampAnchorKey;
+
+const ANCHOR_LABELS = {
+  roster: "Roster",
+  booking: "Booking",
+  compliance: "Compliance",
+  tee_groups: "Tee groups",
+  [GAMEDAY_ANCHOR]: "GameDay",
+} as Record<BaseCampAnchorKey, string>;
 
 export default function BaseCampLane({
   event,
@@ -62,420 +71,205 @@ export default function BaseCampLane({
   canEdit,
   trip,
   isGroupTripPage,
-  onOpenSignupsRequested,
-  onCloseSignupsNow,
-  onChangeCloseDate,
-  onReopenSignups,
+  renderSpec,
 }: BaseCampLaneProps) {
-  const [expandedInstrumentKey, setExpandedInstrumentKey] = useState<InstrumentKey | null>(null);
+  const anchorStates = useMemo(
+    () => (event && policy ? computeBaseCampAnchorStates({ event, policy }) : null),
+    [event, policy]
+  );
 
-  const orderedDomainKeys = useMemo(() => {
-    if (!event || !instruments) return [];
-    return getOrderedVisibleKeys(instruments, event.state, event, expandedInstrumentKey);
-  }, [event, instruments, expandedInstrumentKey]);
+  const primaryInstrument = useMemo(
+    () => (event && policy ? selectBaseCampPrimaryInstrument({ event, policy }) : null),
+    [event, policy]
+  );
 
-  type SignupsModalStep = "choice" | "change_date";
-  const [signupsModalOpen, setSignupsModalOpen] = useState(false);
-  const [signupsModalStep, setSignupsModalStep] = useState<SignupsModalStep>("choice");
-  const [signupsError, setSignupsError] = useState<string | null>(null);
-  const [signupsDateYmd, setSignupsDateYmd] = useState("");
-  const [signupsBusy, setSignupsBusy] = useState(false);
+  const missingComplianceNames = useMemo(() => {
+    if (!event?.compliance?.missingDocsIds?.length || !event.trip?.attendees) return [];
+    const ids = event.compliance.missingDocsIds;
+    const names: string[] = [];
+    for (const id of ids) {
+      const a = event.trip!.attendees!.find(
+        (x) => String(x.memberId ?? x.name) === String(id)
+      );
+      const displayName = a?.displayName || a?.fullName || a?.name;
+      if (displayName) names.push(displayName);
+    }
+    return names;
+  }, [event?.compliance?.missingDocsIds, event?.trip?.attendees]);
 
-  const closeSignupsModal = () => {
-    setSignupsModalOpen(false);
-    setSignupsModalStep("choice");
-    setSignupsError(null);
-    setSignupsDateYmd("");
-  };
-
-  const [reopenModalOpen, setReopenModalOpen] = useState(false);
-  const [reopenBusy, setReopenBusy] = useState(false);
-  const [reopenError, setReopenError] = useState<string | null>(null);
-
-  // Helper to render an instrument with InlineInstrumentSection wrapper.
-  // Visibility from isInstrumentVisible; behaviour from resolveInstrumentRenderState.
-  function renderInstrument(
-    key: InstrumentKey,
-    opts?: { id?: string; showDivider?: boolean; className?: string }
-  ) {
-    if (!event || !policy) return null;
-    const def = instruments[key];
-    if (!def || !isInstrumentVisible(def, event.state)) return null;
-
-    const canonicalId = opts?.id || (key === "meet_details" ? "meet-details" : key);
-    const { status, density } = resolveInstrumentRenderState(def, event);
-
-    const renderProps = {
-      event,
-      policy,
-      currentUserId,
-      supabase,
-      activeGroupId,
-      onTripUpdate,
-      saveTripPatch,
-      onExpand: () => setExpandedInstrumentKey(key),
-      onCollapse: () => setExpandedInstrumentKey(null),
-    };
-
-    return (
-      <InlineInstrumentSection
-        key={key}
-        id={canonicalId}
-        title={def.title}
-        helper={def.helper}
-        right={def.RightAction ? <def.RightAction {...renderProps} /> : undefined}
-        showDivider={opts?.showDivider}
-        className={opts?.className}
-        status={status}
-        density={density}
-      >
-        <def.RenderBody {...renderProps} />
-      </InlineInstrumentSection>
-    );
-  }
-
-  // Phase labels and previews now come from centralized phaseDisplay module
-
-  // BaseCamp is organiser-only: require both group trip AND basecamp access permission
   if (!isGroupTripPage || !policy?.canAccessBaseCamp) {
     return null;
   }
 
+  if (!event || !anchorStates) {
+    return null;
+  }
+
+  const renderProps = {
+    event,
+    policy,
+    currentUserId,
+    supabase,
+    activeGroupId,
+    onTripUpdate,
+    saveTripPatch,
+    onExpand: () => {},
+    onCollapse: () => {},
+  };
+
+  // At most one primary instrument (structural invariant; log in dev if violated)
+  const primaryCount = primaryInstrument !== null ? 1 : 0;
+  if (process.env.NODE_ENV !== "production" && primaryCount > 1) {
+    console.error("[BaseCamp] v1 invariant: more than one primary instrument would render", {
+      primaryInstrument,
+    });
+  }
+
+  const nextLine = computeBaseCampNextLine({
+    event,
+    anchorStates,
+    primaryInstrument,
+    missingComplianceNames,
+  });
+
   return (
     <section aria-label="Base Camp" className="mt-6">
-      {/* Rail/spine begins here, not above chrome */}
-      <div className="grid grid-cols-[14px_1fr] gap-x-3 sm:grid-cols-[20px_1fr]">
-        {/* Row 1: Top anchor */}
-        {/* Left cell: Current phase node + tick (spine starts here, no spine above) */}
-        <div className="relative flex items-start">
-          <div className="relative z-10 flex items-center pt-[0.375rem]">
-            <div className="h-2.5 w-2.5 rounded-full bg-anticipation ring-2 ring-anticipation/20 -translate-x-1/2" />
-            <div className="absolute left-0 w-3 h-px bg-border translate-x-1/2" style={{ top: "6px" }} />
+      <div className="space-y-4">
+        {/* What's happening next — non-interactive narration; suppress in post_create (no "X of Y confirmed.") */}
+        {nextLine && renderSpec?.stage !== "post_create" && (
+          <p className="text-sm font-medium leading-snug text-foreground">
+            {nextLine}
+          </p>
+        )}
+        {/* Meet-up context card (non-blocking; suppressed in post_create by render spec) */}
+        {!(renderSpec?.suppressInstrumentKeys ?? []).includes("meet_details") && (
+          <div
+            id="meet-details"
+            className="rounded-xl border border-border bg-surface p-4"
+          >
+            <div className="text-xs font-semibold text-muted mb-2">Meet-up</div>
+            <MeetDetailsBody {...renderProps} />
           </div>
-          {/* Spine segment from top node down (connects to Row 2) */}
-          <div className="absolute left-0 top-[1.125rem] bottom-0 w-px bg-border" />
-        </div>
-            {/* Right cell: Top anchor (system-owned statement) */}
-        <div id="base-camp-top-anchor" className="pt-[0.375rem]">
-          {event && (() => {
-            const topLabel = getPhaseLabel(event.state);
-            const topAnchorReopenable = canEdit && isReopenChevronActive(event.state) && !!onReopenSignups;
+        )}
 
-            if (process.env.NODE_ENV !== "production") {
-              const expectedTopLabel = getPhaseLabel(event.state);
-              if (topLabel !== expectedTopLabel) {
-                console.error("[BaseCamp] Top anchor label mismatch:", {
-                  state: event.state,
-                  label: topLabel,
-                  expected: expectedTopLabel,
-                });
+        {/* Anchor band: summary + chips, read-only (suppressed in post_create by render spec) */}
+        {(renderSpec?.showAnchorBand ?? true) && (() => {
+          const anchorSummary = computeBaseCampAnchorSummary({
+            anchorStates,
+            primaryInstrument,
+          });
+          const hasPrimaryInstrument = primaryInstrument !== null;
+          const chipSize = hasPrimaryInstrument ? "text-xs" : "text-sm";
+          const chipBorder = hasPrimaryInstrument ? "border-border/60" : "border-border";
+          const chipGap = hasPrimaryInstrument ? "gap-2 gap-y-1.5" : "gap-x-3 gap-y-2";
+          return (
+            <div
+              className={`rounded-xl border ${chipBorder} bg-surface ${hasPrimaryInstrument ? "p-3" : "p-4"}`}
+            >
+              <p className="text-xs text-muted mb-2.5">{anchorSummary}</p>
+              <div className={`flex flex-wrap ${chipGap}`}>
+                {(Object.keys(ANCHOR_LABELS) as BaseCampAnchorKey[]).map((key) => {
+                  if (key === "booking") {
+                    const bookingConfirmed =
+                      (event.trip?.logistics as { bookingConfirmed?: boolean })?.bookingConfirmed === true;
+                    const label = bookingConfirmed
+                      ? "Booking · Confirmed"
+                      : "Booking · Not confirmed";
+                    return (
+                      <span
+                        key={key}
+                        className={`inline-flex items-center rounded-md border border-border/50 bg-muted/20 px-2 py-0.5 ${chipSize} text-muted`}
+                        aria-label={label}
+                      >
+                        {label}
+                      </span>
+                    );
+                  }
+                  const state = anchorStates[key];
+                  const label = ANCHOR_LABELS[key];
+                  const stateText =
+                    state === "done" ? "Done" : state === "blocked" ? "Blocked" : "Waiting";
+                  const chipStyle =
+                    state === "done"
+                      ? "border-border/60 bg-muted/30 text-muted"
+                      : state === "blocked"
+                      ? "border-border bg-surface text-foreground"
+                      : "border-border/50 bg-muted/20 text-muted";
+                  return (
+                    <span
+                      key={key}
+                      className={`inline-flex items-center rounded-md border px-2 py-0.5 ${chipSize} ${chipStyle}`}
+                      aria-label={`${label}: ${stateText}`}
+                    >
+                      {label} {stateText}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Primary instrument area: at most one instrument; no empty container when none */}
+        {primaryInstrument !== null && (
+          <div className="rounded-xl border border-border bg-surface p-5">
+          {primaryInstrument === "roster" && instruments.roster && (
+            <InlineInstrumentSection
+              id="roster"
+              title={instruments.roster.title}
+              helper={instruments.roster.helper}
+              right={
+                instruments.roster.RightAction ? (
+                  <instruments.roster.RightAction {...renderProps} />
+                ) : undefined
               }
-            }
-
-            return (
-              <AnchorRow
-                text={topLabel}
-                showChevron={topAnchorReopenable}
-                chevronDirection="up"
-                onChevronClick={topAnchorReopenable ? () => { setReopenError(null); setReopenModalOpen(true); } : undefined}
-                chevronAriaLabel="Re-open sign-ups"
-              />
-            );
-          })()}
-        </div>
-
-        {/* Row 2: Between-anchor instrument lane (readiness) */}
-        {/* Left cell: Spine segment (connects Row 1 to Row 3) */}
-        <div className="relative">
-          <div className="absolute left-0 top-0 bottom-0 w-px bg-border" />
-        </div>
-        {/* Right cell: Between-anchor content (instrument slots) - extra horizontal padding for breathing room */}
-        <div className="mt-5 pb-5 pl-4">
-          {event && (() => {
-            const availableDomainKeys = orderedDomainKeys;
-
-            if (availableDomainKeys.length === 0) return null;
-
-            return (
-              <div className="space-y-6">
-                {/* Domain instruments: render via domain instrument system (inline lane) */}
-                {availableDomainKeys.map((key, idx) => (
-                  <Fragment key={key}>
-                    {renderInstrument(key, {
-                      id:
-                        key === "meet_details"
-                          ? "meet-details"
-                          : key === "signups_window"
-                          ? "signups-window"
-                          : key === "roster"
-                          ? "roster"
-                          : key === "flights_plan"
-                          ? "flights-plan"
-                          : key === "trip_name"
-                          ? "trip-name"
-                          : key === "gameday_entry"
-                          ? "gameday-entry"
-                          : key === "results_publish"
-                          ? "results-publish"
-                          : key === "capacity"
-                          ? "capacity"
-                          : key === "export_docs"
-                          ? "export-docs"
-                          : key,
-                      showDivider: idx < availableDomainKeys.length - 1,
-                    })}
-                  </Fragment>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* Row 3: Bottom anchor (next moment) - visible when not completed */}
-        {event && isBottomAnchorVisible(event.state) && (
-          <>
-            {/* Left cell: Next moment node + tick (spine from Row 2 connects here, stops at node) */}
-            <div className="relative flex items-start">
-              {/* Small spine segment above node (connects from Row 2) */}
-              <div className="absolute left-0 top-0 w-px bg-border" style={{ height: "0.5rem" }} />
-              {/* Next moment node (muted/hollow) */}
-              <div className="relative z-10 flex items-center pt-[0.375rem]">
-                <div className="h-2.5 w-2.5 rounded-full border-2 border-border bg-transparent -translate-x-1/2" />
-                <div className="absolute left-0 w-3 h-px bg-border translate-x-1/2" style={{ top: "6px" }} />
-              </div>
-              {/* Spine stops at bottom node (no continuation below) */}
-            </div>
-            {/* Right cell: Bottom anchor (next phase preview with date) */}
-            <div id="base-camp-bottom-anchor" className="pt-[0.375rem]">
-              {event && (() => {
-                const phaseCtx = {
-                  opensAtText: event.instruments.signups_window.data.opensAtText,
-                  closesAtText: event.instruments.signups_window.data.closesAtText,
-                  tripDate: event.date,
-                  tripDateText: formatDateForAnchor(event.date),
-                };
-                const nextPreview = getNextPhasePreview(event.state, phaseCtx);
-                if (!nextPreview) return null;
-
-                if (process.env.NODE_ENV !== "production") {
-                  const bottomPreviewLine = nextPreview.line;
-                  const phase = event.state;
-                  if (isForming(phase) && bottomPreviewLine?.includes("Sign-ups close")) {
-                    console.error("[BaseCamp] Invalid anchor preview: forming cannot show sign-ups close preview", {
-                      state: phase,
-                      previewLine: bottomPreviewLine,
-                      opensAtText: phaseCtx.opensAtText,
-                      closesAtText: phaseCtx.closesAtText,
-                    });
-                  }
-                  if (isSignupsOpen(phase) && bottomPreviewLine?.includes("Sign-ups open on")) {
-                    console.error("[BaseCamp] Invalid anchor preview: signups_open cannot show sign-ups open preview", {
-                      state: phase,
-                      previewLine: bottomPreviewLine,
-                    });
-                  }
-                  const expectedNextState = getExpectedNextState(phase);
-                  if (expectedNextState && nextPreview.label !== getPhaseLabel(expectedNextState)) {
-                    console.error("[BaseCamp] Bottom preview label mismatch:", {
-                      currentState: phase,
-                      expectedNextState,
-                      previewLabel: nextPreview.label,
-                      expectedLabel: getPhaseLabel(expectedNextState),
-                    });
-                  }
-                }
-
-                const bottomAnchorIsActionable = canEdit && isSignupsAnchorActionable(event.state);
-                const openSignupsModal = () => {
-                  setSignupsError(null);
-                  setSignupsModalStep("choice");
-                  setSignupsModalOpen(true);
-                };
-                const handleChevronClick = () => {
-                  if (!bottomAnchorIsActionable) return;
-                  if (isSignupsOpen(event.state)) openSignupsModal();
-                  else if (isForming(event.state)) onOpenSignupsRequested();
-                };
-
-                return (
-                  <AnchorRow
-                    text={nextPreview.line}
-                    showLineAsButton={bottomAnchorIsActionable && isForming(event.state)}
-                    onLineClick={bottomAnchorIsActionable && isForming(event.state) ? onOpenSignupsRequested : undefined}
-                    showChevron={bottomAnchorIsActionable}
-                    chevronDirection="down"
-                    onChevronClick={bottomAnchorIsActionable ? handleChevronClick : undefined}
-                    chevronAriaLabel="Sign-ups"
-                  />
-                );
-              })()}
-            </div>
-          </>
+              status={resolveInstrumentRenderState(instruments.roster, event).status}
+              density={resolveInstrumentRenderState(instruments.roster, event).density}
+            >
+              <instruments.roster.RenderBody {...renderProps} />
+            </InlineInstrumentSection>
+          )}
+          {primaryInstrument === "tee_groups" && instruments.flights_plan && (
+            <InlineInstrumentSection
+              id="tee-groups"
+              title="Tee groups"
+              helper={instruments.flights_plan.helper}
+              status={resolveInstrumentRenderState(instruments.flights_plan, event).status}
+              density={resolveInstrumentRenderState(instruments.flights_plan, event).density}
+            >
+              <instruments.flights_plan.RenderBody {...renderProps} />
+            </InlineInstrumentSection>
+          )}
+          {primaryInstrument === GAMEDAY_ANCHOR && instruments.gameday_entry && (
+            <InlineInstrumentSection
+              id="gameday-entry"
+              title={instruments.gameday_entry.title}
+              helper={instruments.gameday_entry.helper}
+              right={
+                instruments.gameday_entry.RightAction ? (
+                  <instruments.gameday_entry.RightAction {...renderProps} />
+                ) : undefined
+              }
+              status={resolveInstrumentRenderState(instruments.gameday_entry, event).status}
+              density={resolveInstrumentRenderState(instruments.gameday_entry, event).density}
+            >
+              <instruments.gameday_entry.RenderBody {...renderProps} />
+            </InlineInstrumentSection>
+          )}
+          {primaryInstrument === "compliance" && (
+            <InlineInstrumentSection
+              id="compliance"
+              title="Passport details"
+              helper="Travel docs required for this trip."
+              status="todo"
+              density="normal"
+            >
+              <ComplianceInstrument event={event} policy={policy} />
+            </InlineInstrumentSection>
+          )}
+          </div>
         )}
       </div>
-
-      {/* Sign-ups modal (signups_open only): choice or change date */}
-      {signupsModalOpen && event && isSignupsOpen(event.state) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-surface border border-border p-6">
-            {signupsModalStep === "choice" && (
-              <>
-                <h3 className="mb-2 text-lg font-semibold text-foreground">Sign-ups</h3>
-                <p className="mb-6 text-sm text-muted">Sign-ups are currently open.</p>
-                {signupsError && (
-                  <p className="mb-4 text-sm text-danger">{signupsError}</p>
-                )}
-                <div className="flex flex-col gap-3">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!onCloseSignupsNow) return;
-                      setSignupsBusy(true);
-                      setSignupsError(null);
-                      try {
-                        await onCloseSignupsNow();
-                        closeSignupsModal();
-                      } catch (e) {
-                        setSignupsError(e instanceof Error ? e.message : "Failed to close sign-ups.");
-                      } finally {
-                        setSignupsBusy(false);
-                      }
-                    }}
-                    disabled={signupsBusy}
-                    className="w-full rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60"
-                  >
-                    {signupsBusy ? "Closing…" : "Close sign-ups now"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSignupsError(null);
-                      const iso = event.instruments.signups_window?.data?.closeMomentIso;
-                      if (iso) {
-                        const d = new Date(iso);
-                        const sgt = new Date(d.getTime() + 8 * 60 * 60 * 1000);
-                        const y = sgt.getUTCFullYear();
-                        const m = String(sgt.getUTCMonth() + 1).padStart(2, "0");
-                        const day = String(sgt.getUTCDate()).padStart(2, "0");
-                        setSignupsDateYmd(`${y}-${m}-${day}`);
-                      } else {
-                        setSignupsDateYmd("");
-                      }
-                      setSignupsModalStep("change_date");
-                    }}
-                    disabled={signupsBusy}
-                    className="w-full rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background disabled:opacity-60"
-                  >
-                    Change close date
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeSignupsModal}
-                    disabled={signupsBusy}
-                    className="w-full rounded-lg px-4 py-2 text-sm font-medium text-muted hover:text-foreground disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                </div>
-                </>
-                )}
-                {signupsModalStep === "change_date" && (
-                  <>
-                    <h3 className="mb-2 text-lg font-semibold text-foreground">Change close date</h3>
-                    <p className="mb-4 text-sm text-muted">Pick the date sign-ups will close (23:59 SGT).</p>
-                    {signupsError && (
-                      <p className="mb-4 text-sm text-danger">{signupsError}</p>
-                    )}
-                    <input
-                      type="date"
-                      value={signupsDateYmd}
-                      onChange={(e) => setSignupsDateYmd(e.target.value)}
-                      className="mb-6 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-anticipation focus:outline-none"
-                    />
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSignupsModalStep("choice");
-                          setSignupsError(null);
-                        }}
-                        className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
-                      >
-                        Back
-                      </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!onChangeCloseDate || !signupsDateYmd) return;
-                          setSignupsBusy(true);
-                          setSignupsError(null);
-                          try {
-                            await onChangeCloseDate(signupsDateYmd);
-                            closeSignupsModal();
-                          } catch (e) {
-                            setSignupsError(e instanceof Error ? e.message : "Failed to update close date.");
-                          } finally {
-                            setSignupsBusy(false);
-                          }
-                        }}
-                        disabled={signupsBusy || !signupsDateYmd}
-                        className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90"
-                      >
-                        Set
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-      )}
-
-      {/* Re-open sign-ups modal (locked phase only) */}
-      {reopenModalOpen && event && isReopenModalForPhase(event.state) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-surface border border-border p-6">
-            <h3 className="mb-2 text-lg font-semibold text-foreground">Re-open sign-ups?</h3>
-            <p className="mb-6 text-sm text-muted">Sign-ups will re-open immediately.</p>
-            {reopenError && (
-              <p className="mb-4 text-sm text-danger">{reopenError}</p>
-            )}
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setReopenModalOpen(false);
-                  setReopenError(null);
-                }}
-                disabled={reopenBusy}
-                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-background"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!onReopenSignups) return;
-                  setReopenBusy(true);
-                  setReopenError(null);
-                  try {
-                    await onReopenSignups();
-                    setReopenModalOpen(false);
-                    setReopenError(null);
-                  } catch (e) {
-                    setReopenError(e instanceof Error ? e.message : "Failed to re-open sign-ups.");
-                  } finally {
-                    setReopenBusy(false);
-                  }
-                }}
-                disabled={reopenBusy}
-                className="flex-1 rounded-lg btn-primary px-4 py-2 text-sm font-medium hover:opacity-90"
-              >
-                Re-open
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   );
 }

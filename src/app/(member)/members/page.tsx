@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { formatHandicap } from "@/app/lib/format";
-import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import MemberProfileCard from "../components/MemberProfileCard";
 
@@ -40,9 +38,6 @@ function getFlagForNationality(nationality: string | null): string | null {
 }
 
 export default function MembersPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const adminMode = searchParams?.get("mode") === "admin";
   const supabase = useMemo(() => {
     return createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -72,6 +67,10 @@ export default function MembersPage() {
   });
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [membershipActionError, setMembershipActionError] = useState<string | null>(null);
+  const [pendingSummary, setPendingSummary] = useState<{ totalPending: number; byGroupId: Record<string, number> } | null>(null);
+  const [pendingSummaryLoading, setPendingSummaryLoading] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [pendingActionIds, setPendingActionIds] = useState<Set<string>>(new Set());
 
   // Load user's approved groups first
   useEffect(() => {
@@ -91,17 +90,15 @@ export default function MembersPage() {
           
           // Set default selected group: use localStorage if available, then activeGroupId, then first group
           if (groups.length > 0) {
-            const savedGroupId = typeof window !== "undefined" 
+            const savedGroupId = typeof window !== "undefined"
               ? localStorage.getItem("dayforeit:members:last_group")
               : null;
-            
-            // Check if saved group ID is still valid
+            // Guard: saved group must still exist in approvedGroups; otherwise fall back
             const isValidSavedGroup = savedGroupId && (
               savedGroupId === "all" || groups.some((g: { id: string }) => g.id === savedGroupId)
             );
-            
-            const defaultGroupId = isValidSavedGroup 
-              ? savedGroupId 
+            const defaultGroupId = isValidSavedGroup
+              ? savedGroupId
               : (bootstrap.activeGroupId || groups[0].id);
             setSelectedGroupId(defaultGroupId);
           }
@@ -114,6 +111,30 @@ export default function MembersPage() {
     }
     loadGroups();
   }, []);
+
+  // Fetch pending-approvals when user has at least one admin group (for dropdown labels + Review CTA)
+  useEffect(() => {
+    if (!approvedGroups.length || !approvedGroups.some((g) => g.role === "admin")) {
+      setPendingSummary(null);
+      return;
+    }
+    let cancelled = false;
+    setPendingSummaryLoading(true);
+    fetch("/api/groups/pending-approvals", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { totalPending: 0, byGroupId: {} }))
+      .then((data) => {
+        if (!cancelled) setPendingSummary({ totalPending: data.totalPending ?? 0, byGroupId: data.byGroupId ?? {} });
+      })
+      .catch(() => {
+        if (!cancelled) setPendingSummary(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPendingSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [approvedGroups, refreshNonce]);
 
   // Load members for selected group (or all groups if "all" is selected)
   const loadMembers = async () => {
@@ -215,8 +236,8 @@ export default function MembersPage() {
           // Start with approved members
           userIds = approvedUserIds;
 
-          // If there are pending members and we're an admin in adminMode, load their details too
-          if (pendingUserIds.length > 0 && adminMode) {
+          // If there are pending members and we're admin of this group, load their details too
+          if (pendingUserIds.length > 0) {
             const selectedGroup = approvedGroups.find((g) => g.id === selectedGroupId);
             if (selectedGroup?.role === "admin") {
               // Load pending member details
@@ -272,8 +293,9 @@ export default function MembersPage() {
       setLoading(true);
       return;
     }
+    setPendingMembers([]);
     loadMembers();
-  }, [supabase, selectedGroupId, loadingGroups, approvedGroups]);
+  }, [supabase, selectedGroupId, loadingGroups, approvedGroups, refreshNonce]);
 
   // Filter members by search query
   const filteredMembers = useMemo(() => {
@@ -297,16 +319,21 @@ export default function MembersPage() {
     });
   }, [members, searchQuery]);
 
-  // Check if user is admin of selected group
+  // Admin capability is derived purely from selected group role (All groups = read-only, no admin)
   const isAdminOfSelectedGroup = useMemo(() => {
     if (selectedGroupId === "all" || !selectedGroupId) return false;
-    const selectedGroup = approvedGroups.find((g) => g.id === selectedGroupId);
-    return selectedGroup?.role === "admin";
+    return approvedGroups.find((g) => g.id === selectedGroupId)?.role === "admin";
   }, [selectedGroupId, approvedGroups]);
+
+  const firstAdminGroupIdWithPending = approvedGroups.find((g) => g.role === "admin" && (pendingSummary?.byGroupId?.[g.id] ?? 0) > 0)?.id ?? null;
 
   // Handle membership actions
   const handleMembershipAction = async (userId: string, action: "approve" | "reject" | "setRole" | "remove", role?: "admin" | "member") => {
     if (!selectedGroupId || selectedGroupId === "all") return;
+    if (action === "approve" || action === "reject") {
+      if (pendingActionIds.has(userId)) return;
+      setPendingActionIds((prev) => new Set(prev).add(userId));
+    }
 
     setProcessingAction({ userId, action });
     setMembershipActionError(null);
@@ -323,6 +350,13 @@ export default function MembersPage() {
       if (!res.ok) {
         setMembershipActionError(json.error || "Failed to update membership");
         setProcessingAction(null);
+        if (action === "approve" || action === "reject") {
+          setPendingActionIds((prev) => {
+            const next = new Set(prev);
+            next.delete(userId);
+            return next;
+          });
+        }
         return;
       }
 
@@ -331,13 +365,36 @@ export default function MembersPage() {
         setRemoveMemberModal({ isOpen: false, member: null });
       }
 
-      // Reload members after action
-      await loadMembers();
+      // After approve/reject: optimistic UI update and trigger re-fetch so dropdown label and list stay in sync
+      if (action === "approve" || action === "reject") {
+        setPendingMembers((prev) => prev.filter((m) => m.id !== userId));
+        setPendingSummary((prev) => {
+          if (!prev) return prev;
+          const nextTotal = Math.max(0, prev.totalPending - 1);
+          const nextByGroupId = { ...prev.byGroupId };
+          if (selectedGroupId && selectedGroupId !== "all") {
+            const current = nextByGroupId[selectedGroupId] ?? 0;
+            nextByGroupId[selectedGroupId] = Math.max(0, current - 1);
+          }
+          return { totalPending: nextTotal, byGroupId: nextByGroupId };
+        });
+        setRefreshNonce((n) => n + 1);
+      } else {
+        // setRole / remove: reload members
+        await loadMembers();
+      }
     } catch (error) {
       console.error("Failed to update membership:", error);
       setMembershipActionError("Failed to update membership. Please try again.");
     } finally {
       setProcessingAction(null);
+      if (action === "approve" || action === "reject") {
+        setPendingActionIds((prev) => {
+          const next = new Set(prev);
+          next.delete(userId);
+          return next;
+        });
+      }
     }
   };
 
@@ -367,49 +424,42 @@ export default function MembersPage() {
             className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground outline-none focus:border-foreground"
           >
             {approvedGroups.length > 1 && (
-              <option value="all">All groups</option>
+              <option value="all">
+                All groups{pendingSummary && pendingSummary.totalPending > 0 ? ` · Pending ${pendingSummary.totalPending}` : ""}
+              </option>
             )}
             {approvedGroups.map((group) => (
               <option key={group.id} value={group.id}>
-                {group.name}
+                {group.name}{pendingSummary && (pendingSummary.byGroupId[group.id] ?? 0) > 0 ? ` · Pending ${pendingSummary.byGroupId[group.id]}` : ""}
               </option>
             ))}
           </select>
         )}
-        {isAdminOfSelectedGroup && selectedGroupId !== "all" && (
-          <label className="flex items-center gap-2 cursor-pointer">
-            <span className="text-xs text-foreground">Admin mode</span>
-            <div className="relative inline-block h-6 w-10 focus-within:ring-2 focus-within:ring-anticipation/40 focus-within:rounded-full">
-              <input
-                type="checkbox"
-                checked={adminMode}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    router.push("/members?mode=admin");
-                  } else {
-                    router.push("/members");
-                  }
-                }}
-                className="sr-only peer focus-visible:outline-none"
-              />
-              <span
-                className={`absolute inset-0 rounded-full transition-colors border ${
-                  adminMode 
-                    ? "bg-anticipation/30 border-anticipation" 
-                    : "bg-surface-2 border-border"
-                }`}
-              />
-              <span
-                className={`absolute left-[1px] top-[1px] h-5 w-5 rounded-full transition-transform ${
-                  adminMode 
-                    ? "bg-anticipation translate-x-4" 
-                    : "bg-surface translate-x-0"
-                }`}
-              />
-            </div>
-          </label>
-        )}
       </div>
+
+      {/* All groups pending banner: show when "All groups" selected and there is pending across groups */}
+      {selectedGroupId === "all" && pendingSummary && pendingSummary.totalPending > 0 && approvedGroups.some((g) => g.role === "admin") && (
+        <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-3 flex items-center justify-between gap-3">
+          <p className="text-sm text-muted">
+            You have {pendingSummary.totalPending} pending approval{pendingSummary.totalPending === 1 ? "" : "s"} across your groups.
+          </p>
+          <button
+            type="button"
+            disabled={!firstAdminGroupIdWithPending}
+            onClick={() => {
+              if (firstAdminGroupIdWithPending) {
+                setSelectedGroupId(firstAdminGroupIdWithPending);
+                if (typeof window !== "undefined") {
+                  localStorage.setItem("dayforeit:members:last_group", firstAdminGroupIdWithPending);
+                }
+              }
+            }}
+            className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Review
+          </button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="mb-4">
@@ -442,17 +492,8 @@ export default function MembersPage() {
         </div>
       )}
 
-      {/* Admin Tools View Gate */}
-      {adminMode && !isAdminOfSelectedGroup && selectedGroupId !== "all" && (
-        <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-3">
-          <p className="text-sm text-muted">
-            You don't have access to admin tools for this group.
-          </p>
-        </div>
-      )}
-
-      {/* Admin Tools: Pending Section */}
-      {adminMode && isAdminOfSelectedGroup && selectedGroupId !== "all" && pendingMembers.length > 0 && (
+      {/* Admin Tools: Pending Section (only when admin of selected group) */}
+      {isAdminOfSelectedGroup && selectedGroupId !== "all" && pendingMembers.length > 0 && (
         <div className="mb-6">
           <div className="mb-3">
             <h2 className="text-sm font-medium text-foreground">Pending</h2>
@@ -464,7 +505,7 @@ export default function MembersPage() {
               const photoUrl = member.profile_photo_path
                 ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${member.profile_photo_path}`
                 : null;
-              const isProcessing = processingAction?.userId === member.id;
+              const isBusy = processingAction?.userId === member.id || pendingActionIds.has(member.id);
 
               return (
                 <div
@@ -495,14 +536,14 @@ export default function MembersPage() {
                   <div className="flex gap-2 flex-shrink-0">
                     <button
                       onClick={() => handleMembershipAction(member.id, "approve")}
-                      disabled={isProcessing}
+                      disabled={isBusy}
                       className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background disabled:opacity-50"
                     >
                       Approve
                     </button>
                     <button
                       onClick={() => handleMembershipAction(member.id, "reject")}
-                      disabled={isProcessing}
+                      disabled={isBusy}
                       className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background disabled:opacity-50"
                     >
                       Reject
@@ -599,7 +640,7 @@ export default function MembersPage() {
       <MemberProfileCard
         member={selectedMember}
         onClose={() => setSelectedMember(null)}
-        adminMode={adminMode}
+        adminMode={isAdminOfSelectedGroup}
         isAdminOfSelectedGroup={isAdminOfSelectedGroup}
         selectedGroupId={selectedGroupId}
         memberships={memberships}

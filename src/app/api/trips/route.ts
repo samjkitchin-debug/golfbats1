@@ -38,9 +38,9 @@ async function fetchTripsData(
     throw new Error(tripsError.message || "Failed to fetch trips.");
   }
 
-  // Filter out truly inactive statuses (completed, archived belong in Results)
+  // Filter out truly inactive statuses (completed, archived belong in Results; cancelled removed from active lists)
   // "closed" means signups closed but trip is still upcoming - MUST remain visible
-  const excludedStatuses = ["completed", "archived"];
+  const excludedStatuses = ["completed", "archived", "cancelled"];
   const tripsData = (tripsDataRaw || []).filter(
     (trip) => !excludedStatuses.includes(trip.status)
   );

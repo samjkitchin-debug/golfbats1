@@ -16,6 +16,11 @@ import { perfMark, perfMeasure, perfLog } from "./perf";
 
 export type AttendanceStatus = "confirmed" | "waitlist" | "out";
 
+/** Single predicate for "in/confirmed": Join writes "confirmed"; exclude waitlist/out. Used by flights generation and trip UI. */
+export function isAttendeeIn(status: string | null): boolean {
+  return status === "confirmed";
+}
+
 export type Attendee = {
   name: string;
   status: AttendanceStatus;
@@ -27,6 +32,7 @@ export type Attendee = {
   fullName?: string | null;
   displayName?: string | null;
   nationality?: string | null;
+  profilePhotoPath?: string | null;
   // Compliance fields (derived from member_passports, canonical source)
   // Never return raw passport values - only derived booleans
   docsComplete?: boolean;
@@ -51,6 +57,8 @@ export type TripLogistics = {
   capacityConfirmed?: boolean;
   meetConfirmed?: boolean;
   transportConfirmed?: boolean;
+  /** v1: tee time confirmed by group (binary readiness signal, not a process) */
+  bookingConfirmed?: boolean;
   /** Travel docs required flag - when true, organiser needs passport details for all attendees */
   travelDocsRequired?: boolean;
 };
@@ -65,6 +73,15 @@ export type DecisionLogistics = {
   meetTime?: string;
   tripNameConfirmed?: boolean;
   signupsWindowConfirmed?: boolean;
+  /** ISO timestamp for 00:00 SGT on the chosen signups open date (scheduled override). */
+  signupsOpensAtIso?: string;
+  /** When set, organiser has explicitly confirmed capacity (even if unchanged). */
+  capacityConfirmedAtIso?: string | null;
+  /** Format change provenance (when organiser changes scoring format). */
+  formatChangedAtIso?: string | null;
+  formatChangedFrom?: string | null;
+  formatChangedTo?: string | null;
+  formatChangedBy?: string | null;
   rosterConfirmed?: boolean;
   flightsConfirmed?: boolean;
   exportDocsConfirmed?: boolean;
@@ -106,6 +123,9 @@ export type Trip = {
 
   /** Auto-generated trip name: "{CourseName} · {Dow} {D Mon}" */
   tripName?: string;
+
+  /** Group ID for group trips (uuid). Null for member-origin trips. */
+  groupId?: string | null;
 
   date: string; // YYYY-MM-DD
   format: string;
@@ -175,8 +195,7 @@ export type Trip = {
   /** Manual phase override for group trips (forming | signups_open | locked) */
   phaseOverride?: 'forming' | 'signups_open' | 'locked' | null;
 
-  /** Group ID (for group trips) - preserved from API response */
-  groupId?: string | null;
+  /** Legacy snake_case; prefer groupId. */
   group_id?: string | null;
 };
 
@@ -322,6 +341,10 @@ function normalizeTrip(input: any): Trip {
           joinedAt: Number(a?.joinedAt ?? Date.now()),
           handicapForTrip: a?.handicapForTrip ?? null,
           memberId: a?.memberId ? String(a.memberId) : undefined,
+          fullName: a?.fullName ?? null,
+          displayName: a?.displayName ?? null,
+          nationality: a?.nationality ?? null,
+          profilePhotoPath: a?.profilePhotoPath ?? null,
         }))
       : [],
 

@@ -111,8 +111,8 @@ export async function GET(req: Request) {
       throw new Error(tripsError.message || "Failed to fetch trips.");
     }
 
-    // Filter out truly inactive statuses
-    const excludedStatuses = ["completed", "archived"];
+    // Filter out truly inactive statuses (cancelled removed from active lists)
+    const excludedStatuses = ["completed", "archived", "cancelled"];
     const tripsData = (tripsDataRaw || []).filter(
       (trip) => !excludedStatuses.includes(trip.status)
     );

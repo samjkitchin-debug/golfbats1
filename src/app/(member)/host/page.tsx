@@ -1084,6 +1084,14 @@ export default function HostPage() {
           )}
         </div>
 
+        {/* Trip requirements (derived) — informational only */}
+        {travelInvolvedValue && travelScope === "international" && (
+          <div className="rounded-xl border border-border bg-surface/50 p-4 mb-6">
+            <div className="text-sm font-medium text-muted mb-1">Trip requirements (derived)</div>
+            <p className="text-sm text-foreground">Travel documents are required for all attendees.</p>
+          </div>
+        )}
+
         {/* Group selection (only when admin of multiple groups) */}
         {adminGroups.length > 1 && (
           <div className="mb-6">

@@ -1,8 +1,9 @@
 /**
  * Flight Generator
- * 
+ *
  * Pure function for generating quartile-based flight groupings.
  * Deterministic: same input produces same output.
+ * Confirmed attendees without handicap are included; unknown handicaps are sorted last.
  */
 
 import type { Attendee } from "./tripActions";
@@ -24,38 +25,37 @@ export type FlightGenerationResult = {
   excludedMembers: Array<{
     memberId: string;
     memberName: string;
-    reason: "no_handicap" | "not_confirmed";
+    reason: "not_confirmed";
   }>;
 };
 
 /**
- * Generate quartile-based flights from confirmed attendees with handicaps.
- * 
+ * Generate quartile-based flights from confirmed attendees.
+ *
  * Rules:
- * - Only includes attendees with status === 'confirmed' AND handicap present
+ * - Includes all attendees with status === 'confirmed'; confirmed attendees without handicap are included (unknown handicaps sorted last)
  * - Groups into flights of 4 (quartiles)
- * - Sorts by handicap (ascending) for balanced distribution
+ * - Sorts by handicap (ascending); unknown handicaps last
  * - Deterministic: same input produces same output
- * 
+ *
  * @param attendees - All trip attendees
  * @param groupSize - Number of players per flight (default: 4)
- * @returns Generated flights and list of excluded members
+ * @returns Generated flights and list of excluded members (only not_confirmed)
  */
 export function generateQuartileFlights(
   attendees: Attendee[],
   groupSize: number = 4
 ): FlightGenerationResult {
-  // Filter to confirmed attendees with handicaps
   const eligible: Array<{
     memberId: string;
     name: string;
-    handicap: number;
+    handicap: number | null;
   }> = [];
   
   const excluded: Array<{
     memberId: string;
     memberName: string;
-    reason: "no_handicap" | "not_confirmed";
+    reason: "not_confirmed";
   }> = [];
 
   for (const attendee of attendees) {
@@ -70,35 +70,30 @@ export function generateQuartileFlights(
       continue;
     }
 
-    if (
-      attendee.handicapForTrip === null ||
-      attendee.handicapForTrip === undefined ||
-      !Number.isFinite(attendee.handicapForTrip)
-    ) {
-      if (attendee.memberId && attendee.name) {
-        excluded.push({
-          memberId: attendee.memberId,
-          memberName: attendee.name,
-          reason: "no_handicap",
-        });
-      }
-      continue;
-    }
-
     if (!attendee.memberId) {
-      // Skip attendees without memberId (can't be assigned to flights)
       continue;
     }
 
+    const handicap =
+      attendee.handicapForTrip != null && Number.isFinite(attendee.handicapForTrip)
+        ? attendee.handicapForTrip
+        : null;
     eligible.push({
       memberId: attendee.memberId,
       name: attendee.name,
-      handicap: attendee.handicapForTrip,
+      handicap,
     });
   }
 
-  // Sort by handicap (ascending) for balanced distribution
-  eligible.sort((a, b) => a.handicap - b.handicap);
+  // Sort by handicap (ascending); unknown handicaps last
+  eligible.sort((a, b) => {
+    const ah = a.handicap;
+    const bh = b.handicap;
+    if (ah === null && bh === null) return 0;
+    if (ah === null) return 1;
+    if (bh === null) return -1;
+    return ah - bh;
+  });
 
   // Group into flights
   const flights: Flight[] = [];
@@ -109,7 +104,7 @@ export function generateQuartileFlights(
     const slots: FlightSlot[] = group.map((member, idx) => ({
       memberId: member.memberId,
       memberName: member.name,
-      handicap: member.handicap,
+      handicap: member.handicap ?? 999,
       slotPosition: idx + 1, // 1-4
     }));
 

@@ -1,6 +1,6 @@
 # Supabase Database Schema
 
-Generated from Supabase project: `uauuexcemwsrnrnsrzip`
+Generated from Supabase project: `uauuexcemwsrnrnsrzip`. Updated via MCP (`list_tables`, `execute_sql`) on 2026-02-08.
 
 ## Enums
 
@@ -25,6 +25,10 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 - `forming` - Signups open
 - `scheduled` - Signups closed, trip confirmed
 - `completed` - Trip finished
+- `signups_open` - (DB enum value)
+- `locked` - (DB enum value)
+- `gameday` - (DB enum value)
+- `in_play` - (DB enum value)
 
 ### rsvp_status
 - `confirmed`
@@ -48,7 +52,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ## Tables
 
 ### clubs
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -66,12 +70,12 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### courses
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| club_id | uuid | NO | - | Foreign key to clubs |
+| club_id | uuid | YES | - | Foreign key to clubs |
 | name | text | NO | - | Course name |
 | location | text | YES | - | Location |
 | website | text | YES | - | Website URL |
@@ -83,6 +87,13 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 | lat | numeric | YES | - | Latitude |
 | lng | numeric | YES | - | Longitude |
 | geog | geography | YES | Generated | Geography column (generated from lat/lng) |
+| club_name | text | YES | - | Club name (from provider) |
+| address | text | YES | - | Full address |
+| city | text | YES | - | City |
+| state | text | YES | - | State/region |
+| country | text | YES | - | Country |
+| latitude | double precision | YES | - | Latitude (provider format) |
+| longitude | double precision | YES | - | Longitude (provider format) |
 
 **Primary Key:** `id`  
 **Foreign Keys:**
@@ -92,7 +103,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### tees
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -110,6 +121,19 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 | gender | text | YES | - | Gender designation |
 | yards | integer | YES | - | Total length in yards |
 | display_order | integer | YES | - | Display order |
+| total_yards | integer | YES | - | Total yards (provider format) |
+| total_meters | integer | YES | - | Total metres (provider format) |
+| course_rating | numeric | YES | - | Course rating (provider format) |
+| bogey_rating | numeric | YES | - | Bogey rating |
+| front_course_rating | numeric | YES | - | Front nine course rating |
+| front_slope_rating | integer | YES | - | Front nine slope rating |
+| front_bogey_rating | numeric | YES | - | Front nine bogey rating |
+| back_course_rating | numeric | YES | - | Back nine course rating |
+| back_slope_rating | integer | YES | - | Back nine slope rating |
+| back_bogey_rating | numeric | YES | - | Back nine bogey rating |
+| number_of_holes | integer | YES | - | Number of holes (9 or 18) |
+| par_total | integer | YES | - | Total par |
+| tee_name | text | YES | - | Tee name (provider format) |
 
 **Primary Key:** `id`  
 **Unique Constraints:** `(course_id, label)`  
@@ -120,7 +144,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### tee_holes
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -129,6 +153,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 | hole_number | integer | NO | - | Hole number (1-18) |
 | par | integer | YES | - | Par for this hole |
 | meters | integer | YES | - | Length in meters |
+| yards | integer | YES | - | Length in yards |
 | stroke_index | integer | YES | - | Stroke index (1-18) |
 | created_at | timestamptz | NO | now() | Creation timestamp |
 
@@ -397,7 +422,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### result_rows
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -467,7 +492,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### trip_flight_exports
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -564,12 +589,12 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### gameday_flight_rounds
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | flight_id | uuid | NO | - | Primary key, foreign key to trip_flights |
-| state | text | NO | 'not_started' | State: 'in_progress', 'paused', 'completed' |
+| state | text | NO | 'not_started' | State: 'in_progress', 'paused', 'completed' (check constraint) |
 | current_hole_index | integer | NO | 0 | Current hole index (0-17) |
 | started_at | timestamptz | YES | - | Started timestamp |
 | closed_at | timestamptz | YES | - | Closed timestamp |
@@ -587,7 +612,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### gameday_round_participants
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -634,7 +659,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### gameday_hole_commits
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -659,7 +684,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### handicap_rounds
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -686,7 +711,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### member_handicap_index
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -704,7 +729,7 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 ---
 
 ### provider_course_map
-**RLS:** Disabled
+**RLS:** Enabled
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -719,6 +744,80 @@ Generated from Supabase project: `uauuexcemwsrnrnsrzip`
 **Unique Constraints:** `(provider, provider_course_id)`  
 **Foreign Keys:**
 - `course_id` → `courses.id` (ON DELETE CASCADE)
+
+---
+
+### provider_courses_raw
+**Purpose:** Raw course payloads from external providers (e.g. Golf Course API). Used by ingestion to hydrate and map into `courses`/`tees`/`tee_holes`.  
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| provider | text | NO | - | Provider name |
+| provider_course_id | text | NO | - | Provider course ID |
+| payload | jsonb | NO | - | Raw provider payload |
+| fetched_at | timestamptz | NO | now() | Fetch timestamp |
+| last_success_at | timestamptz | YES | - | Last successful hydration |
+| last_error_at | timestamptz | YES | - | Last error timestamp |
+| last_error | text | YES | - | Last error message |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(provider, provider_course_id)`
+
+---
+
+### provider_search_terms
+**Purpose:** Search terms used for course discovery per provider. Tracks queries and result counts.  
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| provider | text | NO | - | Provider name |
+| search_query | text | NO | - | Search query |
+| ran_at | timestamptz | NO | now() | Run timestamp |
+| result_count | integer | NO | 0 | Number of results |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(provider, search_query)`
+
+---
+
+### provider_course_discovery
+**Purpose:** Discovered course IDs from providers (via search or listing). Links to `provider_courses_raw` for hydration.  
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| provider | text | NO | - | Provider name |
+| provider_course_id | text | NO | - | Provider course ID |
+| discovered_via | text | NO | - | Discovery method (e.g. search, list) |
+| discovered_query | text | YES | - | Query used if search |
+| discovered_at | timestamptz | NO | now() | Discovery timestamp |
+
+**Primary Key:** `id`  
+**Unique Constraints:** `(provider, provider_course_id)`
+
+---
+
+### provider_ingest_runs
+**Purpose:** Log of ingestion runs per provider. Tracks status and notes.  
+**RLS:** Disabled
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| provider | text | NO | - | Provider name |
+| started_at | timestamptz | NO | now() | Start timestamp |
+| finished_at | timestamptz | YES | - | Finish timestamp |
+| status | text | NO | - | Status: 'running', 'success', 'partial', 'failed' |
+| notes | text | YES | - | Notes |
+
+**Primary Key:** `id`  
+**Check Constraints:**
+- `status IN ('running', 'success', 'partial', 'failed')`
 
 ---
 
@@ -760,7 +859,8 @@ PostGIS system table for spatial reference systems.
 
 ## Notes
 
-- **RLS (Row Level Security):** Some tables have RLS enabled. Check individual table descriptions.
+- **RLS (Row Level Security):** Most public tables have RLS enabled. Provider ingestion tables (`provider_courses_raw`, `provider_search_terms`, `provider_course_discovery`, `provider_ingest_runs`) and `spatial_ref_sys` have RLS disabled.
+- **Provider ingestion:** `provider_course_discovery` stores discovered course IDs; `provider_courses_raw` holds raw payloads; `provider_ingest_runs` logs run status; `provider_search_terms` tracks search queries.
 - **Geography Column:** The `courses.geog` column is a generated column that creates a geography point from `lat` and `lng` when both are present.
 - **Foreign Key Cascades:** Most foreign keys use `ON DELETE CASCADE`, but some use `ON DELETE SET NULL` (noted in the schema).
 - **Legacy Fields:** Some tables contain legacy fields (e.g., `trips.legacy_id`, `trip_events.trip_id` as bigint) for migration purposes.

@@ -74,9 +74,11 @@ export function buildEventPolicy(args: {
   // Can enter GameDay if: state in ("gameday","in_play") OR scoringStarted
   const canEnterGameDay = event.state === "gameday" || event.state === "in_play" || event.scoringStarted;
 
-  // Can edit flights plan if: is host/admin AND state not in ("in_play", "completed")
-  // Read-only once scoring starts
-  const canEditFlightsPlan = (isHost || isGroupAdmin) && event.state !== "in_play" && event.state !== "completed";
+  // Can edit flights plan: group trips = only group admin; hosted rounds = host. No host bypass for group trips.
+  const canEditFlightsPlan =
+    (event.isGroupTrip ? isGroupAdmin : isHost) &&
+    event.state !== "in_play" &&
+    event.state !== "completed";
 
   return {
     isHost,

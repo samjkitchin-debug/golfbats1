@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useCallback, memo, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { loadCourses, type Course } from "../../lib/courseActions";
 import { getTripCourseText, formatTripDateLong } from "../../lib/tripDisplay";
-import { loadTrips, joinTrip, leaveTrip, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
+import { loadTrips, joinTrip, leaveTrip, isAttendeeIn, type Trip, sortTripsByDateAsc } from "../../lib/tripActions";
 import { isTripUpcoming, pickDefaultExpandedTrip, getEffectiveTripPhase, computeSignupOpenAt } from "../../lib/tripDates";
 import { resolveSignupPhase, getEffectiveSignupOpenAt } from "../../lib/tripPhase";
 import { compileTripSnapshot, getCanonicalMeet } from "../../lib/trips/tripSnapshot";
@@ -14,7 +14,7 @@ import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
 import { perfMark, perfMeasure, perfLog } from "../../lib/perf";
 import { checkAttendeeExportReadiness } from "../../lib/memberExportReadiness";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getGolfNoun } from "../../lib/roundNounHelper";
 import { getEffectiveCoordinationStatus } from "../../lib/tripCoordination";
 import { coordinationTripsStatusApi } from "../../lib/routes";
@@ -52,6 +52,7 @@ function getGroupColor(groupId: string): string {
 
 export default function TripsListPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -103,6 +104,14 @@ export default function TripsListPage() {
     document.title = "DayForeIt - Trips";
     perfMark("trips:nav_start");
   }, []);
+
+  // Show toast when redirected after cancelling a trip
+  useEffect(() => {
+    if (searchParams?.get("cancelled") === "1") {
+      setNotice({ title: "Trip cancelled", message: "" });
+      router.replace("/trips", { scroll: false });
+    }
+  }, [searchParams, router]);
 
   // Bootstrap: fetch user, member profile, and group data in one call
   useEffect(() => {
@@ -501,6 +510,13 @@ export default function TripsListPage() {
 
   const groupTripIds = useMemo(() => new Set(groupTripsFiltered.map((t) => t.id)), [groupTripsFiltered]);
 
+  // Per-trip action label: derived from membership role in the trip's group (not "admin anywhere").
+  const roleByGroupId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of approvedGroups ?? []) if (g.id && g.role) m.set(g.id, g.role);
+    return m;
+  }, [approvedGroups]);
+
   // Set default expanded trip: first trip in chronological list (only on first render)
   useEffect(() => {
     if (!didInitExpandRef.current && expandedTripId === null && combinedTrips.length > 0) {
@@ -553,7 +569,7 @@ export default function TripsListPage() {
       ? trip.attendees.find((a) => a.name === currentUserName)
       : undefined;
     
-    if (myEntry?.status === "confirmed") return "joined";
+    if (isAttendeeIn(myEntry?.status ?? null)) return "joined";
     if (myEntry?.status === "waitlist") return "waitlist";
     return "not_joined";
   }
@@ -571,7 +587,7 @@ export default function TripsListPage() {
       ? trip.attendees.find((a) => a.name === currentUserName)
       : undefined;
     
-    if (!myEntry || myEntry.status !== "confirmed") return; // Only check for confirmed attendees
+    if (!myEntry || !isAttendeeIn(myEntry.status)) return; // Only check for confirmed attendees
     
     try {
       const readiness = checkAttendeeExportReadiness(myEntry);
@@ -659,13 +675,14 @@ export default function TripsListPage() {
   }, []);
 
   // Trip list rows: continuous canvas, instrument-style layout
-  const TripRow = memo(function TripRow({ trip, isExpanded, onToggle, onJoin, onLeave, isOfficialGroupTrip }: { 
+  const TripRow = memo(function TripRow({ trip, isExpanded, onToggle, onJoin, onLeave, isOfficialGroupTrip, canEdit }: { 
     trip: Trip & { groupName?: string; groupId?: string; maxAttendees?: number }; 
     isExpanded: boolean; 
     onToggle: () => void;
     onJoin: () => void;
     onLeave: () => void;
     isOfficialGroupTrip?: boolean;
+    canEdit: boolean;
   }) {
     const courseText = getTripCourseText(trip, courses);
     // Use tripName (auto-generated) if present, otherwise fall back to current logic
@@ -681,7 +698,7 @@ export default function TripsListPage() {
     const course = trip.courseId ? courses.find((c) => c.id === trip.courseId) : undefined;
     const courseName = course?.name || (courseText.title && courseText.title !== "Course TBD" ? courseText.title.split(" — ")[0] : "Course TBC");
     
-    const confirmedCount = trip.attendees.filter((a) => a.status === "confirmed").length;
+    const confirmedCount = trip.attendees.filter((a) => isAttendeeIn(a.status)).length;
     
     // Status badge: prioritize USER state (In > Waitlist > Locked > Open)
     let statusBadge: string = "";
@@ -743,7 +760,9 @@ export default function TripsListPage() {
     
     // Determine event kind (canonical rule: hosted_round if member, group_event otherwise)
     const eventKind = trip.tripOrigin === 'member' ? 'hosted_round' : 'group_event';
-    
+    // Label: admin in this trip's group = Manage; participant = Details. Multi-group: e.g. admin in Swingapore only sees Manage on Swingapore trips.
+    const detailsLabel = canEdit ? "Manage" : "Details";
+
     return (
       <div className={`border-b border-border last:border-b-0 ${isOfficialGroupTrip ? "relative" : ""}`}>
         {isOfficialGroupTrip && (
@@ -890,7 +909,7 @@ export default function TripsListPage() {
                 href={`/trips/${trip.id}`}
                 className="rounded-md bg-transparent border border-ink-300 text-ink-700 px-3 py-1.5 text-xs font-medium hover:bg-ink-700/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-700/20 active:scale-[0.98] transition-all"
               >
-                Details
+                {detailsLabel}
               </Link>
             </div>
           </div>
@@ -958,17 +977,24 @@ export default function TripsListPage() {
           </div>
         ) : (
           <div>
-            {combinedTrips.map((trip) => (
-              <TripRow
-                key={trip.id}
-                trip={trip}
-                isExpanded={expandedTripId === trip.id}
-                onToggle={() => handleRowToggle(trip.id)}
-                onJoin={() => void handleJoinTrip(trip.id, trip)}
-                onLeave={() => void handleLeaveTrip(trip.id)}
-                isOfficialGroupTrip={groupTripIds.has(trip.id)}
-              />
-            ))}
+            {combinedTrips.map((trip) => {
+              // Per-trip: admin in this trip's group → "Manage"; else "Details". No fallback to global admin.
+              const tripGroupId = (trip as { group_id?: string; groupId?: string }).group_id ?? (trip as { groupId?: string }).groupId ?? "";
+              const groupRole = roleByGroupId.get(tripGroupId);
+              const canManageThisTrip = groupRole === "admin";
+              return (
+                <TripRow
+                  key={trip.id}
+                  trip={trip}
+                  isExpanded={expandedTripId === trip.id}
+                  onToggle={() => handleRowToggle(trip.id)}
+                  onJoin={() => void handleJoinTrip(trip.id, trip)}
+                  onLeave={() => void handleLeaveTrip(trip.id)}
+                  isOfficialGroupTrip={groupTripIds.has(trip.id)}
+                  canEdit={canManageThisTrip}
+                />
+              );
+            })}
           </div>
         )}
       </div>

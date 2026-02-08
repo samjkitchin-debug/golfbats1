@@ -237,6 +237,11 @@ button:disabled {
   opacity: 0.6;
 }
 
+/* Admin toggle track (OFF state) — solid track so slider is visible */
+.admin-toggle-track-off {
+  background-color: rgb(var(--ink-300));
+}
+
 /* Hide scrollbar but keep scrolling */
 .scrollbar-hide {
   -ms-overflow-style: none;

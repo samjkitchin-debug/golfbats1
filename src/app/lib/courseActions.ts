@@ -195,96 +195,19 @@ async function getClubId(supabase: ReturnType<typeof getSupabase>): Promise<stri
   return data.id;
 }
 
+/** Intentional: catalog writes are server-only under RLS. Mutations must be performed via server API routes. */
 export async function createCourse(input: {
   name: string;
   location: string;
   website?: string | null;
   tees?: Tee[];
 }) {
-  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
-
-  const supabase = getSupabase();
-  const clubSlug = getClubSlug();
-  const courseId = crypto.randomUUID();
-
-  // Try to get club_id first
-  const clubId = await getClubId(supabase);
-
-  // Insert course into courses table (no tees field - tees go in separate table)
-  // Use club_id if available (per schema), otherwise use club (string) for backward compatibility
-  const insertData: any = {
-    id: courseId,
-    name: input.name.trim(),
-    location: input.location.trim() || null,
-    website: cleanNullableString(input.website),
-  };
-
-  if (!clubId) {
-    throw new Error(`Club not found for slug: ${clubSlug}. Please ensure the clubs table has a row with this slug.`);
-  }
-
-  insertData.club_id = clubId;
-
-  const { error: courseError } = await supabase.from("courses").insert(insertData);
-
-  if (courseError) {
-    throw new Error(`Failed to create course: ${courseError.message || JSON.stringify(courseError)}`);
-  }
-
-  // Invalidate cache
-  await revalidateCoursesCache();
-
-  // Return course object (tees will be loaded separately)
-  const course: Course = {
-    id: courseId,
-    name: input.name.trim(),
-    location: input.location.trim(),
-    website: cleanNullableString(input.website),
-    tees: [],
-  };
-
-  return course;
+  throw new Error("Course mutations must be performed via server API routes (RLS hardening).");
 }
 
+/** Intentional: catalog writes are server-only under RLS. Mutations must be performed via server API routes. */
 export async function updateCourse(courseId: string, patch: Partial<Omit<Course, "id">>) {
-  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
-
-  const supabase = getSupabase();
-
-  // Update course by ID only (more reliable than using club filter)
-  const updateData: any = {
-    updated_at: new Date().toISOString(),
-  };
-
-  if (patch.name !== undefined) {
-    updateData.name = patch.name.trim();
-  }
-  if (patch.location !== undefined) {
-    updateData.location = patch.location.trim();
-  }
-  if (patch.website !== undefined) {
-    updateData.website = cleanNullableString(patch.website);
-  }
-
-  const { error } = await supabase
-    .from("courses")
-    .update(updateData)
-    .eq("id", courseId);
-
-  if (error) {
-    throw new Error(`Failed to update course: ${error.message || JSON.stringify(error)}`);
-  }
-
-  // Invalidate cache
-  await revalidateCoursesCache();
-
-  // Return updated course (will be reloaded from DB by caller)
-  const courses = await loadCourses();
-  const updated = courses.find((c) => c.id === courseId);
-  if (!updated) {
-    throw new Error("Course not found after update");
-  }
-  return updated;
+  throw new Error("Course mutations must be performed via server API routes (RLS hardening).");
 }
 
 export async function deleteCourse(courseId: string) {
@@ -319,41 +242,9 @@ export async function deleteCourse(courseId: string) {
   // Course deleted from database - no need to update localStorage
 }
 
+/** Intentional: catalog writes are server-only under RLS. Mutations must be performed via server API routes. */
 export async function addTee(courseId: string, teeInput: Omit<Tee, "id">) {
-  if (!isSupabaseConfigured()) throw new Error("Supabase not configured");
-
-  const courses = await loadCourses();
-  const idx = courses.findIndex((c) => c.id === courseId);
-  if (idx === -1) throw new Error("Course not found");
-
-  const supabase = getSupabase();
-  const teeId = crypto.randomUUID();
-
-  // Insert tee into tees table
-  const { error: teeError } = await supabase.from("tees").insert({
-    id: teeId,
-    course_id: courseId,
-    label: teeInput.label.trim(),
-    meters: Number(teeInput.meters),
-    par: Number(teeInput.par),
-    slope: Number(teeInput.slope),
-  });
-
-  if (teeError) throw teeError;
-
-  // Invalidate cache
-  await revalidateCoursesCache();
-
-  const tee: Tee = {
-    id: teeId,
-    label: teeInput.label.trim(),
-    meters: Number(teeInput.meters),
-    par: Number(teeInput.par),
-    slope: Number(teeInput.slope),
-  };
-
-  // Tee saved to database - no need to update localStorage
-  return tee;
+  throw new Error("Course mutations must be performed via server API routes (RLS hardening).");
 }
 
 export async function updateTee(courseId: string, teeId: string, patch: Partial<Omit<Tee, "id">>) {

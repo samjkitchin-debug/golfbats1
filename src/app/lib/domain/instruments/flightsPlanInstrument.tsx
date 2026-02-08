@@ -8,9 +8,9 @@ import type { Trip } from "../../tripActions";
 import Link from "next/link";
 
 /**
- * Flights Plan Body Component
- * 
- * Pre-trip flights planning instrument for BaseCamp.
+ * Flights Plan Body Component (Tee groups in UI)
+ *
+ * Pre-trip tee grouping instrument for BaseCamp.
  */
 export function FlightsPlanBody({
   event,
@@ -24,6 +24,7 @@ export function FlightsPlanBody({
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [flightsError, setFlightsError] = useState<string | null>(null);
 
   const tripId = event.trip.id;
   const tripLegacyId = (event.trip as any).legacy_id || tripId;
@@ -70,10 +71,12 @@ export function FlightsPlanBody({
     }
   }
 
-  // Handle generate flights
+  // Handle generate tee groups. Server is authority; policy gates UI. Inline error only, no alert().
   async function handleGenerateFlights() {
     if (generating) return;
     setGenerating(true);
+    setFlightsError(null);
+
     try {
       const res = await fetch(`/api/trips/${tripLegacyId}/flights/generate`, {
         method: "POST",
@@ -82,16 +85,20 @@ export function FlightsPlanBody({
         body: JSON.stringify({}),
       });
 
+      const body = await res.json().catch(() => ({}));
+      const message = body?.error ?? (res.ok ? null : "Failed to generate flights");
+
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Failed to generate flights");
+        setFlightsError(message ?? "Failed to generate tee groups");
+        setGenerating(false);
+        return;
       }
 
-      // Reload snapshot
+      setFlightsError(null);
       await reloadSnapshot();
     } catch (error) {
       console.error("Failed to generate flights:", error);
-      alert(error instanceof Error ? error.message : "Failed to generate flights");
+      setFlightsError(error instanceof Error ? error.message : "Failed to generate tee groups");
     } finally {
       setGenerating(false);
     }
@@ -101,7 +108,7 @@ export function FlightsPlanBody({
   if (loading) {
     return (
       <div className="text-sm text-muted">
-        <p>Loading flights…</p>
+        <p>Loading tee groups…</p>
       </div>
     );
   }
@@ -125,7 +132,7 @@ export function FlightsPlanBody({
           .map((flight) => (
             <div key={flight.flightId} className="rounded-lg border border-border bg-muted/30 p-3">
               <div className="text-sm font-medium text-foreground mb-2">
-                Flight {flight.flightNumber}
+                Group {flight.flightNumber}
               </div>
               <div className="space-y-1">
                 {flight.members.length === 0 ? (
@@ -159,7 +166,7 @@ export function FlightsPlanBody({
         )}
         {snapshot.issues.some((issue) => issue.kind === "over_capacity") && (
           <p className="text-xs text-muted">
-            One flight has too many players.
+            One group has too many players.
           </p>
         )}
       </div>
@@ -176,7 +183,7 @@ export function FlightsPlanBody({
       <div className="space-y-3">
         {confirmedCount === 0 ? (
           <div className="text-sm text-muted">
-            <p>Generate flights once sign-ups close and you have confirmed players.</p>
+            <p>Generate tee groups once sign-ups close and you have confirmed players.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -188,11 +195,14 @@ export function FlightsPlanBody({
               disabled={generating || event.state === "signups_open"}
               className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {generating ? "Generating…" : "Generate flights"}
+              {generating ? "Generating…" : "Generate tee groups"}
             </button>
+            {flightsError && (
+              <p className="text-xs text-danger">{flightsError}</p>
+            )}
             {event.state === "signups_open" && (
               <p className="text-xs text-muted">
-                Flights can only be generated after sign-ups close.
+                Tee groups can only be generated after sign-ups close.
               </p>
             )}
           </div>
@@ -210,7 +220,7 @@ export function FlightsPlanBody({
           .map((flight) => (
             <div key={flight.flightId} className="rounded-lg border border-border bg-muted/30 p-3">
               <div className="text-sm font-medium text-foreground mb-2">
-                Flight {flight.flightNumber}
+                Group {flight.flightNumber}
               </div>
               <div className="space-y-1">
                 {flight.members.length === 0 ? (
@@ -242,23 +252,27 @@ export function FlightsPlanBody({
           {snapshot.unassigned.length} {snapshot.unassigned.length === 1 ? "player" : "players"} still need a group.
         </p>
       )}
-      {snapshot && snapshot.issues.some((issue) => issue.kind === "over_capacity") && (
+        {snapshot && snapshot.issues.some((issue) => issue.kind === "over_capacity") && (
         <p className="text-xs text-muted">
-          One flight has too many players.
+          One group has too many players.
         </p>
+      )}
+      {flightsError && (
+        <p className="text-xs text-danger">{flightsError}</p>
       )}
       <div className="pt-2 flex items-center gap-3">
         <Link
           href={`/trips/${tripLegacyId}/flights`}
           className="text-sm text-anticipation hover:underline"
         >
-          Edit flights →
+          Edit tee groups →
         </Link>
         {!isDone && policy.canEditFlightsPlan && (
           <button
             onClick={async () => {
               if (saving || !activeGroupId) return;
               setSaving(true);
+              setFlightsError(null);
               try {
                 const updatedTrips = await updateTrip(
                   [event.trip],
@@ -290,7 +304,7 @@ export function FlightsPlanBody({
                 }
               } catch (error) {
                 console.error("Failed to save flights:", error);
-                alert(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
+                setFlightsError(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
               } finally {
                 setSaving(false);
               }
@@ -298,7 +312,7 @@ export function FlightsPlanBody({
             disabled={saving}
             className="rounded-xl btn-primary px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saving ? "Saving..." : "Save flights"}
+            {saving ? "Saving..." : "Save tee groups"}
           </button>
         )}
       </div>

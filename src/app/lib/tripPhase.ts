@@ -17,6 +17,7 @@ export type TripPhase = "forming" | "signups_open" | "locked" | "gameday" | "in_
  * 4) Else forming
  *
  * IMPORTANT: If both open and close exist, close wins.
+ * Effective open: signupsOpenedAt (actual opened) wins, else decisionLogistics.signupsOpensAtIso (scheduled override), else computed default.
  */
 export function resolveSignupPhase(
   trip: {
@@ -26,6 +27,7 @@ export function resolveSignupPhase(
     signupsClosedAt?: string | null;
     signupsCloseAt?: string | null;
     cutoffAt?: string | null;
+    decisionLogistics?: { signupsOpensAtIso?: string | null } | null;
   },
   now: number = Date.now()
 ): "forming" | "signups_open" | "locked" {
@@ -54,14 +56,11 @@ export function resolveSignupPhase(
     return "locked";
   }
 
-  // Check for explicit open moment
+  // Effective open: signupsOpenedAt (actual opened) wins, else scheduled override, else computed default
   const signupsOpenedAt = parseDateSafe(trip.signupsOpenedAt);
-  
-  // Compute derived open moment (30 days before trip date)
+  const scheduledOverrideAt = parseDateSafe(trip.decisionLogistics?.signupsOpensAtIso);
   const computedOpenAt = parseDateSafe(computeSignupOpenAt(trip.date));
-
-  // Use explicit open moment if available, else computed
-  const effectiveOpenAt = signupsOpenedAt ?? computedOpenAt;
+  const effectiveOpenAt = signupsOpenedAt ?? scheduledOverrideAt ?? computedOpenAt;
 
   // If effective open moment exists and has passed, signups are open
   if (effectiveOpenAt !== null && now >= effectiveOpenAt) {
@@ -74,12 +73,13 @@ export function resolveSignupPhase(
 
 /**
  * Get the effective sign-up open timestamp
- * Returns the chosen open timestamp (explicit openedAt else computed) if valid
+ * Returns: signupsOpenedAt (actual opened) else decisionLogistics.signupsOpensAtIso (scheduled override) else computed default
  */
 export function getEffectiveSignupOpenAt(
   trip: {
     date: string;
     signupsOpenedAt?: string | null;
+    decisionLogistics?: { signupsOpensAtIso?: string | null } | null;
   },
   now: number = Date.now()
 ): number | null {
@@ -95,7 +95,7 @@ export function getEffectiveSignupOpenAt(
   }
 
   const signupsOpenedAt = parseDateSafe(trip.signupsOpenedAt);
+  const scheduledOverrideAt = parseDateSafe(trip.decisionLogistics?.signupsOpensAtIso);
   const computedOpenAt = parseDateSafe(computeSignupOpenAt(trip.date));
-  
-  return signupsOpenedAt ?? computedOpenAt;
+  return signupsOpenedAt ?? scheduledOverrideAt ?? computedOpenAt;
 }

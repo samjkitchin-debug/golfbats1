@@ -148,24 +148,24 @@ export function SignupsWindowBody({
       const defaultOpenYmd = signupsData.defaultOpenMomentIso ? isoToYmd(signupsData.defaultOpenMomentIso) : null;
       const defaultCloseYmd = signupsData.defaultCloseMomentIso ? isoToYmd(signupsData.defaultCloseMomentIso) : null;
 
-      // Persist with "only store overrides when different from defaults"
-      const updatePayload: Partial<Trip> = {};
-      
-      // Compare chosen open with default open (date-only)
+      // Persist open override in decisionLogistics.signupsOpensAtIso only (never touch signups_opened_at for scheduling)
+      const nextDecisionLogistics: Record<string, unknown> = {
+        ...(event.trip.decisionLogistics ?? {}),
+        signupsWindowConfirmed: true,
+      };
       if (defaultOpenYmd && compareYmd(chosenOpenYmd, defaultOpenYmd) === 0) {
-        // Same as default, clear override
-        updatePayload.signupsOpenedAt = undefined;
+        delete nextDecisionLogistics.signupsOpensAtIso;
       } else {
-        // Different from default, store override
-        updatePayload.signupsOpenedAt = ymdToIso(chosenOpenYmd, false);
+        nextDecisionLogistics.signupsOpensAtIso = ymdToIso(chosenOpenYmd, false);
       }
-      
-      // Compare chosen close with default close (date-only)
+
+      // Persist close override as cutoffAt (unchanged)
+      const updatePayload: Partial<Trip> = {
+        decisionLogistics: nextDecisionLogistics as Trip["decisionLogistics"],
+      };
       if (defaultCloseYmd && compareYmd(chosenCloseYmd, defaultCloseYmd) === 0) {
-        // Same as default, clear override
         updatePayload.cutoffAt = undefined;
       } else {
-        // Different from default, store override
         updatePayload.cutoffAt = ymdToIso(chosenCloseYmd, true);
       }
 
@@ -173,13 +173,7 @@ export function SignupsWindowBody({
         [event.trip],
         event.trip.id,
         activeGroupId,
-        {
-          ...updatePayload,
-          decisionLogistics: {
-            ...(event.trip.decisionLogistics ?? {}),
-            signupsWindowConfirmed: true,
-          },
-        }
+        updatePayload
       );
 
       // Optimistic UI update

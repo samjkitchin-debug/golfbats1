@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
 import { deriveEventState } from "@/app/lib/domain/lifecycle/lifecycleEngine";
 import type { Trip } from "@/app/lib/tripActions";
 
@@ -37,8 +37,9 @@ async function buildTripPayload(supabase: Awaited<ReturnType<typeof createSupaba
     console.warn("[join API] buildTripPayload: failed to load attendees", attendeesError);
   }
 
-  // Load results for this trip
-  const { data: resultsData, error: resultsError } = await supabase
+  // Load results for this trip (result_rows is RLS-restricted; use service client)
+  const supabaseService = await createSupabaseServiceClient();
+  const { data: resultsData, error: resultsError } = await supabaseService
     .from("trip_results")
     .select("id,trip_id,published,published_at,notes,result_rows(id,position,display_name,metric_label,metric_value)")
     .eq("trip_id", trip.id);

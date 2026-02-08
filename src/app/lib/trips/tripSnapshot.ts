@@ -8,9 +8,9 @@ import type { Trip } from "../tripActions";
 import type { Course } from "../courseActions";
 import { getTripCourseText, formatTripDateLong } from "../tripDisplay";
 import { getGolfNoun } from "../roundNounHelper";
-import { resolveSignupPhase } from "../tripPhase";
 import type { InstrumentKey } from "../domain/event/eventTypes";
 import type { EventContext } from "../domain/event/eventTypes";
+import { getTripRequirements } from "../domain/requirements/requirementsEngine";
 
 export type TripSnapshotRow = { key: string; label: string; value: string };
 
@@ -59,36 +59,10 @@ export function getCanonicalMeet(trip: Trip): {
   };
 }
 
-function formatCloseDateShort(cutoffAt: string | undefined | null): string | null {
-  if (!cutoffAt) return null;
-  try {
-    const d = new Date(cutoffAt);
-    const dayName = d.toLocaleDateString("en-GB", { weekday: "short" });
-    const day = d.getDate();
-    const mon = d.toLocaleDateString("en-GB", { month: "short" });
-    return `${dayName} ${day} ${mon}`;
-  } catch {
-    return null;
-  }
-}
-
-/** Single canonical mapping for sign-ups display. Uses resolveSignupPhase / trip phase helpers. */
-function getSignupsDisplayValue(trip: Trip): string {
-  const now = Date.now();
-  const phase = resolveSignupPhase(trip, now);
-
-  if (phase === "locked") return "Closed";
-  if (phase === "signups_open") {
-    const closes = formatCloseDateShort(trip.cutoffAt ?? undefined);
-    return closes ? `Open (closes ${closes})` : "Open";
-  }
-  return "Not open";
-}
-
 /**
  * Compile TripSnapshot from trip and optional context.
- * Meet time / meeting point: decisionLogistics then logistics (single rule everywhere).
- * Course: getTripCourseText. Format: empty or "Stroke" => "—". Spots / Sign-ups per spec.
+ * Rows: logistics (meet_time, meeting_point, transport_summary and notes when non-empty, travel when applicable); contract (format, spots, travel_docs_required when applicable).
+ * Course appears only in metaLine (identity), not as a snapshot row. Sign-ups / progress are not emitted; BaseCamp owns workflow.
  */
 export function compileTripSnapshot(args: CompileTripSnapshotArgs): TripSnapshot {
   const { trip, courses = [], groupName, visibleInstrumentKeys, event } = args;
@@ -99,44 +73,58 @@ export function compileTripSnapshot(args: CompileTripSnapshotArgs): TripSnapshot
   const { meetTime12: meetTime, meetingPoint } = getCanonicalMeet(trip);
 
   const fmt = trip.format?.trim();
-  const formatVal = fmt && fmt !== "Stroke" ? fmt : null;
+  const formatVal = fmt ? fmt : null;
 
-  const capacity = event
-    ? (event.instruments.capacity?.data?.capacityLimit ?? (trip.logistics as { capacityLimit?: number | null })?.capacityLimit ?? (trip.capacity != null ? Number(trip.capacity) : null))
-    : (trip.logistics as { capacityLimit?: number | null })?.capacityLimit ?? (trip.capacity != null ? Number(trip.capacity) : null);
+  const eventCapacity = event?.instruments.capacity?.data?.capacityLimit;
+  const logisticsCapacity = (trip.logistics as { capacityLimit?: number | null })?.capacityLimit;
+  let capacity: number | null;
+  if (eventCapacity !== undefined) capacity = eventCapacity;
+  else if (logisticsCapacity !== undefined) capacity = logisticsCapacity;
+  else capacity = trip.capacity != null ? Number(trip.capacity) : null;
+  const capacityLabel = capacity != null ? `${capacity} players` : "No limit";
   const confirmedCount = trip.attendees?.filter((a) => a.status === "confirmed").length ?? 0;
   let spots: string;
   if (capacity != null) spots = `${confirmedCount} of ${capacity} filled`;
   else if (confirmedCount > 0) spots = `${confirmedCount} joined`;
   else spots = "—";
 
-  const signupsVal = getSignupsDisplayValue(trip);
-
   const rows: TripSnapshotRow[] = [
     { key: "meet_time", label: "Meet time", value: meetTime ?? "—" },
     { key: "meeting_point", label: "Meeting point", value: meetingPoint ?? "—" },
-    { key: "course", label: "Course", value: courseLabel ?? "—" },
     { key: "format", label: "Format", value: formatVal ?? "—" },
+    { key: "capacity", label: "Capacity", value: capacityLabel },
     { key: "spots", label: "Spots", value: spots },
-    { key: "signups", label: "Sign-ups", value: signupsVal },
   ];
 
-  if (visibleInstrumentKeys && event) {
-    const opt: TripSnapshotRow[] = [];
-    if (visibleInstrumentKeys.includes("flights_plan")) {
-      const hasTransport = Boolean(
-        (trip.logistics?.itineraryDetails ?? "").trim() || (trip.logistics?.ferryDetails ?? "").trim()
-      );
-      opt.push({ key: "transport", label: "Transport", value: hasTransport ? "Planned" : "—" });
-    }
-    if (visibleInstrumentKeys.includes("export_docs")) {
-      const done = event.instruments.export_docs.status === "done";
-      opt.push({ key: "export_docs", label: "Agent pack", value: done ? "Exported" : "Not exported" });
-    }
-    for (const r of opt) {
-      if (rows.length >= 10) break;
-      rows.push(r);
-    }
+  const opt: TripSnapshotRow[] = [];
+  const transportSummary = (
+    (trip.logistics as { itineraryDetails?: string; ferryDetails?: string } | undefined)?.itineraryDetails ??
+    (trip.logistics as { ferryDetails?: string })?.ferryDetails ??
+    ""
+  ).trim();
+  if (transportSummary) {
+    opt.push({ key: "transport_summary", label: "Transport", value: transportSummary });
+  }
+  const notesVal = ((trip.logistics as { notes?: string })?.notes ?? "").trim();
+  if (notesVal) {
+    opt.push({ key: "notes", label: "Notes", value: notesVal });
+  }
+  const travelInvolved = Boolean((trip as { travelInvolved?: boolean }).travelInvolved);
+  if (travelInvolved) {
+    const travelType = (trip as { travelType?: string | null }).travelType;
+    const travelScope = (trip as { travelScope?: string | null }).travelScope;
+    const travelValue =
+      (travelType ? travelType.charAt(0).toUpperCase() + travelType.slice(1) : "Travel") +
+      (travelScope === "international" ? " · International" : travelScope === "domestic" ? " · Domestic" : "");
+    opt.push({ key: "travel", label: "Travel", value: travelValue });
+  }
+  const requirements = getTripRequirements(trip);
+  if (requirements.travelDocsRequired) {
+    opt.push({ key: "travel_docs_required", label: "Travel docs", value: "Required" });
+  }
+  for (const r of opt) {
+    if (rows.length >= 10) break;
+    rows.push(r);
   }
 
   const title = trip.tripName ?? trip.name ?? (getGolfNoun(trip) === "trip" ? "Trip" : "Round");

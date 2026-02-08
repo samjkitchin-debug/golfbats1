@@ -5,6 +5,7 @@ import type { EventContext } from "../event/eventTypes";
 import type { EventPolicy } from "../policy/eventPolicy";
 import type { InstrumentRenderProps } from "./instrumentTypes";
 import { InlineNotice } from "../../../components/InlineNotice";
+import { getCanonicalMeet } from "../../trips/tripSnapshot";
 import { TimePicker } from "../../../components/ui/TimePicker";
 import type { Trip } from "../../tripActions";
 
@@ -130,12 +131,18 @@ export function MeetDetailsBody({
     }
   }
 
-  // Done + collapsed: only status indicator and Change (no meet time/location/transport — those are in top chroma)
+  // Done + collapsed: context summary with quiet Edit (no task-like "Confirmed" label)
   if (isDone && !isEditing) {
+    const { meetTime12, meetingPoint } = getCanonicalMeet(event.trip);
+    const transport = getTransportSummary(event.trip);
     return (
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted">Confirmed</span>
-        {policy.canEditMeetDetails && (
+      <div className="space-y-1.5">
+        <div className="text-sm text-foreground space-y-0.5">
+          {meetTime12 && <div>Meet: {meetTime12}</div>}
+          {meetingPoint && <div>{meetingPoint}</div>}
+          {transport && <div className="text-muted">{transport}</div>}
+        </div>
+        {policy.canAccessBaseCamp && (
           <button
             type="button"
             onClick={() => {
@@ -144,7 +151,7 @@ export function MeetDetailsBody({
             }}
             className="text-xs text-muted hover:underline"
           >
-            Change
+            Edit
           </button>
         )}
       </div>
@@ -161,8 +168,14 @@ export function MeetDetailsBody({
         />
       );
     }
+    const { meetTime12, meetingPoint } = getCanonicalMeet(event.trip);
+    const transport = getTransportSummary(event.trip);
     return (
-      <div className="text-xs text-muted">Confirmed</div>
+      <div className="text-sm text-foreground space-y-0.5">
+        {meetTime12 && <div>Meet: {meetTime12}</div>}
+        {meetingPoint && <div>{meetingPoint}</div>}
+        {transport && <div className="text-muted">{transport}</div>}
+      </div>
     );
   }
 

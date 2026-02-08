@@ -14,7 +14,10 @@ export type EventState = BaseCampPhase;
 
 export type EventKind = "hosted_round" | "group_trip";
 
-export type InstrumentKey = "meet_details" | "signups_window" | "roster" | "flights_plan" | "trip_name" | "results_publish" | "gameday_entry" | "participants" | "capacity" | "export_docs";
+export type InstrumentKey = "meet_details" | "signups_window" | "roster" | "flights_plan" | "trip_name" | "results_publish" | "gameday_entry" | "participants" | "capacity";
+
+/** Instrument key for GameDay entry; use in renderers to avoid phase literals (INSTRUMENT-02). */
+export const INSTRUMENT_KEY_GAMEDAY_ENTRY = "gameday_entry" as const;
 
 export type EventInstrument<T> = {
   key: InstrumentKey;
@@ -81,10 +84,6 @@ export type CapacityData = {
   capacityLimit: number | null;
 };
 
-export type ExportDocsData = {
-  hasOpenedPreview: boolean;
-};
-
 export type EventContext = {
   id: number;
   kind: EventKind;
@@ -105,9 +104,10 @@ export type EventContext = {
     gameday_entry: EventInstrument<GameDayEntryData>;
     participants: EventInstrument<ParticipantsData>;
     capacity: EventInstrument<CapacityData>;
-    export_docs: EventInstrument<ExportDocsData>;
   };
   trip: import("../../tripActions").Trip; // keep full trip for now
+  /** Per-group role map from approvedGroups (id -> role). Used for per-trip-group admin checks. */
+  roleByGroupId?: Record<string, string>;
   // Contract outputs (optional for backward compatibility)
   viewerRole?: ViewerRole;
   requirements?: TripRequirements;

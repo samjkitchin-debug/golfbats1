@@ -189,6 +189,7 @@ export async function DELETE(
   try {
     const params = await Promise.resolve(context.params);
     const supabase = await createSupabaseServerClient();
+    const supabaseService = await createSupabaseServiceClient();
 
     const legacyId = Number(params.id);
     if (!Number.isFinite(legacyId)) {
@@ -206,18 +207,16 @@ export async function DELETE(
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    // Find result
-    const { data: result } = await supabase
+    // Find result and delete result_rows + trip_results (RLS-restricted; use service client)
+    const { data: result } = await supabaseService
       .from("trip_results")
       .select("id")
       .eq("trip_id", trip.id)
       .maybeSingle();
 
     if (result) {
-      // Delete result_rows first
-      await supabase.from("result_rows").delete().eq("result_id", result.id);
-      // Delete result
-      await supabase.from("trip_results").delete().eq("id", result.id);
+      await supabaseService.from("result_rows").delete().eq("result_id", result.id);
+      await supabaseService.from("trip_results").delete().eq("id", result.id);
     }
 
     // Invalidate trips cache

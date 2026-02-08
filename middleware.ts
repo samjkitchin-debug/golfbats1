@@ -11,6 +11,7 @@ import { createServerClient } from "@supabase/ssr";
  */
 
 function isPublicPath(pathname: string) {
+  if (pathname === "/") return true;
   if (pathname === "/login") return true;
   if (pathname.startsWith("/auth/")) return true; /* /auth/callback, /auth/confirm, etc. */
 
@@ -104,16 +105,21 @@ export async function middleware(req: NextRequest) {
   const canonicalRedirect = getCanonicalRedirect(req);
   if (canonicalRedirect) return canonicalRedirect;
 
+  const pathname = req.nextUrl.pathname;
+
+  // Public paths skip auth refresh to reduce TTFB; no Supabase client or getUser().
+  if (isPublicPath(pathname)) {
+    const res = NextResponse.next();
+    res.headers.set("x-pathname", pathname);
+    return res;
+  }
+
   const res = NextResponse.next();
+  res.headers.set("x-pathname", pathname);
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return res;
-
-  const pathname = req.nextUrl.pathname;
-
-  // Set pathname header for use in server components (e.g., layout)
-  res.headers.set("x-pathname", pathname);
 
   const supabase = createServerClient(url, anonKey, {
     cookies: {
@@ -129,16 +135,8 @@ export async function middleware(req: NextRequest) {
   });
 
   // Refresh session if needed (important for SSR).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  await supabase.auth.getUser();
 
-  // Allow public paths
-  if (isPublicPath(pathname)) {
-    return res;
-  }
-
-  // All other paths: allow through
   // Onboarding/membership gates are handled by (member)/layout.tsx
   return res;
 }

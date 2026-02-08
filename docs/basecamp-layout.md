@@ -1,10 +1,9 @@
 # BaseCamp Layout & Rhythm Contract
 
 ## Purpose
-BaseCamp uses a strict vertical rhythm system so that all instruments align consistently
-regardless of content height, completion state, or control complexity.
+BaseCamp uses a strict vertical rhythm system so that content (anchors and at most one instrument) aligns consistently regardless of content height or state. Spacing must be deterministic and owned by the layout system, not by instruments.
 
-Spacing must be deterministic and owned by the layout system, not by instruments.
+**Behavioural contract (render states, anchors vs instruments, at most one instrument):** [canon/basecamp-v1.md](canon/basecamp-v1.md). This document governs layout and rhythm only; behaviour is frozen there.
 
 ---
 
@@ -128,20 +127,22 @@ Instrument components own:
 - Shows a single subtle verification marker (tick) on the phase status line when the trip is coherent.
 - Must NOT iterate instruments or render generic "chrome lines".
 
-**BaseCamp Lane = Current-Phase Organiser Jobs Only**
-- Purpose: guide organiser through jobs and prove they are done.
-- Only instruments whose phase matches the current lifecycle phase may appear.
-- Instruments are either:
-  - Editing state (inputs + Save)
-  - Completed ledger state (tick + one muted summary line + Change)
-- Completed instruments never narrate the trip.
-- No instrument outputs should be duplicated into chroma via generic loops.
+**BaseCamp = Readiness Snapshot (Anchors + At Most One Instrument)**
+- Purpose: calm, truthful snapshot of trip readiness. Not a task board or phase progression UI. See [basecamp-v1.md](canon/basecamp-v1.md).
+- At most **one** instrument may appear at a time; it appears only when a blocking dependency exists and disappears when resolved. Anchors are always visible (Done / Floating / Blocked).
+- When an instrument is visible, it is either: editing state (inputs + Save) or disappears on resolution (no persistent "completed" instrument row). No instrument exists to "show progress" or "fill space."
+- No instrument outputs duplicated into chroma via generic loops.
 
 **Timeline Preview = Orientation Only**
 - Purpose: show trip progression and upcoming phases.
 - Read-only. No inputs, no jobs.
 - Shows phase anchors and transition points.
 - Provides context without actionable controls.
+
+**Agent Coordination lane = Mirror of Agent View (when agent attached)**
+- Purpose: same coordination reality as Agent View; organiser projection. Visible to group admins only when at least one agent is attached to the trip.
+- Read-mostly. Mirrors: signals strip, Clarifications, attendee travel-docs state. Organiser may reply and resolve Clarifications here; no navigation away from BaseCamp. Lane may collapse but remains always accessible.
+- Not a phase instrument. Does not duplicate Roster, Flights Editor, or other organiser instruments. See [v1.md — Agent Collaboration](canon/v1.md#agent-collaboration).
 
 ### Compiled outputs in chroma (v1)
 
@@ -166,32 +167,11 @@ These are:
 
 ### Phase → Lane → Order Contract (v1)
 
-Canonical instrument ordering by phase:
+**Render behaviour (when instruments appear, at most one at a time, anchors Done/Floating/Blocked):** [basecamp-v1.md](canon/basecamp-v1.md). The following is **domain/lifecycle reference only**; BaseCamp render is dependency-driven (Day 1 → Day N compression), not phase-lane ordering.
 
-**FORMING:**
-1. Trip Name  
-2. Capacity  
+**v1 allowed instruments (locked):** Roster Lock, Booking, Compliance/Passport Details, Tee Grouping, GameDay Activation. No lanes, no phase completion UI, no multi-task view. See basecamp-v1.md.
 
-**SIGNUPS_OPEN:**
-1. Sign-ups Window  
-2. Roster  
-
-**LOCKED:**
-1. Flights Editor  
-2. Transport Details (if applicable)  
-3. Export Docs  
-4. Meet Details  
-
-**GAMEDAY:**
-1. Enter GameDay  
-
-**COMPLETED:**
-1. Publish Results  
-
-**Rules:**
-- Past-phase instruments must never render as reassurance rows
-- Future-phase instruments must never render as previews
-- Ordering is deterministic and phase-scoped
+**Domain-phase reference (latent in UI):** FORMING, SIGNUPS_OPEN, LOCKED, GAMEDAY, COMPLETED. Instrument ordering by phase is deprecated for **render** logic; use basecamp-v1.md render states and at-most-one-instrument rule.
 
 ### Scenario-dependent Instruments
 
@@ -203,6 +183,10 @@ Some instruments appear only when the trip scenario includes specific requiremen
 All other instruments are scenario-invariant.
 
 Scenario gating is applied in addition to phase gating. An instrument must satisfy both.
+
+### Agent Coordination lane (when agent attached)
+
+- The **Agent Coordination lane** is not a phase instrument. It appears in BaseCamp when at least one agent is attached to the trip. It mirrors the Agent View: signals, Clarifications, attendee travel-docs state (read-only). Organiser replies and resolves Clarifications in this lane. Lane may collapse; when expanded, it follows the same vertical rhythm and divider contract as other BaseCamp content. No separate product; same app, same trip, two projections.
 
 ### BaseCamp UI Transition Rules (v1)
 

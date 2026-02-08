@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { createSupabaseServerClient, createSupabaseServiceClient } from "@/app/lib/supabaseServer";
+import { requireAuthedUser, isGroupAdmin } from "@/app/lib/serverAuth";
 
 /**
  * GET /api/trips/[id]/flights
@@ -12,42 +13,55 @@ export async function GET(
 ) {
   try {
     const supabase = await createSupabaseServerClient();
-    const resolvedParams = await params;
-    const tripId = parseInt(resolvedParams.id, 10);
+    const { id } = await params;
 
-    if (!Number.isFinite(tripId)) {
-      return NextResponse.json(
-        { error: "Invalid trip ID." },
-        { status: 400 }
-      );
-    }
+    // Invariant: Route param [id] may be legacy numeric id or UUID. We always resolve to canonical trips.id (UUID) before role checks and mutations.
+    const isNumeric = /^[0-9]+$/.test(id);
+    const parsed = isNumeric ? Number(id) : null;
+    let tripQuery = supabase.from("trips").select("id, group_id").limit(1);
+    tripQuery = isNumeric ? tripQuery.eq("legacy_id", parsed) : tripQuery.eq("id", id);
+    const { data: tripData, error: tripErr } = await tripQuery.maybeSingle();
 
-    // Get authenticated user
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-    }
-
-    // Fetch trip UUID id from legacy_id
-    const { data: tripData } = await supabase
-      .from("trips")
-      .select("id")
-      .eq("legacy_id", tripId)
-      .maybeSingle();
-
-    if (!tripData) {
+    if (tripErr || !tripData) {
       return NextResponse.json(
         { error: "Trip not found." },
         { status: 404 }
       );
     }
 
-    // Fetch flights with slots (use UUID id)
-    const { data: flightsData, error: flightsErr } = await supabase
+    const tripUuid = tripData.id;
+    const groupId = (tripData as { group_id?: string }).group_id ?? null;
+
+    let userId: string;
+    try {
+      const auth = await requireAuthedUser();
+      userId = auth.userId;
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === "UNAUTHORIZED") {
+        return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+      }
+      throw e;
+    }
+
+    const userIsAdmin = groupId ? await isGroupAdmin({ supabase, userId, groupId }) : false;
+    if (!userIsAdmin) {
+      const { data: attendeeRow } = await supabase
+        .from("trip_attendees")
+        .select("member_id")
+        .eq("trip_id", tripUuid)
+        .eq("member_id", userId)
+        .maybeSingle();
+      if (!attendeeRow) {
+        return NextResponse.json(
+          { error: "Only attendees can view flights." },
+          { status: 403 }
+        );
+      }
+    }
+
+    const supabaseService = await createSupabaseServiceClient();
+
+    const { data: flightsData, error: flightsErr } = await supabaseService
       .from("trip_flights")
       .select(`
         id,
@@ -64,7 +78,7 @@ export async function GET(
           members(display_name, full_name)
         )
       `)
-      .eq("trip_id", tripData.id)
+      .eq("trip_id", tripUuid)
       .order("flight_number", { ascending: true });
 
     if (flightsErr) {
@@ -73,6 +87,30 @@ export async function GET(
         { error: "Failed to fetch flights." },
         { status: 500 }
       );
+    }
+
+    const memberIds = Array.from(
+      new Set(
+        (flightsData || [])
+          .flatMap((f: any) => (f.trip_flight_slots || []).map((s: any) => s.member_id))
+          .filter(Boolean)
+      )
+    );
+    const handicapByMemberId: Record<string, number | null> = {};
+    if (memberIds.length > 0) {
+      const { data: taData, error: taErr } = await supabaseService
+        .from("trip_attendees")
+        .select("member_id, handicap_snapshot")
+        .eq("trip_id", tripUuid)
+        .in("member_id", memberIds);
+
+      if (taErr) {
+        console.warn("[flights] Failed to fetch handicap snapshots:", taErr);
+      } else {
+        (taData || []).forEach((r: any) => {
+          handicapByMemberId[r.member_id] = r.handicap_snapshot ?? null;
+        });
+      }
     }
 
     // Transform to UI format
@@ -91,11 +129,15 @@ export async function GET(
             id: slot.id,
             memberId: slot.member_id,
             memberName: member?.display_name || member?.full_name || "Unknown",
+            handicapSnapshot: handicapByMemberId[slot.member_id] ?? null,
             slotPosition: slot.slot_position,
             isLocked: slot.is_locked,
           };
         }),
     }));
+
+    const totalSlots = flights.reduce((sum, f) => sum + f.slots.length, 0);
+    console.info("[flights/get] slots_returned", { tripId: tripUuid, slots: totalSlots });
 
     return NextResponse.json({ flights });
   } catch (e: any) {
@@ -122,48 +164,38 @@ export async function PATCH(
 ) {
   try {
     const supabase = await createSupabaseServerClient();
-    const resolvedParams = await params;
-    const tripId = parseInt(resolvedParams.id, 10);
+    const { id } = await params;
 
-    if (!Number.isFinite(tripId)) {
-      return NextResponse.json(
-        { error: "Invalid trip ID." },
-        { status: 400 }
-      );
-    }
+    // Invariant: Route param [id] may be legacy numeric id or UUID. We always resolve to canonical trips.id (UUID) before role checks and mutations.
+    const isNumeric = /^[0-9]+$/.test(id);
+    const parsed = isNumeric ? Number(id) : null;
+    let tripQuery = supabase.from("trips").select("id,group_id").limit(1);
+    tripQuery = isNumeric ? tripQuery.eq("legacy_id", parsed) : tripQuery.eq("id", id);
+    const { data: tripData, error: tripErr } = await tripQuery.maybeSingle();
 
-    // Get authenticated user
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-    }
-
-    // Fetch trip UUID id from legacy_id and check if user is admin
-    const { data: tripData } = await supabase
-      .from("trips")
-      .select("id,group_id")
-      .eq("legacy_id", tripId)
-      .maybeSingle();
-
-    if (!tripData) {
+    if (tripErr || !tripData) {
       return NextResponse.json(
         { error: "Trip not found." },
         { status: 404 }
       );
     }
 
-    const { data: membership } = await supabase
-      .from("group_members")
-      .select("is_admin")
-      .eq("group_id", tripData.group_id)
-      .eq("member_id", user.id)
-      .maybeSingle();
+    const tripUuid = tripData.id;
+    const groupId = tripData.group_id;
 
-    if (!membership?.is_admin) {
+    let userId: string;
+    try {
+      const auth = await requireAuthedUser();
+      userId = auth.userId;
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === "UNAUTHORIZED") {
+        return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+      }
+      throw e;
+    }
+
+    const userIsAdmin = groupId ? await isGroupAdmin({ supabase, userId, groupId }) : false;
+    if (!userIsAdmin) {
       return NextResponse.json(
         { error: "Only group admins can update flights." },
         { status: 403 }
@@ -181,10 +213,42 @@ export async function PATCH(
       );
     }
 
-    // Apply updates
+    // Apply updates (validate slot ownership first: slotId → flight → trip_id === tripUuid)
     for (const update of updates) {
+      const { data: slotRow, error: slotErr } = await supabase
+        .from("trip_flight_slots")
+        .select("id,flight_id")
+        .eq("id", update.slotId)
+        .maybeSingle();
+
+      if (slotErr || !slotRow) {
+        return NextResponse.json(
+          { error: "Not found." },
+          { status: 404 }
+        );
+      }
+
+      const { data: flightRow, error: flightErr } = await supabase
+        .from("trip_flights")
+        .select("id,trip_id")
+        .eq("id", (slotRow as { flight_id: string }).flight_id)
+        .maybeSingle();
+
+      if (flightErr || !flightRow) {
+        return NextResponse.json(
+          { error: "Not found." },
+          { status: 404 }
+        );
+      }
+
+      if ((flightRow as { trip_id: string }).trip_id !== tripUuid) {
+        return NextResponse.json(
+          { error: "Not found." },
+          { status: 404 }
+        );
+      }
+
       const updatePayload: any = {};
-      
       if (update.memberId !== undefined) {
         updatePayload.member_id = update.memberId;
       }
@@ -194,9 +258,8 @@ export async function PATCH(
       if (update.isLocked !== undefined) {
         updatePayload.is_locked = update.isLocked;
       }
-
       if (Object.keys(updatePayload).length === 0) {
-        continue; // Skip empty updates
+        continue;
       }
 
       const { error: updateErr } = await supabase

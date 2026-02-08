@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
@@ -9,9 +10,22 @@ import ActiveGameDayChip from "./components/ActiveGameDayChip";
 export default async function MemberLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
 
-  // Require authenticated user - this is the only gate
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const pathname = (await headers()).get("x-pathname") || "";
+  const { count, error } = await supabase
+    .from("group_members")
+    .select("group_id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("status", "approved");
+  const approvedCount = error ? 1 : (count ?? 0);
+  const allowedWhenNoGroups = pathname === "/start" || pathname.startsWith("/groups/create");
+  if (approvedCount === 0) {
+    if (!allowedWhenNoGroups) redirect("/start");
+  } else {
+    if (pathname === "/start") redirect("/");
+  }
 
   return (
     <div className="min-h-dvh app-background-theme">

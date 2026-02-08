@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { requireAuthedUser } from "@/app/lib/serverAuth";
 
 /**
  * GET /api/trips/[id]/flights/export.csv
@@ -12,41 +13,34 @@ export async function GET(
 ) {
   try {
     const supabase = await createSupabaseServerClient();
-    const resolvedParams = await params;
-    const tripId = parseInt(resolvedParams.id, 10);
+    const { id } = await params;
 
-    if (!Number.isFinite(tripId)) {
-      return NextResponse.json(
-        { error: "Invalid trip ID." },
-        { status: 400 }
-      );
-    }
+    // Invariant: Route param [id] may be legacy numeric id or UUID. We always resolve to canonical trips.id (UUID) before role checks and mutations.
+    const isNumeric = /^[0-9]+$/.test(id);
+    const parsed = isNumeric ? Number(id) : null;
+    let tripQuery = supabase.from("trips").select("id").limit(1);
+    tripQuery = isNumeric ? tripQuery.eq("legacy_id", parsed) : tripQuery.eq("id", id);
+    const { data: tripData, error: tripErr } = await tripQuery.maybeSingle();
 
-    // Get authenticated user
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-    }
-
-    // Fetch trip UUID id from legacy_id
-    const { data: tripData } = await supabase
-      .from("trips")
-      .select("id")
-      .eq("legacy_id", tripId)
-      .maybeSingle();
-
-    if (!tripData) {
+    if (tripErr || !tripData) {
       return NextResponse.json(
         { error: "Trip not found." },
         { status: 404 }
       );
     }
 
-    // Fetch flights with slots and member names (use UUID id)
+    const tripUuid = tripData.id;
+
+    try {
+      await requireAuthedUser();
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === "UNAUTHORIZED") {
+        return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+      }
+      throw e;
+    }
+
+    // Fetch flights with slots and member names (use canonical trip UUID)
     const { data: flightsData, error: flightsErr } = await supabase
       .from("trip_flights")
       .select(`
@@ -56,7 +50,7 @@ export async function GET(
           members(display_name, full_name)
         )
       `)
-      .eq("trip_id", tripData.id)
+      .eq("trip_id", tripUuid)
       .order("flight_number", { ascending: true });
 
     if (flightsErr) {
@@ -97,12 +91,12 @@ export async function GET(
 
     const csv = rows.join("\n");
 
-    // Return CSV with proper headers
+    // Return CSV with proper headers (use id param for filename for readability)
     return new NextResponse(csv, {
       status: 200,
       headers: {
         "Content-Type": "text/csv",
-        "Content-Disposition": `attachment; filename="flights-trip-${tripId}.csv"`,
+        "Content-Disposition": `attachment; filename="flights-trip-${id}.csv"`,
       },
     });
   } catch (e: any) {

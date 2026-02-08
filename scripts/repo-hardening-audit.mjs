@@ -140,14 +140,12 @@ function checkTripGroupIdContract() {
   const content = fs.readFileSync(tripActionsPath, "utf8");
   let failures = 0;
 
-  // Check Trip type includes groupId
-  // Look for "export type Trip" followed by groupId within the type definition
-  const tripTypeIndex = content.indexOf('export type Trip');
+  // Check Trip type includes groupId (use "export type Trip =" to distinguish from TripListItem)
+  const tripTypeIndex = content.indexOf("export type Trip =");
   if (tripTypeIndex === -1) {
     console.error(`DTO CONTRACT BREACH: Trip.groupId not preserved (tripActions.ts) - Trip type not found`);
     failures++;
   } else {
-    // Extract a reasonable chunk after "export type Trip" to search for groupId
     const typeChunk = content.substring(tripTypeIndex, Math.min(tripTypeIndex + 2000, content.length));
     const hasTripTypeWithGroupId = /groupId/.test(typeChunk);
     if (!hasTripTypeWithGroupId) {
@@ -660,6 +658,54 @@ function getApiRouteFiles() {
   return out;
 }
 
+// RUNTIME-01: API routes must not import client-only loaders (tripActions, courseActions, etc.). Type-only imports allowed.
+const RUNTIME01_CLIENT_ONLY_MODULES = [
+  "@/app/lib/tripActions",
+  "@/app/lib/courseActions",
+  "@/app/lib/clubhouseEvents",
+  "@/app/lib/tripInstrumentation",
+];
+
+function checkRuntime01ApiRouteClientOnlyImports() {
+  let failures = 0;
+  const routeFiles = getApiRouteFiles();
+  const LOOKBACK = 6;
+  for (const file of routeFiles) {
+    const content = fs.readFileSync(file, "utf8");
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+      for (const mod of RUNTIME01_CLIENT_ONLY_MODULES) {
+        if (!line.includes(mod) || !line.includes("from")) continue;
+        const isImportOnThisLine = /import\s+/.test(line);
+        const isTypeOnlyOnThisLine = /import\s+type\s+/.test(trimmed);
+        if (isImportOnThisLine && isTypeOnlyOnThisLine) continue;
+        if (isImportOnThisLine) {
+          console.error(
+            `${file}:${i + 1}: RUNTIME-01: API route imports client-only module ${mod}. Use server client (supabaseServer) + direct DB query instead.`
+          );
+          failures++;
+          continue;
+        }
+        for (let j = 1; j <= LOOKBACK && i - j >= 0; j++) {
+          const prev = lines[i - j].trim();
+          if (/import\s+/.test(prev)) {
+            if (/import\s+type\s+/.test(prev)) break;
+            console.error(
+              `${file}:${i + 1}: RUNTIME-01: API route imports client-only module ${mod}. Use server client (supabaseServer) + direct DB query instead.`
+            );
+            failures++;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return failures;
+}
+
 const LIFECYCLE02_LEGACY_WRITE_PATTERNS = [
   /coordination_status\s*=\s*['"](?:draft|scheduled)['"]/,
   /coordinationStatus\s*:\s*['"](?:draft|scheduled)['"]/,
@@ -765,8 +811,46 @@ failures += checkAnchorBoundary();
 // Lifecycle legacy quarantine (write paths)
 failures += checkLifecycleLegacyWrites();
 
+// RUNTIME-01: API routes must not import client-only loaders
+failures += checkRuntime01ApiRouteClientOnlyImports();
+
 // Time picking canonical (single entry point; PixelTimePicker internal only)
 failures += checkTimePickerCanonical();
+
+// ABOUT-01: About page must render APP_VERSION from single source of truth
+const APP_VERSION_MODULE_PATH = path.join(SRC_DIR, "app", "lib", "appVersion.ts");
+const ABOUT_PAGE_PATH = path.join(SRC_DIR, "app", "about", "page.tsx");
+const APP_VERSION_IMPORT_PATH = "@/app/lib/appVersion";
+
+function checkAbout01() {
+  let failures = 0;
+  if (!fs.existsSync(APP_VERSION_MODULE_PATH)) {
+    console.error(`ABOUT-01: Missing app version module. Create ${APP_VERSION_MODULE_PATH} and export APP_VERSION.`);
+    return 1;
+  }
+  const appVersionContent = fs.readFileSync(APP_VERSION_MODULE_PATH, "utf8");
+  const appVersionNoComments = stripComments(appVersionContent);
+  if (!/export\s+const\s+APP_VERSION\b/.test(appVersionNoComments) && !/export\s*\{\s*[^}]*APP_VERSION\s*\}/.test(appVersionNoComments)) {
+    console.error(`ABOUT-01: Missing export APP_VERSION in ${APP_VERSION_MODULE_PATH}`);
+    failures++;
+  }
+  if (!fs.existsSync(ABOUT_PAGE_PATH)) {
+    console.error(`ABOUT-01: About page not found at ${ABOUT_PAGE_PATH}. Must render APP_VERSION from ${APP_VERSION_IMPORT_PATH}.`);
+    return 1;
+  }
+  const aboutContent = fs.readFileSync(ABOUT_PAGE_PATH, "utf8");
+  if (!aboutContent.includes(APP_VERSION_IMPORT_PATH) && !aboutContent.includes("app/lib/appVersion")) {
+    console.error(`ABOUT-01: About page must import APP_VERSION from ${APP_VERSION_IMPORT_PATH}.`);
+    failures++;
+  }
+  if (!aboutContent.includes("Version") || !aboutContent.includes("APP_VERSION")) {
+    console.error(`ABOUT-01: About page must render APP_VERSION from ${APP_VERSION_IMPORT_PATH}.`);
+    failures++;
+  }
+  return failures;
+}
+
+failures += checkAbout01();
 
 if (failures > 0) {
   console.error(`Hardening audit failed: ${failures} issue(s).`);

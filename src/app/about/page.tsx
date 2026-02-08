@@ -1,53 +1,73 @@
 import MemberLayout from "../(member)/layout";
+import { APP_VERSION } from "@/app/lib/appVersion";
 
 function AboutContent() {
   return (
     <div className="px-4 pb-24 pt-4">
-      <h1 className="text-2xl font-bold text-primary">About Day Fore It</h1>
+      <h1 className="text-2xl font-bold text-primary">About DayForeIt</h1>
 
-      <div className="mt-4 space-y-4 text-sm leading-relaxed secondary-text">
+      <div className="mt-4 space-y-6 text-sm leading-relaxed secondary-text">
         <p>
-          Day Fore It is a simple way to organise a round of golf with people you know — and enjoy the day without admin getting in the way.
+          DayForeIt is a simple way to organise a round of golf with people you know — so you can enjoy the day without admin getting in the way.
         </p>
 
         <p>
-          It's built for real golfers playing real rounds: mates organising a Saturday game, a group heading overseas, or a club running an official day. Day Fore It helps you coordinate the details, keep track of who's playing, and record scores when you want to — without turning golf into spreadsheets or leaderboards.
+          It's built for real golfers playing real rounds: mates organising a Saturday game, a group travelling overseas, or a club running an official day. DayForeIt helps you coordinate the details, see who's playing, and record scores if you want — without turning golf into spreadsheets or noise.
         </p>
 
-        <div>
-          <div className="font-medium text-primary mb-1">What Day Fore It is</div>
-          <ul className="ml-4 list-disc space-y-1">
-            <li>A group-first golf coordination app</li>
-            <li>Designed for rounds, not bureaucracy</li>
-            <li>Calm, social, and personal — not competitive by default</li>
-            <li>Built to support the day of golf, not distract from it</li>
+        <section className="space-y-2">
+          <h2 className="font-medium text-primary">What DayForeIt is</h2>
+          <ul className="list-disc list-outside pl-6 space-y-2 [list-style-type:disc]">
+            <li>A group-first way to organise a round of golf</li>
+            <li>Made for real rounds, not process</li>
+            <li>Social and easygoing by default</li>
+            <li>There to support the day, not dominate it</li>
           </ul>
-        </div>
+        </section>
 
-        <div>
-          <div className="font-medium text-primary mb-1">What it's not</div>
-          <ul className="ml-4 list-disc space-y-1">
-            <li>It's not a betting app</li>
-            <li>It's not a stat-obsessed performance tracker</li>
-            <li>It's not trying to replace how you enjoy golf</li>
+        <section className="space-y-2">
+          <h2 className="font-medium text-primary">What it's not</h2>
+          <ul className="list-disc list-outside pl-6 space-y-2 [list-style-type:disc]">
+            <li>Not a performance or analytics tool</li>
+            <li>Not trying to change how you play golf</li>
           </ul>
-        </div>
+        </section>
 
-        <div>
-          <div className="font-medium text-primary mb-1">How it's designed</div>
+        <p>
+          Whether you're hosting, joining, or just keeping an eye on what's coming up, DayForeIt stays out of the way and lets the round be the focus.
+        </p>
+
+        <section className="space-y-2">
+          <h2 className="font-medium text-primary">Course data (v1)</h2>
+          <ul className="list-disc list-outside pl-6 space-y-2 [list-style-type:disc]">
+            <li>We use a third-party course database to help you find courses faster.</li>
+            <li>Coverage varies by region — some courses may be missing while we expand the catalog.</li>
+            <li>Course locations are approximate and used for planning, not precise on-course GPS.</li>
+            <li>If you can&apos;t find a course, you can still organise the trip and fill in details manually.</li>
+          </ul>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="font-medium text-primary">Where DayForeIt is heading</h2>
           <p>
-            Day Fore It is intentionally quiet and respectful:
+            DayForeIt is currently working towards v1.
           </p>
-          <ul className="ml-4 mt-1 list-disc space-y-1">
-            <li>You see what matters next, not everything at once</li>
-            <li>Language is human and non-judgmental</li>
-            <li>Scores, handicaps, and leaderboards are optional and contextual</li>
-            <li>The app adapts as the day progresses — before, during, and after a round</li>
+          <p>
+            Right now, the focus is on making it easy to organise a round and keep everyone aligned on the day. Over the coming releases, you can expect:
+          </p>
+          <ul className="list-disc list-outside pl-6 space-y-2 [list-style-type:disc]">
+            <li>Richer day-of coordination — clearer visibility of who's in, what's happening, and what's next</li>
+            <li>Optional scoring and results — when you want to record a round, without forcing competition</li>
+            <li>Season and group continuity — seeing how rounds fit together over time</li>
+            <li>Lightweight handicap support — simple, practical tracking without complexity</li>
           </ul>
-        </div>
+          <p>
+            DayForeIt is being built carefully and iteratively. Features are added only when they improve the experience of the day itself.
+          </p>
+        </section>
 
-        <p>
-          Whether you're hosting, joining, or just keeping an eye on what's coming up, Day Fore It is there to support the day — not steal attention from it.
+        <p className="mt-6 pt-4 text-xs text-muted border-t border-border">
+          Version: {APP_VERSION}
         </p>
       </div>
     </div>

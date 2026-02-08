@@ -17,7 +17,6 @@ import { GameDayEntryBody } from "./gamedayEntryInstrument";
 import { ParticipantsBody, ParticipantsRightAction } from "./participantsInstrument";
 import { FlightsPlanBody } from "./flightsPlanInstrument";
 import { CapacityBody } from "./capacityInstrument";
-import { ExportDocsBody } from "./exportDocsInstrument";
 
 function withAvailability(
   def: InlineInstrumentDefinition
@@ -74,7 +73,7 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
     },
     flights_plan: {
       key: "flights_plan",
-      title: "Flights",
+      title: "Tee groups",
       helper: "Set tee groups before the day. GameDay allows tiny tee-box fixes only.",
       kind: "job",
       compactWhenDone: true,
@@ -116,27 +115,17 @@ export function getInstrumentRegistry(): Record<InstrumentKey, InlineInstrumentD
     },
     participants: {
       key: "participants",
-      title: "Participants",
+      title: "Attendees",
       helper: undefined,
       kind: "status_control",
-      phaseVisibility: [],
+      phaseVisibility: ["locked", "gameday", "in_play", "completed"],
       order: 10,
       isDone: () => true,
       RenderBody: ParticipantsBody,
       RightAction: ParticipantsRightAction,
     },
-    export_docs: {
-      key: "export_docs",
-      title: "Export documents",
-      helper: undefined,
-      kind: "job",
-      compactWhenDone: true,
-      phaseVisibility: ["locked"],
-      order: 6,
-      isDone: (event: EventContext) => event.instruments.export_docs.status === "done",
-      RenderBody: ExportDocsBody,
-    },
   };
+  // "participants" is an internal identifier; BaseCamp UI must show "Attendees" only.
   return Object.fromEntries(
     (Object.entries(raw) as [InstrumentKey, InlineInstrumentDefinition][]).map(
       ([k, d]) => [k, withAvailability(d)]

@@ -1,6 +1,20 @@
 # Design Manifesto (Legacy)
 
-This document is superseded by [docs/canon/v1.md](./v1.md) for the full product constitution. The following locks Trips list and participant view behaviour.
+This document is superseded by [docs/canon/v1.md](./v1.md) for the full product constitution. The following locks Trips list, participant view behaviour, and Agent Collaboration design stance.
+
+---
+
+## Agent Collaboration — Design stance
+
+Agent View and the Agent Coordination lane are two projections of the same coordination reality. Design principles:
+
+- **Coordination over control** — Surfaces inform and align; they do not gate or approve.
+- **Signals over messages** — Read-only beacons (roster status, travel docs progress, flights status) carry confidence and sequencing; Clarifications carry discrete questions and resolutions.
+- **Inline visibility over exports** — Attendees list with inline Travel docs is the canonical surface; downloads are convenience only.
+- **Resolution over endless discussion** — Clarifications are discrete items with Open/Resolved status; follow-ups create new items.
+- **Projection over mutation** — Agents see a read-only projection; organiser mutates from BaseCamp. No separate "agent console"; no chat UX; no approvals; no modal-heavy flows.
+
+Full UX spec: [v1.md — Agent Collaboration](./v1.md#agent-collaboration).
 
 ---
 

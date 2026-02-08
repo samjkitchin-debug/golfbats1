@@ -1,8 +1,20 @@
 # Trip Snapshot Header (locked spec)
 
-## A) Purpose and organiser mental model
+## A) Purpose and three-layer model
 
-The Trip Snapshot Header is the **chroma** above BaseCamp on the Trip Details page. It provides a **glance loop**: title, meta, date, host, and a compact **snapshot grid** of key facts. Organisers scan it to confirm meet time, meeting point, course, format, spots, sign-ups, and—when present—logistics, transport, travel docs, and agent pack status. No actions, no prose. Identity and compiled facts only.
+The Trip Snapshot Header is the **Top Chroma** above BaseCamp on the Trip Details page. It reflects a clear **three-layer hierarchy** that matches organiser mental models:
+
+1. **Trip identity** — What trip is this? (title, group · course, date, host.)
+2. **Trip contract** — What constraints define this trip? (format, spots, travel docs required when applicable.)
+3. **Meet & travel details** — How do people physically show up? (meet time, meeting point, travel when applicable.)
+
+The chroma must **not** display workflow or progress states (e.g. "Sign-ups closed", "Planned"). **BaseCamp owns all sequencing and completion signals.** The snapshot header is definitional and factual only.
+
+**Explicit rules:**
+
+- **Course** appears only in the identity line (group · course name). It must **never** be duplicated as a snapshot row.
+- **Requirements** (e.g. travel docs required) belong to the **contract** section, not BaseCamp.
+- **Meet & travel details** are reference facts only, not tasks; no actions, no "Change" links, no status words.
 
 ## B) Visual hierarchy and typography tokens
 
@@ -18,83 +30,98 @@ Use **Inter** and **ink** tokens only. No raw hex.
 | Snapshot grid labels | 12px / 500 / 16px line-height | ink-700 |
 | Snapshot grid values | 13px / 500 / 18px line-height | ink-900 |
 | Row gap | 6px | — |
-| Divider above grid | 1px solid | ink-200 or border-border |
+| Divider between sections | 1px solid | ink-200 or border-border |
 | Unknown values | — | Render "—" exactly |
 
-## C) Snapshot grid slot model
+Sections are separated by spacing and subtle dividers only (no cards, no banners). Visual separation between Section 3 (Meet & travel) and BaseCamp anchors must make it clear where definition ends and workflow begins.
 
-### Core slots (always present, fixed order)
+## C) Snapshot grid model (three sections)
 
-1. Meet time  
-2. Meeting point  
-3. Course  
-4. Format  
-5. Spots  
-6. Sign-ups  
+The Trip Details chroma uses **three sections**. The snapshot compiler emits a full row set; the Trip Details page filters by intent (contract vs logistics) and renders two compact grids after the identity block.
 
-### Optional slots (only if instrument exists, appended after core in this order; max 10 rows total)
+### Section 1 — Trip identity (no grid)
 
-7. Logistics  
-8. Transport  
-9. Travel docs  
-10. Agent pack  
+- Trip code / name (title).
+- Group · Course (meta line).
+- Date (date line).
+- Hosted by (host line).
 
-**Row cap:** Never exceed 10 rows. If more instruments exist, they do not get header rows.
+Course is **only** here (in the meta line); there is no "Course" row in any grid.
 
-## D) Enablement rules
+### Section 2 — Trip contract
 
-- **Instrument presence** decides whether an optional slot exists.  
-- Presence is derived from the **instrument registry** and the **trip’s instrument set** (e.g. `getOrderedVisibleKeys(instruments, phase)` or equivalent). Phase = `event.state`.  
-- Do **not** infer from “trip.logistics_* fields exist” or similar. Presence must be **registry-driven**.
+A compact grid containing **only**:
+
+- **Format** — e.g. Stableford.
+- **Spots** — e.g. 2 of 40 filled (admin only).
+- **Travel docs** — value "Required" when derived true (admin only; participants do not see Spots or Travel docs in contract).
+
+Rules: Contract rows are declarative. No completion or progress language ("planned", "closed", "confirmed").
+
+### Section 3 — Meet & travel details
+
+A separate compact grid containing (order):
+
+1. **Meet time**
+2. **Meeting point**
+3. **Transport** — derived from `trip.logistics.itineraryDetails` or `trip.logistics.ferryDetails`; only emitted when non-empty.
+4. **Notes** — derived from `trip.logistics.notes`; only emitted when non-empty.
+5. **Travel** — when applicable (e.g. Ferry · International); descriptive only, no completion state.
+
+These are **quick-glance reference facts** for organisers. They are not workflow or progress states. They are not BaseCamp instruments. Transport and Notes only appear when the derived value is non-empty (no empty rows).
+
+Rules: Logistics rows are factual reference only. No confirmation state, no actions. Do not invent new fields; use what already exists.
+
+### Not in chroma
+
+- **Sign-ups** / sign-ups status — BaseCamp anchors only.
+- **Course** as a row — Course appears only in identity (meta line).
+- Any BaseCamp progress indicators — jobs and progress live exclusively in BaseCamp.
+
+## D) Transport / Travel row semantics
+
+- The chroma must **not** show completion-state words like "Planned" for travel.
+- When the trip has travel involved (`travelInvolved`), emit a **Travel** row with a **descriptive** value:
+  - Prefer trip travel type (e.g. Ferry, Flight, Coach, Drive, Other), title-cased.
+  - If no type: "Travel".
+  - Optionally append " · International" or " · Domestic" when `travelScope` exists.
+- When the trip does **not** have travel involved, do **not** emit a transport/travel row just because itinerary text exists.
 
 ## E) Value rules
 
-- **Known values:** render normally.  
-- **Unknown / missing:** render "—" exactly.  
-- **No invention:** only compute counts or statuses when the underlying data exists deterministically.
-
-### Core slot values
-
-| Slot | Rule |
-|------|------|
-| Meet time | Value if present, else "—" |
-| Meeting point | Value if present, else "—" |
-| Course | Value if present, else "—" |
-| Format | Value if present, else "—" |
-| Spots | If capacity exists: "{confirmedCount} of {capacity} filled". Else if confirmedCount exists: "{confirmedCount} joined". Else "—" |
-| Sign-ups | Use existing trip state/phase only. "Open" / "Closed" / etc. If a close date exists in Trip Details, optionally append "(closes Thu 29 Jan)" in 12px/500/ink-700. If not, omit. |
-
-### Optional slot values (only if instrument exists; keep compact)
-
-| Slot | Rule |
-|------|------|
-| Logistics | "Complete" / "{n} missing" / "—" from existing deterministic signals; else "—" |
-| Transport | Transport readiness only: "Planned" if trip.logistics has itinerary/ferry details; else "—". No narrative text. |
-| Travel docs | "{complete}/{total} complete" if counts exist; else "—" |
-| Agent pack | "Exported" / "Not exported" if tracked; else "—" |
-
-No new business logic or DB fields. Do not fabricate when not derivable.
+- **Known values:** render normally.
+- **Unknown / missing:** render "—" exactly.
+- **No completion-state values in chroma:** e.g. no "Planned", "Complete", "Exported" in grid rows; values must describe the trip or its constraints, not task status.
 
 ## F) Stability rules
 
-- **Stable row order:** Core slots 1–6 always in order; optional 7–10 appended in order when present.  
-- **Only optional rows** appear or disappear based on instrument presence.  
-- **Max 10 rows** enforced.
+- **Order on page:** Identity → Contract grid (if any rows) → Meet & travel grid (if any rows) → BaseCamp anchors.
+- **Contract keys:** format, spots, travel_docs_required.
+- **Logistics keys:** meet_time, meeting_point, travel, transport_summary, notes (transport_summary and notes only emitted when non-empty).
+- **Max 10 rows** in the compiler output (other consumers may use the full snapshot).
+- Sign-ups and progress are never emitted as snapshot rows.
 
 ## G) Forbidden elements
 
-- No actions, no buttons, no prose fluff, no chips competing with the title.  
-- No “Details will be confirmed by the host” or similar copy in the header.
+- No actions, no buttons, no "Change" links, no prose fluff, no chips competing with the title.
+- No "Details will be confirmed by the host" or similar copy in the header.
+- No sign-ups status row in chroma.
+- No completion-state words like "Planned" in chroma rows.
+- Snapshot header must **not** display workflow or progress states; BaseCamp owns all sequencing and completion signals.
 
 ## H) Acceptance criteria
 
-- [ ] Header shows back row, title, meta line (Group · Course), date line, host line, then snapshot grid.  
-- [ ] Core slots 1–6 always present in order.  
-- [ ] Optional slots 7–10 only when corresponding instrument exists for the trip (registry / phase).  
-- [ ] Unknown values render "—".  
-- [ ] Max 10 rows.  
-- [ ] No actions in header.  
-- [ ] Typography and tokens match spec.  
+- [ ] Header shows back row, title, meta line (Group · Course), date line, host line.
+- [ ] **Section 1 (Identity):** No grid; course appears only in meta line, never duplicated.
+- [ ] **Section 2 (Contract):** Compact grid with format, spots, travel_docs_required when present; subtle divider above.
+- [ ] **Section 3 (Meet & travel):** Compact grid with meet_time, meeting_point, transport (when present), notes (when present), travel when present; subtle divider above.
+- [ ] **No sign-ups status row in chroma.**
+- [ ] **No completion-state words in chroma rows.**
+- [ ] **Requirements (e.g. travel docs required) appear only in contract section.**
+- [ ] Meet & travel details are visually distinct from BaseCamp workflow (definition ends before BaseCamp).
+- [ ] Unknown values render "—".
+- [ ] No actions in header.
+- [ ] Typography and tokens match spec.
 - [ ] UK English, sentence case.
 
 ---
@@ -106,9 +133,10 @@ For **participants** (canEdit === false), Trip Details is read-only. No BaseCamp
 **Order:**
 
 1. **Header** — Title, meta (group · course), date line, host line.
-2. **Confirmation line** — "You're confirmed for this trip." or "You're on the waitlist." when applicable.
-3. **Curated participant snapshot** — Snapshot grid with **only** these rows (in order): Meet time, Meeting point, Course, Format, Transport (Planned / —). No Spots, Sign-ups, Agent pack, or other admin-only rows.
-4. **Narrative details card** — Single card with:
+2. **Contract** — Snapshot grid with **only** Format (no Spots, no Travel docs).
+3. **Meet & travel** — Snapshot grid with Meet time, Meeting point, Travel (when present).
+4. **Confirmation line** — "You're confirmed for this trip." or "You're on the waitlist." when applicable.
+5. **Narrative details card** — Single card with:
    - **Meeting** — Meet time, Meeting point (from canonical meet).
    - **Transport details** — Generic freeform; see rule below.
    - **Notes** — trip.logistics.notes or "—".

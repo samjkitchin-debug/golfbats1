@@ -12,7 +12,7 @@ import { resolveViewerRole } from "../roles/roleEngine";
 import { getTripRequirements } from "../requirements/requirementsEngine";
 import { computeAttendeeCompliance, summariseCompliance } from "../compliance/complianceEngine";
 import { getReadyToLockBlockers, getReadyForAgentPackBlockers } from "../readiness/readinessEngine";
-import type { EventContext, EventKind, MeetDetailsData, SignupsWindowData, RosterData, FlightsPlanData, TripNameData, ResultsPublishData, GameDayEntryData, ParticipantsData, CapacityData, ExportDocsData } from "./eventTypes";
+import type { EventContext, EventKind, MeetDetailsData, SignupsWindowData, RosterData, FlightsPlanData, TripNameData, ResultsPublishData, GameDayEntryData, ParticipantsData, CapacityData } from "./eventTypes";
 import type { Trip } from "../../tripActions";
 
 export function resolveEventContext(args: {
@@ -21,8 +21,15 @@ export function resolveEventContext(args: {
   now?: number;
   currentMemberId?: string | null;
   isGroupAdmin?: boolean;
+  /** Approved groups with role (for per-trip-group admin checks). */
+  approvedGroups?: Array<{ id: string; role?: string }>;
 }): EventContext {
-  const { trip, scoringStarted, now = Date.now(), currentMemberId = null, isGroupAdmin = false } = args;
+  const { trip, scoringStarted, now = Date.now(), currentMemberId = null, isGroupAdmin = false, approvedGroups } = args;
+
+  const roleByGroupId: Record<string, string> = {};
+  for (const g of approvedGroups ?? []) {
+    if (g.id && g.role) roleByGroupId[g.id] = g.role;
+  }
 
   // Determine kind
   const isHostedRound = trip.scenarioKey === "hosted_round" || trip.tripOrigin === "member";
@@ -104,20 +111,21 @@ export function resolveEventContext(args: {
   };
   const defaultCloseMomentIso = defaultCloseYmd ? toCutoffAtIsoFromYmd(defaultCloseYmd) : null;
   
-  // Compute effective open moment: use persisted override if exists, else default
+  // Compute effective open moment: actual opened wins, else scheduled override, else default
+  const scheduledOverrideIso = (trip.decisionLogistics as any)?.signupsOpensAtIso;
   const persistedOpenMomentIso = trip.signupsOpenedAt;
-  const effectiveOpenMomentIso = persistedOpenMomentIso || defaultOpenMomentIso;
-  const opensAtIsDefault = !persistedOpenMomentIso;
+  const effectiveOpenMomentIso = persistedOpenMomentIso || scheduledOverrideIso || defaultOpenMomentIso;
+  const opensAtIsDefault = !(persistedOpenMomentIso || scheduledOverrideIso);
   
-  // Format open date for display: "Sat 12 Jan"
-  const formatDateForDisplay = (iso: string): string => {
-    const date = new Date(iso);
-    const dayName = date.toLocaleDateString("en-GB", { weekday: "short" });
-    const day = date.getUTCDate();
-    const mon = date.toLocaleDateString("en-GB", { month: "short" });
-    return `${dayName} ${day} ${mon}`;
-  };
-  const opensAtText = effectiveOpenMomentIso ? formatDateForDisplay(effectiveOpenMomentIso) : undefined;
+  // Format open date for display in SGT: "Sat 12 Jan" (timezone-consistent)
+  const formatOpensAtSGT = (iso: string): string =>
+    new Intl.DateTimeFormat("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      timeZone: "Asia/Singapore",
+    }).format(new Date(iso));
+  const opensAtText = effectiveOpenMomentIso ? formatOpensAtSGT(effectiveOpenMomentIso) : undefined;
 
   // Get persisted close date from cutoffAt (interpreted as SGT date)
   const cutoffAtToSgtDate = (cutoffAt: string | undefined | null): string | null => {
@@ -219,9 +227,9 @@ export function resolveEventContext(args: {
   const hasResults = resultSnapshot.exists;
   const isPublished = resultSnapshot.isPublished;
   
-  // Format publishedAt for display (reuse formatDateForDisplay from signups_window)
+  // Format publishedAt for display (SGT, same as opens-at)
   const publishedAtText = resultSnapshot.publishedAt
-    ? formatDateForDisplay(resultSnapshot.publishedAt)
+    ? formatOpensAtSGT(resultSnapshot.publishedAt)
     : undefined;
   
   // canViewResults will be determined by policy, set default here
@@ -251,14 +259,6 @@ export function resolveEventContext(args: {
   
   const capacityData: CapacityData = {
     capacityLimit: capacityLimit ?? null,
-  };
-
-  // Build export_docs instrument
-  // Status is "done" ONLY when trip.decisionLogistics.exportDocsConfirmed === true
-  // NOT based on localStorage (replaced with DB flag)
-  const exportDocsStatus: "todo" | "done" = (trip.decisionLogistics as any)?.exportDocsConfirmed === true ? "done" : "todo";
-  const exportDocsData: ExportDocsData = {
-    hasOpenedPreview: exportDocsStatus === "done",
   };
 
   return {
@@ -292,7 +292,7 @@ export function resolveEventContext(args: {
       },
       flights_plan: {
         key: "flights_plan",
-        title: "Flights",
+        title: "Tee groups",
         status: (trip.decisionLogistics as any)?.flightsConfirmed === true ? "done" : "todo",
         data: {} as FlightsPlanData, // Empty - snapshot loaded via API
       },
@@ -354,9 +354,9 @@ export function resolveEventContext(args: {
       },
       participants: {
         key: "participants",
-        title: "Participants",
+        title: "Attendees",
         status: "done", // Always available
-        data: {} as ParticipantsData, // Empty data - derived from event.trip.attendees
+        data: {} as ParticipantsData, // Empty data - derived from event.trip.attendees. Key "participants" is internal; UI must show "Attendees".
       },
       capacity: {
         key: "capacity",
@@ -364,14 +364,9 @@ export function resolveEventContext(args: {
         status: capacityStatus,
         data: capacityData,
       },
-      export_docs: {
-        key: "export_docs",
-        title: "Export documents",
-        status: exportDocsStatus,
-        data: exportDocsData,
-      },
     },
     trip, // keep full trip attached for now
+    roleByGroupId: Object.keys(roleByGroupId).length > 0 ? roleByGroupId : undefined,
     // Contract outputs
     viewerRole,
     requirements,

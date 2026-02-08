@@ -45,3 +45,6 @@ export const BASECAMP_PHASES = {
     order: 6,
   },
 } as const;
+
+/** Phase order for "locked" (signups closed); use in renderers to avoid phase literals (INSTRUMENT-02). */
+export const LOCKED_PHASE_ORDER = BASECAMP_PHASES.locked.order;

@@ -3,7 +3,7 @@ import {
   createSupabaseServerClient,
   createSupabaseServiceClient,
 } from "@/app/lib/supabaseServer";
-import { requireAuthedUser, requireMemberIdForUser, isGroupAdmin } from "@/app/lib/serverAuth";
+import { requireAuthedUser, isGroupAdmin } from "@/app/lib/serverAuth";
 
 type Params = {
   id: string;
@@ -15,17 +15,32 @@ export async function PATCH(
   context: { params: Params } | { params: Promise<Params> }
 ) {
   try {
-    // Support both direct and Promise-based params (for consistency with other routes)
     const resolvedParams =
       "then" in context.params
         ? await (context.params as Promise<Params>)
         : (context.params as Params);
 
-    const { flightId } = resolvedParams;
+    const { id, flightId } = resolvedParams;
 
     const supabase = await createSupabaseServerClient();
 
-    // 1) Require auth
+    // Invariant: Route param [id] may be legacy numeric id or UUID. We always resolve to canonical trips.id (UUID) before role checks and mutations.
+    const isNumeric = /^[0-9]+$/.test(id);
+    const parsed = isNumeric ? Number(id) : null;
+    let tripQuery = supabase.from("trips").select("id,group_id").limit(1);
+    tripQuery = isNumeric ? tripQuery.eq("legacy_id", parsed) : tripQuery.eq("id", id);
+    const { data: tripData, error: tripErr } = await tripQuery.maybeSingle();
+
+    if (tripErr || !tripData) {
+      return NextResponse.json(
+        { ok: false, error: "Trip not found." },
+        { status: 404 }
+      );
+    }
+
+    const tripUuid = tripData.id;
+    const groupId = tripData.group_id;
+
     let userId: string;
     try {
       const authResult = await requireAuthedUser();
@@ -37,7 +52,15 @@ export async function PATCH(
       );
     }
 
-    // 2) Parse and validate body
+    const userIsAdmin = await isGroupAdmin({ supabase, userId, groupId });
+    if (!userIsAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "Only group admins can update flights." },
+        { status: 403 }
+      );
+    }
+
+    // Parse and validate body
     const body = await req.json().catch(() => ({}));
     const startHole = (body as { startHole?: unknown }).startHole;
 
@@ -53,35 +76,12 @@ export async function PATCH(
       );
     }
 
-    // Get current member ID via shared helper
-    let memberId: string;
-    try {
-      memberId = await requireMemberIdForUser(userId, supabase);
-    } catch (error) {
-      return NextResponse.json(
-        { ok: false, error: "forbidden" },
-        { status: 403 }
-      );
-    }
-
-    // 3) Fetch the flight joined to its trip to obtain trip + host
+    // Fetch the flight; validate it belongs to this trip (prevent cross-trip edits)
     const { data: flightRow, error: flightError } = await supabase
       .from("trip_flights")
-      .select(
-        `
-          id,
-          trip_id,
-          execution_status,
-          start_hole,
-          trips!inner(
-            id,
-            group_id,
-            host_member_id
-          )
-        `
-      )
+      .select("id,trip_id,execution_status,start_hole")
       .eq("id", flightId)
-      .single();
+      .maybeSingle();
 
     if (flightError || !flightRow) {
       return NextResponse.json(
@@ -90,34 +90,14 @@ export async function PATCH(
       );
     }
 
-    const trip = (flightRow as any).trips as {
-      id: string;
-      group_id: string;
-      host_member_id: string | null;
-    };
-
-    const tripGroupId = trip.group_id;
-    const hostMemberId = trip.host_member_id;
-
-    // 4) Authorise: host OR group admin
-    const isHost =
-      !!memberId && !!hostMemberId && memberId === hostMemberId;
-
-    // Group admin check via shared helper
-    const userIsGroupAdmin = await isGroupAdmin({
-      supabase,
-      userId,
-      groupId: tripGroupId,
-    });
-
-    if (!isHost && !userIsGroupAdmin) {
+    if ((flightRow as { trip_id: string }).trip_id !== tripUuid) {
       return NextResponse.json(
-        { ok: false, error: "forbidden" },
-        { status: 403 }
+        { ok: false, error: "Not found." },
+        { status: 404 }
       );
     }
 
-    // 5) Reject updates if execution_status is 'finished'
+    // Reject updates if execution_status is 'finished'
     if ((flightRow as any).execution_status === "finished") {
       return NextResponse.json(
         { ok: false, reason: "flight_finished" },
