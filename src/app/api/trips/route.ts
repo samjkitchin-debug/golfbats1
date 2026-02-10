@@ -24,10 +24,11 @@ async function fetchTripsData(
   
   // Build base query
   // Return ALL trips for the group - only select fields present in schema.md
+  // Include canonical origin fields for Hosted Round vs Group Trip discernment
   const { data: tripsDataRaw, error: tripsError } = await supabase
     .from("trips")
     .select(
-      "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,signups_opened_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,decision_logistics,logistics,created_at,updated_at,group_id,created_by"
+      "id,legacy_id,name,trip_name,trip_date,format,ferry,capacity,status,coordination_status,cutoff_at,signups_opened_at,course_id,tee_id,meeting_point,meet_time,ferry_details,notes,decision_logistics,logistics,created_at,updated_at,group_id,created_by,trip_origin,created_by_member_id,is_posted_to_group"
     )
     .eq("group_id", groupId)
     .gte("trip_date", todayYmd) // Only trips with date >= today (upcoming only)
@@ -54,12 +55,12 @@ async function fetchTripsData(
   // Use service-role client for member lookups to bypass RLS
   const supabaseService = await createSupabaseServiceClient();
 
-  // Fetch member names for created_by (for displaying host name)
-  // Note: created_by is the member id (members.id == auth.uid() per schema.md)
+  // Fetch member names for creator (for displaying host name)
+  // Prefer created_by_member_id when present, else fallback to created_by (legacy)
   const memberCreatorIds = Array.from(new Set(
     tripsData
-      .filter(t => (t as any).created_by)
-      .map(t => (t as any).created_by)
+      .map(t => (t as any).created_by_member_id ?? (t as any).created_by)
+      .filter(Boolean)
   ));
   
   const memberCreatorsById: Record<string, { display_name: string | null; full_name: string | null }> = {};
@@ -173,6 +174,23 @@ async function fetchTripsData(
     const hasResult = result && result.published;
     const resultPublishedAt = hasResult ? (result.published_at || undefined) : undefined;
 
+    // Resolve canonical origin and creator for DTO
+    const tripOrigin = (trip as any).trip_origin ?? "group";
+    const resolvedCreatorId = (trip as any).created_by_member_id ?? (trip as any).created_by ?? null;
+    const isPostedToGroup =
+      (trip as any).is_posted_to_group !== undefined && (trip as any).is_posted_to_group !== null
+        ? Boolean((trip as any).is_posted_to_group)
+        : tripOrigin === "group";
+    const createdByMemberName = resolvedCreatorId
+      ? (memberCreatorsById[resolvedCreatorId]?.display_name ?? memberCreatorsById[resolvedCreatorId]?.full_name ?? null)
+      : null;
+    const hostedByLabel =
+      tripOrigin === "group"
+        ? `Hosted by ${groupName}`
+        : createdByMemberName
+          ? `Hosted by ${createdByMemberName}`
+          : undefined;
+
     // Generate unique numeric ID: use legacy_id if available, otherwise use a hash of the UUID
     let numericId: number;
     if (trip.legacy_id) {
@@ -266,24 +284,12 @@ async function fetchTripsData(
         : undefined,
       createdAtUtc: trip.created_at,
       updatedAtUtc: trip.updated_at,
-      // Provide safe defaults for fields not in schema.md
-      // All trips have group_id, so default to 'group' origin
-      tripOrigin: 'group',
-      // created_by is the member id (members.id == auth.uid() per schema.md)
-      createdByMemberId: (trip as any).created_by || null,
-      // All trips have group_id, so they are all posted to group
-      isPostedToGroup: true,
-      // Include creator name for member trips (for UI display)
-      createdByMemberName: (trip as any).created_by 
-        ? (memberCreatorsById[(trip as any).created_by]?.display_name || 
-           memberCreatorsById[(trip as any).created_by]?.full_name || 
-           null)
-        : null,
-      // Compute canonical hosted_by_label
-      hostedByLabel: (() => {
-        // All trips from this endpoint are group trips (have group_id)
-        return `Hosted by ${groupName}`;
-      })(),
+      // Canonical origin and host display (from DB trip_origin, created_by_member_id, is_posted_to_group)
+      tripOrigin: tripOrigin as "group" | "member",
+      createdByMemberId: resolvedCreatorId,
+      isPostedToGroup,
+      createdByMemberName,
+      hostedByLabel,
       // Travel fields not in schema - provide undefined defaults
       travelInvolved: undefined,
       travelType: null,
@@ -447,7 +453,7 @@ export async function POST(req: Request) {
       // Update existing trip - find by legacy_id and verify it belongs to this group
       const { data: existingTrip } = await supabase
         .from("trips")
-        .select("id, group_id, created_by, trip_date, signups_opened_at, coordination_status")
+        .select("id, group_id, created_by, trip_date, signups_opened_at, coordination_status, trip_origin, created_by_member_id")
         .eq("legacy_id", id)
         .single();
 
@@ -463,13 +469,13 @@ export async function POST(req: Request) {
         );
       }
 
-      // Determine if this is a group trip (has group_id) or hosted round (group_id is null)
-      const isGroupTrip = existingTrip.group_id !== null;
-      const existingTripOrigin = isGroupTrip ? 'group' : 'member';
+      // Determine origin and creator from DB (do not infer from group_id)
+      const existingOrigin = (existingTrip as any).trip_origin ?? "group";
+      const existingCreatorId = (existingTrip as any).created_by_member_id ?? (existingTrip as any).created_by ?? null;
+      const isGroupTrip = existingOrigin === "group";
 
-      // For group trips: validate user is admin of the trip's group (not creator-based)
-      if (isGroupTrip) {
-        // Re-check admin status using trip's actual group_id (not request groupId)
+      // Authorization: group trips = group admin; hosted rounds = creator only (or platform admin)
+      if (existingOrigin === "group") {
         const { data: tripGroupMember } = await supabase
           .from("group_members")
           .select("role, status")
@@ -487,7 +493,17 @@ export async function POST(req: Request) {
             { status: 403, headers: { "Cache-Control": "no-store" } }
           );
         }
+      } else {
+        // Hosted round: only the creator (or platform admin) may edit
+        if (!isPlatformAdmin && existingCreatorId !== user.id) {
+          return NextResponse.json(
+            { error: "Only the trip creator can edit this hosted round." },
+            { status: 403, headers: { "Cache-Control": "no-store" } }
+          );
+        }
       }
+
+      // Discriminator fields are never updated from client (trip_origin, created_by_member_id, is_posted_to_group omitted from updateData)
 
       // IMPORTANT: PATCH semantics - only update fields that are actually provided (undefined = omit, null = reject for name).
       // Build sparse update payload conditionally.
@@ -514,7 +530,7 @@ export async function POST(req: Request) {
       // Handle trip_name field (trip.tripName or trip.trip_name)
       const tripNameValue = trip.tripName !== undefined ? trip.tripName : (trip as any).trip_name;
       if (tripNameValue !== undefined) {
-        if (existingTripOrigin === 'group') {
+        if (existingOrigin === 'group') {
           // Group trips: allow null or non-empty string (trimmed)
           const trimmed = typeof tripNameValue === 'string' ? tripNameValue.trim() : '';
           updateData.trip_name = trimmed || null;
@@ -685,7 +701,7 @@ export async function POST(req: Request) {
       }
 
       // Handle travel fields (group trips only - ignore for hosted rounds)
-      if (existingTripOrigin === 'group') {
+      if (existingOrigin === 'group') {
         // Only apply travel field updates for group trips
         if (trip.travelInvolved !== undefined) {
           updateData.travel_involved = Boolean(trip.travelInvolved);
@@ -706,10 +722,10 @@ export async function POST(req: Request) {
           updateData.travel_note = trip.travelNote || null;
         }
       }
-      // For hosted rounds (existingTripOrigin === 'member'): ignore travel field inputs (do not write them)
+      // For hosted rounds (existingOrigin === 'member'): ignore travel field inputs (do not write them)
 
       // Handle phase_override (group trips only)
-      if (existingTripOrigin === 'group') {
+      if (existingOrigin === 'group') {
         if (trip.phaseOverride !== undefined || (trip as any).phase_override !== undefined) {
           const phaseOverrideValue = trip.phaseOverride !== undefined ? trip.phaseOverride : (trip as any).phase_override;
           // Validate allowed values
@@ -890,9 +906,13 @@ export async function POST(req: Request) {
         meet_time: trip.logistics?.meetTime || null,
         ferry_details: trip.logistics?.ferryDetails || null,
         notes: trip.logistics?.notes || null,
-        created_by: createdByMemberId, // created_by is in schema.md (members.id == auth.uid())
+        created_by: createdByMemberId, // Legacy; members.id == auth.uid()
         created_at: now,
         updated_at: now,
+        // Canonical discriminator (hosted round vs group trip)
+        trip_origin: tripOrigin,
+        created_by_member_id: createdByMemberId,
+        is_posted_to_group: true,
       };
 
       const { error: insertError } = await supabase.from("trips").insert(insertData);

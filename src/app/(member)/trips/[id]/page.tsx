@@ -47,6 +47,12 @@ function sameTripId(a: unknown, b: unknown): boolean {
   return String(a) === String(b);
 }
 
+function isBlank(v: unknown): boolean {
+  if (v == null) return true;
+  if (typeof v === "string") return v.trim() === "";
+  return String(v).trim() === "";
+}
+
 // Helper to check if trip is a hosted round
 function isHostedRound(trip: Trip): boolean {
   return trip.scenarioKey === "hosted_round" || trip.tripOrigin === "member";
@@ -116,29 +122,34 @@ function meetTimeHHMMToCanonical(hhmm: string): string {
   return `${h}:${String(m).padStart(2, "0")}`;
 }
 
-/** Shared milestone row: leading text + emphasized milestone date, then actions below. Used for "Sign-ups open on …" in both block and stage render. */
-function SignupMilestoneRow({
+/** Unified "What's next" strip: same premium treatment across block-based and post_create render paths. */
+function WhatsNextStrip({
   leadingText,
   milestoneDate,
   actions,
+  showPeriod = true,
 }: {
-  leadingText: ReactNode;
-  milestoneDate: ReactNode;
-  actions?: ReactNode;
+  leadingText: React.ReactNode;
+  milestoneDate: React.ReactNode;
+  actions?: React.ReactNode;
+  showPeriod?: boolean;
 }) {
+  const hasMilestone =
+    milestoneDate != null &&
+    (typeof milestoneDate !== "string" || String(milestoneDate).trim() !== "");
   return (
-    <div className="mt-5 pt-1">
-      <p className="text-sm text-muted">
-        {leadingText}
-        {milestoneDate != null && String(milestoneDate).trim() !== "" ? (
-          <> <span className="font-semibold text-foreground">{milestoneDate}</span>.</>
-        ) : null}
-      </p>
-      {actions != null && (
-        <div className="mt-2 inline-flex flex-wrap items-center gap-2">
-          {actions}
+    <div className="mt-3 rounded-xl bg-surface/60 ring-1 ring-border/50 px-4 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-semibold text-muted-foreground tracking-wide uppercase">
+          What&apos;s next
         </div>
-      )}
+        {actions != null && <div className="shrink-0">{actions}</div>}
+      </div>
+      <div className="mt-1 text-sm text-foreground">
+        {leadingText}
+        {hasMilestone && <span className="font-semibold">{milestoneDate}</span>}
+        {showPeriod !== false && hasMilestone ? "." : ""}
+      </div>
     </div>
   );
 }
@@ -1477,6 +1488,11 @@ export default function TripDetailPage() {
     });
   }, [renderSpec?.stage, snapshot, trip, canEdit, currentUserId, scoringStarted, signals?.signupsOpenDateFormatted, signals?.signupsOpenNow, signals?.signupsManuallyClosed, signals?.persistedCloseYmd, signals?.signupsCloseDateFormatted, signals?.signupsCloseDateYmd, hostLabel]);
 
+  const hasSignupsGateBlock = useMemo(
+    () => tripDetailsBlocks.some((b) => b.kind === "signups_gate"),
+    [tripDetailsBlocks]
+  );
+
   const myEntry = useMemo(() => {
     if (!trip) return undefined;
     // Prefer matching by memberId (supabase user id); fall back to name match if needed
@@ -1820,19 +1836,13 @@ export default function TripDetailPage() {
                           ) : undefined
                         ) : undefined;
                         return (
-                          <div key="whats-next" className="mt-3 rounded-xl bg-surface/60 ring-1 ring-border/50 px-4 py-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-[11px] font-semibold text-muted-foreground tracking-wide uppercase">What&apos;s next</div>
-                              {actionsNode != null && <div className="shrink-0">{actionsNode}</div>}
-                            </div>
-                            <div className="mt-1 text-sm text-foreground">
-                              {leadingText}
-                              {milestoneDate != null && milestoneDate !== "" && (
-                                <span className="font-semibold">{milestoneDate}</span>
-                              )}
-                              {isManuallyClosed ? "" : milestoneDate != null && milestoneDate !== "" ? "." : ""}
-                            </div>
-                          </div>
+                          <WhatsNextStrip
+                            key="whats-next"
+                            leadingText={leadingText}
+                            milestoneDate={milestoneDate ?? ""}
+                            actions={actionsNode}
+                            showPeriod={!isManuallyClosed}
+                          />
                         );
                       })() : null;
                       return (
@@ -1958,22 +1968,28 @@ export default function TripDetailPage() {
                       </>
                     ) : null;
                   })()}
-                  {renderSpec?.stage === "post_create" && (signals?.signupsOpenDateFormatted || signals?.signupsOpenNow) && (
+                  {renderSpec?.stage === "post_create" &&
+                    !hasSignupsGateBlock &&
+                    (signals?.signupsOpenDateFormatted || signals?.signupsOpenNow) && (
                     <>
-                      <SignupMilestoneRow
+                      <WhatsNextStrip
                         leadingText={signals?.signupsOpenNow ? "Sign-ups close on " : "Sign-ups open on "}
-                        milestoneDate={signals?.signupsOpenNow
-                          ? (signals?.persistedCloseYmd ? (signals?.signupsCloseDateFormatted ?? "Not set yet") : "Not set yet")
-                          : (signals?.signupsOpenDateFormatted ?? "")}
-                        actions={canEdit && !signals?.signupsOpenNow ? (
-                          <button
-                            type="button"
-                            onClick={() => setPendingAction({ kind: "open_signups_now" })}
-                            className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40"
-                          >
-                            Open now
-                          </button>
-                        ) : undefined}
+                        milestoneDate={
+                          signals?.signupsOpenNow
+                            ? (signals?.persistedCloseYmd ? (signals?.signupsCloseDateFormatted ?? "Not set yet") : "Not set yet")
+                            : (signals?.signupsOpenDateFormatted ?? "")
+                        }
+                        actions={
+                          canEdit && !signals?.signupsOpenNow ? (
+                            <button
+                              type="button"
+                              onClick={() => setPendingAction({ kind: "open_signups_now" })}
+                              className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface/70 focus:outline-none focus:ring-2 focus:ring-anticipation/40"
+                            >
+                              Open now
+                            </button>
+                          ) : undefined
+                        }
                       />
                       {canEdit && editingSignupsClose && signals?.signupsOpenNow && (
                         <div className="mt-2 space-y-2">
@@ -2083,34 +2099,62 @@ export default function TripDetailPage() {
                 {myEntry?.status === "waitlist" && (
                   <p className="mt-4 text-sm text-muted">You're on the waitlist.</p>
                 )}
-                {/* Read-only projection: Meeting (when not already shown by meet block), Notes — hidden in signups_open to avoid empty card */}
-                {renderSpec?.stage !== "signups_open" && (
-                <section aria-label="Trip details" className="mt-4 rounded-xl border bg-surface p-5 shadow-sm space-y-4">
-                  {!tripDetailsBlocks.some((b) => b.kind === "meet") && (
-                    <div>
-                      <div className="text-xs font-semibold text-muted mb-1">Meeting</div>
-                      <div className="text-sm text-foreground space-y-0.5">
-                        <div>Meet time: {getCanonicalMeet(trip).meetTime12 ?? "—"}</div>
-                        <div>Meeting point: {getCanonicalMeet(trip).meetingPoint ?? "—"}</div>
-                      </div>
-                    </div>
-                  )}
-                  {(() => {
-                    const notesText = (trip.logistics?.notes ?? "").trim();
-                    return (
-                      <div>
-                        <div className="text-xs font-semibold text-muted mb-1">Notes</div>
-                        <div className="text-sm text-foreground whitespace-pre-wrap">
-                          {notesText ? notesText : "—"}
+                {/* Read-only projection: Meeting (when not already shown by meet block), Notes — hide empties; no card if nothing to show */}
+                {renderSpec?.stage !== "signups_open" && (() => {
+                  const meetAlreadyShownByBlocks = tripDetailsBlocks.some((b) => b.kind === "meet");
+                  const canonicalMeet = getCanonicalMeet(trip);
+                  const meetTime12 = canonicalMeet.meetTime12 ?? "";
+                  const meetingPoint = canonicalMeet.meetingPoint ?? "";
+                  const meetingEmpty = isBlank(meetTime12) && isBlank(meetingPoint);
+
+                  const notesText = (trip.logistics?.notes ?? "").trim();
+                  const notesEmpty = notesText === "";
+
+                  const shouldShowMeetingSection = !meetAlreadyShownByBlocks && (!meetingEmpty || canEdit);
+                  const shouldShowNotesSection = !notesEmpty;
+
+                  if (!shouldShowMeetingSection && !shouldShowNotesSection) return null;
+
+                  return (
+                    <section aria-label="Trip details" className="mt-4 rounded-xl border bg-surface p-5 shadow-sm space-y-4">
+                      {shouldShowMeetingSection && (
+                        <div>
+                          <div className="text-xs font-semibold text-muted mb-1">Meeting</div>
+                          {meetingEmpty ? (
+                            <div className="mt-1">
+                              <InlineAction
+                                onClick={() => {
+                                  const params = new URLSearchParams(searchParams?.toString() ?? "");
+                                  params.set("edit", "meet");
+                                  router.push(`/trips/${trip.id}?${params.toString()}`);
+                                }}
+                                ariaLabel="Add meeting details"
+                              >
+                                Add meeting details
+                              </InlineAction>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-foreground space-y-0.5">
+                              <div>Meet time: {meetTime12}</div>
+                              <div>Meeting point: {meetingPoint}</div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    );
-                  })()}
-                </section>
-                )}
+                      )}
+                      {shouldShowNotesSection && (
+                        <div>
+                          <div className="text-xs font-semibold text-muted mb-1">Notes</div>
+                          <div className="text-sm text-foreground whitespace-pre-wrap">
+                            {notesText}
+                          </div>
+                        </div>
+                      )}
+                    </section>
+                  );
+                })()}
 
                 {/* Attendees (read-only) */}
-                <div className="mt-4 pt-4 border-t border-border/60 space-y-3">
+                <section aria-label="Attendees" className="mt-4 rounded-xl border bg-surface p-5 shadow-sm space-y-3">
                   <h2 className="text-sm font-medium text-foreground">Attendees</h2>
                   <input
                     type="text"
@@ -2173,7 +2217,7 @@ export default function TripDetailPage() {
                       })}
                     </div>
                   )}
-                </div>
+                </section>
               </>
             ) : (
               <section aria-label="Trip details" className="mt-6">
